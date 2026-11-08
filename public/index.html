@@ -101,8 +101,8 @@
 
   .iconbtn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--muted);
     display: grid; place-items: center; flex: none; padding: 0; }
-  .press, .btn, .iconbtn, .member, .chip, .star-btn, .seg button { transition: transform .14s var(--spring); }
-  :is(.press, .btn, .iconbtn, .member, .chip, .star-btn):active, .row[role="button"]:active { transform: scale(.97); }
+  .press, .btn, .iconbtn, .member, .chip, .star-btn, .publish-btn, .seg button { transition: transform .14s var(--spring); }
+  :is(.press, .btn, .iconbtn, .member, .chip, .star-btn, .publish-btn):active, .row[role="button"]:active { transform: scale(.97); }
   :is(.iconbtn, .btn, .tab, .row, .member, .add, .chip, .star-btn, .pcard-head, .seg button, .hero-btn, .back):focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 
   h2 { font-family: var(--serif); font-weight: 600; font-size: 26px; line-height: 1.15; margin: 0 0 6px; }
@@ -110,6 +110,7 @@
   .count-line { margin: 0 0 12px; font-size: 15px; color: var(--muted); }
   .label { margin: 30px 0 4px; font-size: 18px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
   .label + .subtle { margin-top: 0; }
+  #view > .label:first-child { margin-top: 4px; }
   .subtle { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
   .footnote { text-align: center; color: var(--muted); font-size: 14px; margin: 24px 0 0; }
   .spacer { flex: 1; }
@@ -179,6 +180,15 @@
 
   /* Someone else's list */
   .row.mine { background: var(--ok-soft); box-shadow: none; }
+  /* "Just me": private drafts, shown with a dashed edge until published */
+  .row.draft { background: var(--panel); box-shadow: none; outline: 1.5px dashed var(--line); outline-offset: -1.5px; }
+  .publish-btn { min-height: 44px; border: 0; border-radius: 999px; padding: 0 15px; background: var(--brand); color: var(--brand-ink);
+    font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .publish-btn:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+  .just-me-note { display: flex; gap: 8px; align-items: flex-start; background: var(--panel); border-radius: 12px; padding: 10px 12px;
+    color: var(--muted); font-size: 14px; line-height: 1.4; margin: 0 0 14px; }
+  .just-me-note svg { flex: none; margin-top: 2px; }
+  .just-me-note strong { color: var(--ink); }
   .row.taken { background: var(--panel); box-shadow: none; }
   .row.taken .tile { filter: grayscale(1); opacity: .6; }
   .row.taken .row-title { color: var(--muted); }
@@ -512,6 +522,7 @@ const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } 
 const CHEV = '<svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 const CHEV_D = '<svg class="chev-d" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
+const SEND = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
 const LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const CAMERA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
@@ -680,6 +691,8 @@ async function render() {
   if (state.person) $('.tab[data-tab="family"]').setAttribute("aria-current", "page");
   try {
     if (!state.me) await refreshMe();
+    // Your own list always opens on My list, which is the only place "Just me" wishes show.
+    if (state.person && state.person === state.me?.id) { state.person = null; state.tab = "mine"; }
     if (state.person) await renderPerson(state.person);
     else if (state.tab === "family") await renderFamily();
     else if (state.tab === "notes") await renderTracker();
@@ -796,21 +809,35 @@ function wireGiftBox(root, action) {
 }
 
 // ---------- my list ----------
+// Two sections: "Just me" (drafts only you can see; every new wish starts here) and the published wish list.
+// Publishing is one way: a published wish never goes back to "Just me".
+const JUST_ME_NOTE = `<p class="just-me-note">${LOCK}<span><strong>Only you can see these.</strong> New wishes start here. Publish one when you're sure you want it. Once published, it stays on your wish list.</span></p>`;
+
 async function renderMine() {
   const data = await load("list");
   state.myItems = data.items;
+  const drafts = data.items.filter((i) => i.draft);
+  const live = data.items.filter((i) => !i.draft);
   setHero(heroTitle(`Hi ${state.me.name}`, "Your wishlist"));
   const v = $("#view");
-  v.innerHTML = data.items.length ? `
-    <p class="count-line">${plural(data.items.length, "wish", "wishes")} on your list</p>
-    <div class="stack">${data.items.map((i, n) => itemRow(i, n)).join("")}</div>
-    <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : `
+  const draftSection = drafts.length ? `
+    <p class="label">${LOCK} Just me <span style="font-weight:500;color:var(--muted)">(${drafts.length})</span></p>
+    ${JUST_ME_NOTE}
+    <div class="stack">${drafts.map((i, n) => itemRow(i, n)).join("")}</div>` : "";
+  const liveSection = live.length ? `
+    <p class="label">Wish list</p>
+    <p class="count-line">${plural(live.length, "wish", "wishes")} your family can see</p>
+    <div class="stack">${live.map((i, n) => itemRow(i, n + drafts.length)).join("")}</div>
+    <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : drafts.length ? `
+    <p class="label">Wish list</p>
+    <p class="subtle">Nothing published yet. Tap Publish on a wish above when you want your family to see it.</p>` : "";
+  v.innerHTML = data.items.length ? draftSection + liveSection : `
     <div class="empty">
       ${giftBox("Add your first wish")}
       <strong>Your list is empty</strong>
-      <p>Add your first wish so your family knows what to get you. A name is all you need.</p>
+      <p>Add your first wish. It starts in Just me, where only you can see it, until you publish it to your wish list.</p>
       <button class="add" type="button" id="addFirst">${PLUS} Add a wish</button>
-      <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>
+      <p class="footnote">Family sees your published wishes. Surprises stay hidden from you.</p>
     </div>`;
   $("#addFirst")?.addEventListener("click", () => editItem());
   wireGiftBox(v, () => editItem());
@@ -819,26 +846,60 @@ async function renderMine() {
     el.onclick = (e) => { if (!e.target.closest("a, button")) editItem(item); };
   });
   v.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => toggleTopPick(data.items.find((i) => i.id === b.dataset.star), b)));
+  v.querySelectorAll("[data-publish]").forEach((b) => (b.onclick = () => confirmPublish(data.items.find((i) => i.id === b.dataset.publish))));
 }
 
 function itemRow(i, n = 0) {
   const top = i.priority === "must";
   const anim = state.flash === i.id ? " drop" : " slide";
-  return `<div class="row${anim}" style="animation-delay:${anim === " slide" ? n * 0.04 : 0}s" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
+  const action = i.draft
+    ? `<button class="publish-btn" type="button" data-publish="${esc(i.id)}">${SEND} Publish</button>`
+    : `<button class="star-btn${state.pop === i.id ? " pop" : ""}" type="button" data-star="${esc(i.id)}" aria-pressed="${top}">${STAR} Top pick${state.pop === i.id && top ? SPARKS : ""}</button>`;
+  return `<div class="row${i.draft ? " draft" : ""}${anim}" style="animation-delay:${anim === " slide" ? n * 0.04 : 0}s" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
     <div class="row-top">${tile(i, "item")}
       <div class="row-main">
         <span class="row-title">${esc(i.title)}</span>
         ${i.notes ? `<span class="row-notes">${esc(i.notes)}</span>` : ""}
         ${i.url ? `<span class="from">from <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a></span>` : ""}
-        ${hiddenTag(i)}
+        ${i.draft ? "" : hiddenTag(i)}
         <div class="row-foot">
           ${i.price_cents != null ? `<span class="price-tag">${money(i.price_cents)}</span>` : '<span class="anyprice">Any price</span>'}
           <span class="spacer"></span>
-          <button class="star-btn${state.pop === i.id ? " pop" : ""}" type="button" data-star="${esc(i.id)}" aria-pressed="${top}">${STAR} Top pick${state.pop === i.id && top ? SPARKS : ""}</button>
+          ${action}
         </div>
       </div>
     </div>
+    ${state.burst === "pub:" + i.id && !reduceMotion() ? `<span class="burst" aria-hidden="true">${CONFETTI}</span>` : ""}
   </div>`;
+}
+
+// Publishing is one way, so it always asks first and says so.
+function confirmPublish(item) {
+  if (!item) return;
+  openSheet(`
+    <h3>Publish to your wish list?</h3>
+    <p class="lead"><strong>${esc(item.title)}</strong> will show on your wish list for your family to see and buy.</p>
+    <p class="just-me-note">${LOCK}<span><strong>This can't be undone.</strong> Published wishes can't be moved back to Just me. You can still edit or remove it later.</span></p>
+    <div class="actions">
+      <button class="btn" type="button" id="pubCancel">Not yet</button>
+      <button class="btn primary" type="button" id="pubGo">${SEND} Publish</button>
+    </div>`, (el) => {
+    $("#pubCancel", el).onclick = closeSheet;
+    const go = $("#pubGo", el);
+    go.onclick = async () => {
+      go.disabled = true;
+      try {
+        await api("item/publish", { id: item.id });
+        closeSheet();
+        toast("Published to your wish list");
+        state.me = null;
+        state.flash = item.id;
+        state.burst = "pub:" + item.id;
+        if (state.tab !== "mine" || state.person) return setTab("mine");
+        render();
+      } catch (err) { go.disabled = false; toast(err.message); }
+    };
+  });
 }
 
 // Only shown when you're in more than one family.
@@ -879,9 +940,11 @@ async function toggleTopPick(item, btn) {
 function editItem(item) {
   const isNew = !item;
   item ||= {};
+  const draft = isNew || !!item.draft;
   const hasDetails = item.price_cents != null || !!item.notes;
   openSheet(`
     <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
+    ${isNew ? `<p class="just-me-note">${LOCK}<span>Saves to <strong>Just me</strong>, where only you can see it. Publish it to your wish list when you're sure.</span></p>` : draft ? JUST_ME_NOTE : ""}
     <form id="itemForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title)}" placeholder="Warm slippers, size 8" required></label>
@@ -893,12 +956,13 @@ function editItem(item) {
           <label class="field"><span>Notes <em>(size, color, where to buy)</em></span><textarea class="input" name="notes" maxlength="1000">${esc(item.notes)}</textarea></label>
         </div>
       </details>
-      <label class="check"><span>Top pick<small>Shows a gold star so family knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
-      ${familySwitches(item.hiddenFrom)}
+      ${draft ? "" : `<label class="check"><span>Top pick<small>Shows a gold star so family knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
+      ${familySwitches(item.hiddenFrom)}`}
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeItem">Remove</button>'}
-        <button class="btn primary" type="submit">${isNew ? "Save wish" : "Save"}</button>
+        <button class="btn primary" type="submit">${isNew ? "Save to Just me" : "Save"}</button>
       </div>
+      ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${SEND} Publish to my wish list</button>` : ""}
     </form>`, (el) => {
       const form = $("#itemForm", el);
       // type=url rejects links without https://, so let the server fix those up instead.
@@ -907,17 +971,18 @@ function editItem(item) {
       if (isNew) setTimeout(() => form.elements.title.focus(), 300);
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, priority: d.must ? "must" : null, image: imageFor(form) };
-        if (multi()) payload.hiddenFrom = hiddenFromForm(form);
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, priority: !draft && d.must ? "must" : null, image: imageFor(form) };
+        if (multi() && !draft) payload.hiddenFrom = hiddenFromForm(form);
         const { id } = await api("item/save", payload);
         closeSheet();
-        if (isNew) toast("Saved to your list", () => api("item/remove", { id }).then(() => { state.me = null; render(); }, (e) => toast(e.message)));
+        if (isNew) toast("Saved to Just me", () => api("item/remove", { id }).then(() => { state.me = null; render(); }, (e) => toast(e.message)));
         else toast("Saved");
         state.me = null;
         state.flash = isNew ? id : null;
         if (isNew && (state.tab !== "mine" || state.person)) return setTab("mine");
         render();
       });
+      $("#publishItem", el)?.addEventListener("click", () => confirmPublish(item));
       $("#removeItem", el)?.addEventListener("click", async () => {
         if (!confirmRemove()) return;
         try { await api("item/remove", { id: item.id }); closeSheet(); toast("Removed"); state.me = null; render(); }
