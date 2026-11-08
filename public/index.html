@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wishlist</title>
-<meta name="description" content="Family wish lists: share what you'd like, mark what you bought, keep private gift notes.">
+<meta name="description" content="Family wish lists: share what you'd like, mark what you're getting, keep private gift notes.">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#FBF6F0" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1A1517" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#4A0E22" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#2B0D18" media="(prefers-color-scheme: dark)">
 <link rel="preload" href="/fonts/figtree-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/fraunces-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon.svg">
@@ -18,124 +19,220 @@
 <meta name="apple-mobile-web-app-title" content="Wishlist">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="/theme.js"></script>
+<script>try { var ts = localStorage.getItem("wishlist-text"); if (ts) document.documentElement.dataset.text = ts; } catch (e) {}</script>
 <style>
-  /* Friendly, low-tech look for the whole family: Figtree body, Gelasio headings, big tap targets,
-     soft cards, sentence-case labels. Burgundy for actions, evergreen for "bought". */
+  /* Warm and a little handmade: cream paper, a wine header band, burgundy for actions, gold for
+     top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for the rest.
+     Big tap targets and plain words so it works for every age. Motion marks real moments only. */
   :root {
-    --bg: #FBF6F0; --card: #FFFFFF; --panel: #F3ECE3; --ink: #2B2326; --muted: #6E6266; --faint: #A3989B;
-    --line: #EADFD3; --brand: #8E2440; --brand-ink: #FFFFFF; --soft: #F8E8EC; --soft-ink: #7A1F37;
-    --ok: #2F6A55; --ok-soft: #E3F1EA; --err-bg: #FCECEA; --err: #A32A22;
-    --shadow: 0 1px 2px rgba(60, 30, 20, .05), 0 4px 14px rgba(60, 30, 20, .06);
-    --r: 16px;
-    --serif: Gelasio, Georgia, "Times New Roman", serif;
+    --bg: #FAF6F1; --card: #FFFFFF; --panel: #F3ECE4; --ink: #2A1E22; --muted: #6B5E62; --faint: #A3979A;
+    --line: #EADFD4; --brand: #7A1B36; --brand-ink: #FFFFFF; --soft: #F7E6EA; --soft-ink: #7A1B36;
+    --hero: #4A0E22; --hero-ink: #FFF8F2; --hero-muted: #E8C3CD;
+    --gold: #D9A94A; --gold-ink: #7A5410; --gold-soft: #FBF1DC;
+    --ok: #2F6B4F; --ok-soft: #E8F2EC; --warn: #A15C07; --warn-soft: #FDF3E2; --warn-bar: #C98A2E;
+    --err-bg: #FCECEA; --err: #A32A22;
+    --t0: #F7E6EA; --t0-ink: #7A1B36; --t1: #E6EFE9; --t1-ink: #2F6B4F; --t2: #FBF1DC; --t2-ink: #7A5410; --t3: #E8EAF4; --t3-ink: #33407A;
+    --shadow: 0 1px 2px rgba(74, 14, 34, .06), 0 8px 20px rgba(74, 14, 34, .06);
+    --r: 18px;
+    --serif: Fraunces, Georgia, "Times New Roman", serif;
     --sans: Figtree, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --spring: cubic-bezier(.3, 1.4, .5, 1);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) { --bg: #1A1517; --card: #241D20; --panel: #2E2629; --ink: #F3ECEE; --muted: #B6A9AD; --faint: #85787C;
       --line: #3A3034; --brand: #E59AAE; --brand-ink: #2A0E17; --soft: #3A2129; --soft-ink: #F0B5C4;
-      --ok: #8FD0B4; --ok-soft: #1E3029; --err-bg: #3A1F1D; --err: #F2BDB7; --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
+      --hero: #2B0D18; --hero-ink: #FFF1F4; --hero-muted: #D9A7B5; --gold: #E0B75E; --gold-ink: #F1D08A; --gold-soft: #3A2F1C;
+      --ok: #8FD0B4; --ok-soft: #1E3029; --warn: #F2C27A; --warn-soft: #3A2C17; --warn-bar: #D9A04A; --err-bg: #3A1F1D; --err: #F2BDB7;
+      --t0: #3A2129; --t0-ink: #F0B5C4; --t1: #1E3029; --t1-ink: #8FD0B4; --t2: #3A2F1C; --t2-ink: #F1D08A; --t3: #252A3D; --t3-ink: #B4BDF0;
+      --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
   }
   :root[data-theme="dark"] { --bg: #1A1517; --card: #241D20; --panel: #2E2629; --ink: #F3ECEE; --muted: #B6A9AD; --faint: #85787C;
     --line: #3A3034; --brand: #E59AAE; --brand-ink: #2A0E17; --soft: #3A2129; --soft-ink: #F0B5C4;
-    --ok: #8FD0B4; --ok-soft: #1E3029; --err-bg: #3A1F1D; --err: #F2BDB7; --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
+    --hero: #2B0D18; --hero-ink: #FFF1F4; --hero-muted: #D9A7B5; --gold: #E0B75E; --gold-ink: #F1D08A; --gold-soft: #3A2F1C;
+    --ok: #8FD0B4; --ok-soft: #1E3029; --warn: #F2C27A; --warn-soft: #3A2C17; --warn-bar: #D9A04A; --err-bg: #3A1F1D; --err: #F2BDB7;
+    --t0: #3A2129; --t0-ink: #F0B5C4; --t1: #1E3029; --t1-ink: #8FD0B4; --t2: #3A2F1C; --t2-ink: #F1D08A; --t3: #252A3D; --t3-ink: #B4BDF0;
+    --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
+
+  /* Text size setting (Settings > Text size). */
+  :root[data-text="lg"] :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: 1.12; }
+  :root[data-text="xl"] :is(main, .hero, dialog.sheet, .toast) { zoom: 1.25; }
+  :root[data-text="xl"] nav.tabs { zoom: 1.12; }
+
+  /* The theme button lives in Settings now. theme.js still applies the saved choice. */
+  .theme-toggle { display: none !important; }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
   button { font: inherit; cursor: pointer; color: inherit; }
   input, textarea, select { font: inherit; color: var(--ink); }
   [hidden] { display: none !important; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   main { max-width: 560px; margin: 0 auto;
-    padding-block: calc(env(safe-area-inset-top, 0px) + 18px) calc(env(safe-area-inset-bottom, 0px) + 110px);
+    padding-block: 20px calc(env(safe-area-inset-bottom, 0px) + 120px);
     padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px)); }
 
-  header.top { display: flex; align-items: center; gap: 12px; margin: 0 0 22px; padding-right: 50px; }
-  @media (min-width: 720px) { header.top { padding-right: 0; } }
-  .logo { width: 44px; height: 44px; border-radius: 12px; flex: none; display: block; }
-  .name { font-family: var(--serif); font-size: 26px; font-weight: 700; line-height: 1.1; }
-  .group-name { font-size: 14px; color: var(--muted); margin-top: 2px; }
-  .spacer { flex: 1; }
+  /* Wine header band */
+  .hero { position: relative; overflow: hidden; background: var(--hero); color: var(--hero-ink);
+    padding: calc(env(safe-area-inset-top, 0px) + 26px) max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, env(safe-area-inset-left, 0px)); }
+  .hero-in { position: relative; max-width: 560px; margin: 0 auto; }
+  .doodle { position: absolute; right: -28px; top: -14px; width: 240px; height: 170px; color: var(--hero-muted); opacity: .22; pointer-events: none; }
+  @media (min-width: 720px) { .doodle { right: 4%; } }
+  .kicker { margin: 0; color: var(--hero-muted); font-size: 15px; font-weight: 600; }
+  .hero h1 { font-family: var(--serif); font-weight: 600; font-size: 34px; line-height: 1.1; letter-spacing: -.01em; margin: 4px 0 0; }
+  .squiggle { display: block; margin-top: 6px; color: var(--gold); }
+  .hero .back { color: var(--hero-muted); margin: -10px 0 6px -6px; padding: 0 8px 0 4px; }
+  .hero-row { display: flex; align-items: center; gap: 14px; }
+  .hero-row .avatar { border: 2px solid var(--hero-muted); }
+  .hero-row h1 { margin: 0; }
+  .hero-row .who-name { flex: 1; min-width: 0; }
+  .realname { display: block; color: var(--hero-muted); font-size: 14px; margin-top: 2px; }
+  .hero-link { border: 0; background: none; color: var(--hero-muted); font-weight: 700; font-size: 15px; min-height: 44px; padding: 0 4px; text-decoration: underline; text-underline-offset: 3px; flex: none; }
+  .lockline { display: inline-flex; align-items: center; gap: 5px; color: var(--hero-muted); font-size: 14px; font-weight: 600; margin-top: 8px; }
+  .hero-meter { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; }
+  .hero-meter .bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .16); overflow: hidden; }
+  .hero-meter .bar i { display: block; height: 100%; border-radius: 4px; background: var(--gold); transform-origin: left; animation: fill 1s var(--spring) .2s both; }
+  .hero-meter b { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+  .hero-btn { margin-top: 16px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid color-mix(in srgb, var(--hero-muted) 55%, transparent);
+    background: transparent; color: var(--hero-ink); font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; }
+  .hero-stat { margin-top: 18px; }
+  .big-num { display: block; font-family: var(--serif); font-size: 58px; font-weight: 600; line-height: 1.05; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .hero-sub { margin: 2px 0 0; color: var(--hero-muted); font-size: 15px; }
+  .welcome-logo { width: 64px; height: 64px; border-radius: 18px; display: block; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+
   .iconbtn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--muted);
     display: grid; place-items: center; flex: none; padding: 0; }
-  .iconbtn:active, .btn:active, .member:active, .row[role="button"]:active { transform: scale(.98); }
-  :is(.iconbtn, .btn, .tab, .row, .member, .add):focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+  .press, .btn, .iconbtn, .member, .chip, .star-btn, .seg button { transition: transform .14s var(--spring); }
+  :is(.press, .btn, .iconbtn, .member, .chip, .star-btn):active, .row[role="button"]:active { transform: scale(.97); }
+  :is(.iconbtn, .btn, .tab, .row, .member, .add, .chip, .star-btn, .pcard-head, .seg button, .hero-btn, .back):focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 
-  h2 { font-family: var(--serif); font-weight: 700; font-size: 28px; line-height: 1.15; margin: 0 0 6px; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 26px; line-height: 1.15; margin: 0 0 6px; }
   .lead { color: var(--muted); margin: 0 0 20px; }
-  .label { margin: 30px 0 12px; font-size: 18px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
-  .label .count { font-size: 13px; font-weight: 700; color: var(--muted); background: var(--panel); border-radius: 999px; padding: 1px 9px; }
-  .private { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--soft-ink); background: var(--soft);
-    border-radius: 999px; padding: 4px 11px; white-space: nowrap; }
+  .count-line { margin: 0 0 12px; font-size: 15px; color: var(--muted); }
+  .label { margin: 30px 0 4px; font-size: 18px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .label + .subtle { margin-top: 0; }
+  .subtle { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .footnote { text-align: center; color: var(--muted); font-size: 14px; margin: 24px 0 0; }
+  .spacer { flex: 1; }
 
-  .btn { border: 1.5px solid var(--line); background: var(--card); border-radius: 12px; min-height: 48px; padding: 10px 18px; font-weight: 700; font-size: 16px;
+  .btn { border: 1.5px solid var(--line); background: var(--card); border-radius: 14px; min-height: 48px; padding: 10px 18px; font-weight: 700; font-size: 16px;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
   .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
   .btn.wide { width: 100%; }
-  .btn.small { min-height: 40px; padding: 7px 14px; font-size: 15px; border-radius: 10px; }
-  .btn.quiet { border-color: transparent; background: none; color: var(--brand); min-height: 40px; }
+  .btn.small { min-height: 44px; padding: 7px 14px; font-size: 15px; border-radius: 12px; }
+  .btn.quiet { border-color: transparent; background: none; color: var(--brand); min-height: 44px; }
   .btn.danger { color: var(--err); }
   .btn[disabled] { opacity: .55; pointer-events: none; }
-  .add { width: 100%; border: 0; background: var(--brand); color: var(--brand-ink); border-radius: var(--r); min-height: 56px; padding: 14px;
-    font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--shadow); }
-  .add.soft { background: var(--soft); color: var(--soft-ink); box-shadow: none; min-height: 48px; font-size: 16px; }
+  .add { width: 100%; border: 0; background: var(--brand); color: var(--brand-ink); border-radius: 16px; min-height: 54px; padding: 14px;
+    font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 25%, transparent); }
+  .add.soft { background: transparent; color: var(--brand); box-shadow: none; min-height: 52px; font-size: 16px; border: 1.5px dashed color-mix(in srgb, var(--brand) 35%, var(--line)); }
 
   .card { background: var(--card); border-radius: var(--r); padding: 18px; box-shadow: var(--shadow); }
   .stack > * + * { margin-top: 12px; }
 
-  /* Item rows */
-  .row { width: 100%; text-align: left; background: var(--card); border: 0; border-radius: var(--r); padding: 16px 18px; display: block; box-shadow: var(--shadow); }
-  .row-top { display: flex; align-items: flex-start; gap: 12px; }
-  .row-title { font-weight: 700; font-size: 18px; flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
-  .price { font-weight: 700; color: var(--ink); white-space: nowrap; background: var(--panel); border-radius: 999px; padding: 2px 10px; font-size: 15px; }
-  .row-notes { color: var(--muted); font-size: 15px; margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .row-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  /* Wish cards */
+  .row { position: relative; width: 100%; text-align: left; background: var(--card); border: 0; border-radius: var(--r); padding: 14px; display: block; box-shadow: var(--shadow);
+    transition: background-color .35s ease, box-shadow .35s ease, transform .14s var(--spring); }
+  .row-top { display: flex; align-items: flex-start; gap: 14px; }
+  .tile { width: 60px; height: 60px; border-radius: 14px; flex: none; display: grid; place-items: center; font-family: var(--serif); font-size: 26px; font-weight: 600;
+    background: var(--t0); color: var(--t0-ink); }
+  .tile.t1 { background: var(--t1); color: var(--t1-ink); } .tile.t2 { background: var(--t2); color: var(--t2-ink); } .tile.t3 { background: var(--t3); color: var(--t3-ink); }
+  .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .row-head { display: flex; align-items: flex-start; gap: 10px; }
+  .row-title { flex: 1; min-width: 0; font-weight: 700; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+  .row-price { font-family: var(--serif); font-weight: 600; font-size: 16px; color: var(--soft-ink); white-space: nowrap; }
+  .row-notes { color: var(--muted); font-size: 15px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .row-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .row-foot:empty { display: none; }
-  .tag { font-size: 13px; font-weight: 700; border-radius: 999px; padding: 4px 10px; background: var(--soft); color: var(--soft-ink); }
-  .tag.ok { background: var(--ok-soft); color: var(--ok); }
-  .tag.muted { background: var(--panel); color: var(--muted); }
-  .open { font-size: 15px; font-weight: 700; color: var(--brand); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 6px 0; }
-  .row.done { background: color-mix(in srgb, var(--card) 60%, var(--bg)); box-shadow: none; border: 1.5px dashed var(--line); }
-  .row.done .row-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
-  .row-foot .spacer { flex: 1; }
+  .open { font-size: 14px; font-weight: 700; color: var(--brand); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; }
+  .from { font-size: 14px; color: var(--muted); }
+  .from a { color: inherit; }
+  .price-tag { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 9px; border-radius: 6px 14px 14px 6px;
+    background: var(--soft); color: var(--soft-ink); font-family: var(--serif); font-size: 15px; font-weight: 600; transform: rotate(-3deg); transform-origin: 10px 50%; }
+  .price-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--card); }
+  .anyprice { font-size: 14px; color: var(--muted); }
+  .star-btn { position: relative; min-height: 44px; border: 0; border-radius: 999px; padding: 0 13px; background: var(--panel); color: var(--muted);
+    font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .star-btn svg { transform: rotate(-6deg); }
+  .star-btn svg path { fill: none; stroke: currentColor; }
+  .star-btn[aria-pressed="true"] { background: var(--gold-soft); color: var(--gold-ink); }
+  .star-btn[aria-pressed="true"] svg path { fill: var(--gold); stroke: var(--gold-ink); }
+  .star-btn.pop svg { animation: pop .5s ease both; }
+  .spark { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); pointer-events: none; animation: spark .55s ease-out both; }
+  .toppick { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; color: var(--gold-ink); }
+  .toppick svg { transform: rotate(-6deg); }
+  .toppick path { fill: var(--gold); stroke: var(--gold-ink); }
+
+  /* Someone else's list */
+  .row.mine { background: var(--ok-soft); box-shadow: none; }
+  .row.taken { background: var(--panel); box-shadow: none; }
+  .row.taken .tile { filter: grayscale(1); opacity: .6; }
+  .row.taken .row-title { color: var(--muted); }
+  .mine-line { display: inline-flex; align-items: center; gap: 8px; color: var(--ok); font-weight: 700; font-size: 15px; }
+  .chk { width: 26px; height: 26px; border-radius: 50%; background: var(--ok); color: var(--card); display: grid; place-items: center; flex: none; }
+  .chk.new { animation: checkpop .45s var(--spring) both; }
+  .taken-line { color: var(--muted); font-size: 14px; font-weight: 600; }
+  .burst { position: absolute; left: 40px; bottom: 30px; width: 0; height: 0; pointer-events: none; }
+  .bit { position: absolute; left: 0; top: 0; width: 9px; height: 5px; border-radius: 2px; animation: burst .85s cubic-bezier(.15, .7, .4, 1) both; }
+  .chips { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; scrollbar-width: none; }
+  .chip { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 
   /* People */
   .member { width: 100%; display: flex; align-items: center; gap: 14px; background: var(--card); border: 0; border-radius: var(--r);
-    padding: 14px 16px; text-align: left; box-shadow: var(--shadow); min-height: 72px; }
-  .avatar { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 19px; flex: none; color: #fff; }
-  .avatar.big { width: 64px; height: 64px; font-size: 26px; }
-  .member .who { flex: 1; min-width: 0; }
+    padding: 16px; text-align: left; box-shadow: var(--shadow); min-height: 76px; }
+  .avatar { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 20px; flex: none; color: #fff; }
+  .avatar.big { width: 56px; height: 56px; font-size: 24px; }
+  .member .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .member strong { display: block; font-size: 18px; }
   .member small { color: var(--muted); font-size: 15px; display: inline-flex; align-items: center; gap: 4px; }
-  .chev { color: var(--faint); flex: none; }
+  .mini { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 14px; color: var(--muted); }
+  .mini .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--panel); overflow: hidden; }
+  .mini .bar i { display: block; height: 100%; border-radius: 3px; background: var(--brand); transform-origin: left; animation: fill .9s var(--spring) .3s both; }
+  .mini.over .bar i { background: var(--warn-bar); }
+  .mini.over span { color: var(--warn); font-weight: 700; }
+  .chev { color: var(--faint); flex: none; transition: transform .2s ease; }
+  .member:hover .chev { transform: translateX(3px); }
   .invite { display: flex; align-items: center; gap: 12px; }
   .code { font-size: 26px; font-weight: 800; letter-spacing: .14em; }
-  .person-head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
-  .person-head h2 { margin: 0; }
-  .person-head .who-name { flex: 1; min-width: 0; }
-  .person-head small { display: block; color: var(--muted); font-size: 14px; margin-top: 2px; }
 
-  .back { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--brand); font-weight: 700; font-size: 16px;
+  .back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--brand); font-weight: 700; font-size: 16px;
     padding: 8px 0; margin: -8px 0 10px; min-height: 44px; }
 
-  .empty { text-align: center; color: var(--muted); padding: 30px 18px; background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); }
-  .empty .em-icon { width: 56px; height: 56px; border-radius: 50%; background: var(--soft); color: var(--brand); display: grid; place-items: center; margin: 0 auto 12px; }
-  .empty strong { display: block; color: var(--ink); font-family: var(--serif); font-size: 21px; margin-bottom: 4px; }
+  /* Empty states */
+  .empty { text-align: center; padding: 18px 10px 6px; }
+  .empty strong { display: block; color: var(--ink); font-family: var(--serif); font-weight: 600; font-size: 23px; line-height: 1.25; margin: 10px auto 6px; max-width: 300px; }
+  .empty p { color: var(--muted); margin: 0 auto 18px; max-width: 320px; }
+  .empty .stack { text-align: left; }
+  .giftbox { width: 140px; height: 132px; border: 0; background: none; padding: 0; position: relative; display: block; margin: 0 auto; }
+  .giftbox svg { display: block; width: 140px; height: 124px; animation: bob 2.8s ease-in-out infinite; }
+  .giftbox .shadow { position: absolute; left: 38px; right: 38px; bottom: 0; height: 8px; border-radius: 50%; background: var(--line); animation: shadow 2.8s ease-in-out infinite; }
+  .giftbox .lid { transform-origin: 20px 46px; }
+  .giftbox.opened svg { animation: none; }
+  .giftbox.opened .lid { animation: lid .55s var(--spring) both; }
+  .giftbox .box { fill: var(--soft); stroke: var(--brand); } .giftbox .lidfill { fill: color-mix(in srgb, var(--soft) 60%, var(--card)); stroke: var(--brand); }
+  .giftbox .ribbon { fill: var(--brand); } .giftbox .bow { fill: var(--gold); stroke: var(--brand); }
 
   /* Forms */
   label.field { display: block; margin-bottom: 16px; }
   label.field > span { display: block; font-size: 16px; font-weight: 700; margin-bottom: 7px; }
   label.field > span em { font-style: normal; font-weight: 500; color: var(--faint); }
-  .input { width: 100%; border: 1.5px solid var(--line); background: var(--card); border-radius: 12px; padding: 13px 14px; font-size: 17px; min-height: 52px; }
+  .input { width: 100%; border: 1.5px solid var(--line); background: var(--card); border-radius: 14px; padding: 13px 15px; font-size: 17px; min-height: 54px; }
   .input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent); }
   textarea.input { min-height: 90px; resize: vertical; }
   .input.code-in { font-size: 28px; font-weight: 800; letter-spacing: .25em; text-transform: uppercase; text-align: center; }
   .input.pin-in { font-size: 28px; font-weight: 800; letter-spacing: .6em; text-align: center; }
-  /* Checkboxes look like iOS-style switches */
+  .money-in { display: flex; align-items: center; gap: 4px; padding: 0 15px; }
+  .money-in span { color: var(--muted); font-size: 18px; }
+  .money-in input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 18px; min-height: 50px; }
+  .money-in:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent); }
+  /* Checkboxes look like switches */
   .check { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 700; font-size: 16px; margin-bottom: 16px;
-    background: var(--card); border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px; min-height: 56px; }
+    background: var(--card); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; min-height: 56px; }
+  .check small { display: block; font-weight: 500; font-size: 14px; color: var(--muted); }
   .check input { order: 2; appearance: none; -webkit-appearance: none; width: 50px; height: 30px; border-radius: 999px; background: var(--line);
     position: relative; flex: none; margin: 0; transition: background .2s; cursor: pointer; }
   .check input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .25s var(--spring); }
   .check input:checked { background: var(--brand); }
   .check input:checked::after { transform: translateX(20px); }
   .check input:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
@@ -143,42 +240,62 @@
   .hint { color: var(--muted); font-size: 14px; margin: -8px 0 16px; }
   .actions { display: flex; gap: 10px; margin-top: 8px; }
   .actions .btn { flex: 1; }
+  details.more { margin-bottom: 16px; }
+  details.more summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 48px; font-weight: 700; color: var(--brand); }
+  details.more summary::-webkit-details-marker { display: none; }
+  details.more summary svg { transition: transform .25s var(--spring); }
+  details.more[open] summary svg { transform: rotate(180deg); }
+  details.more[open] > div { animation: open .3s ease both; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--panel); border-radius: 14px; padding: 4px; margin-bottom: 8px; }
+  .seg button { min-height: 44px; border: 0; border-radius: 10px; background: none; font-weight: 700; font-size: 15px; color: var(--muted); }
+  .seg button[aria-checked="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 
-  /* Bottom tabs */
-  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: color-mix(in srgb, var(--card) 94%, transparent);
+  /* Bottom tabs: My list, Family, [Add a wish], Budget, Settings */
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: color-mix(in srgb, var(--card) 96%, transparent);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line);
-    padding: 6px max(8px, env(safe-area-inset-left, 0px)) calc(env(safe-area-inset-bottom, 0px) + 6px); }
-  nav.tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .tab { border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0;
-    font-size: 13px; font-weight: 700; border-radius: 12px; }
-  .tab[aria-current="page"] { color: var(--brand); background: var(--soft); }
+    padding: 6px max(4px, env(safe-area-inset-left, 0px)) calc(env(safe-area-inset-bottom, 0px) + 8px); }
+  nav.tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); align-items: start; }
+  .tab { border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 2px 0;
+    font-size: 12px; font-weight: 600; border-radius: 12px; min-height: 52px; }
+  .tab .ico { width: 54px; height: 32px; border-radius: 16px; display: grid; place-items: center; transition: background-color .2s ease; }
+  .tab[aria-current="page"] { color: var(--brand); font-weight: 800; }
+  .tab[aria-current="page"] .ico { background: var(--soft); animation: hop .55s ease .05s both; }
+  .tab.add-tab { color: var(--brand); font-weight: 800; }
+  .add-tab .fab { width: 60px; height: 60px; margin-top: -28px; border-radius: 50%; background: var(--brand); color: var(--brand-ink);
+    border: 4px solid var(--bg); display: grid; place-items: center; box-shadow: 0 8px 18px color-mix(in srgb, var(--brand) 38%, transparent);
+    transition: transform .2s var(--spring); }
+  .add-tab:active .fab { transform: scale(.9) rotate(90deg); }
 
   /* Sheet */
   dialog.sheet { border: 0; padding: 0; margin: auto auto 0; width: 100%; max-width: 560px; max-height: 92dvh; background: var(--bg); color: var(--ink);
-    border-radius: 22px 22px 0 0; }
-  @media (min-width: 620px) { dialog.sheet { margin: auto; border-radius: 20px; } }
-  dialog.sheet::backdrop { background: rgba(30, 15, 20, .45); }
-  .sheet-in { padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 20px); }
+    border-radius: 26px 26px 0 0; }
+  dialog.sheet[open] { animation: sheetUp .42s cubic-bezier(.2, .9, .3, 1) both; }
+  @media (min-width: 620px) { dialog.sheet { margin: auto; border-radius: 22px; } dialog.sheet[open] { animation: rise .3s ease both; } }
+  dialog.sheet::backdrop { background: rgba(30, 15, 20, .45); animation: fade .25s ease both; }
+  .sheet-in { padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 22px); }
   .sheet-close { position: absolute; top: 14px; right: 14px; font-size: 26px; line-height: 1; }
-  .grab { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 10px; }
-  .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
-  .sheet h3 { font-family: var(--serif); font-size: 24px; font-weight: 700; margin: 0; }
+  .grab { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
+  .sheet h3 { font-family: var(--serif); font-size: 25px; font-weight: 600; line-height: 1.2; margin: 0 52px 16px 0; }
   .sheet-sec { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 20px; }
   .sheet-sec h4 { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
   .sheet p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .sheet .what { color: var(--ink); font-weight: 700; font-size: 17px; margin: -6px 0 16px; }
 
-  .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); transform: translateX(-50%); z-index: 30;
-    background: var(--ink); color: var(--bg); border-radius: 999px; padding: 12px 18px; font-size: 15px; font-weight: 700;
-    display: flex; align-items: center; gap: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.2); max-width: calc(100% - 32px); }
-  .toast button { border: 0; background: none; color: var(--bg); text-decoration: underline; font-weight: 800; padding: 0; }
+  .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); translate: -50% 0; z-index: 30;
+    background: var(--ink); color: var(--bg); border-radius: 16px; padding: 6px 8px 6px 16px; min-height: 52px; font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 24px rgba(0,0,0,.25); width: max-content; max-width: calc(100% - 32px);
+    animation: toastIn .35s cubic-bezier(.2, .9, .3, 1.2) both; }
+  .toast svg { flex: none; color: #9FD3B4; }
+  .toast button { border: 0; background: none; color: var(--gold); font-weight: 800; min-height: 44px; padding: 0 12px; border-radius: 10px; }
+  .toast span { padding-right: 8px; }
   .offline { background: var(--panel); color: var(--muted); border-radius: 12px; padding: 10px 14px; font-size: 14px; margin-bottom: 16px; }
   .loading { color: var(--faint); text-align: center; padding: 50px 0; }
   .picker { display: grid; gap: 10px; margin-bottom: 14px; }
   .linkrow { display: flex; gap: 8px; }
   .linkrow .input { flex: 1; min-width: 0; }
-  .linkrow .btn { min-height: 52px; }
+  .linkrow .btn { min-height: 54px; }
   .photo-box { margin-bottom: 16px; }
-  .photo-btn { background: var(--soft); border-color: transparent; color: var(--soft-ink); min-height: 54px; }
+  .photo-btn { background: var(--soft); border-color: transparent; color: var(--soft-ink); min-height: 50px; }
   .photo-status { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 15px; color: var(--muted); }
   .photo-status img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; flex: none; }
   .photo-status strong { color: var(--ink); }
@@ -190,55 +307,85 @@
   .pick.on { border-color: var(--brand); background: var(--soft); }
   .pick.none { color: var(--muted); font-weight: 600; text-align: center; display: block; }
   .fillmsg { display: block; color: var(--muted); font-size: 14px; margin-top: 7px; }
-  .welcome-art { width: 84px; height: 84px; border-radius: 24px; margin: 6px 0 18px; display: block; box-shadow: var(--shadow); }
+  .fillmsg.ok { color: var(--ok); font-weight: 600; }
 
-  /* Tracker */
-  .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
-  .totals small { display: block; font-size: 14px; font-weight: 600; color: var(--muted); }
-  .totals strong { font-size: 22px; font-weight: 800; }
-  .over { color: var(--err); }
-  .budget-line { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
-  .budget-line strong { font-size: 22px; }
-  .meter { height: 10px; border-radius: 5px; background: var(--panel); margin: 14px 0 6px; overflow: hidden; }
-  .meter i { display: block; height: 100%; background: var(--ok); border-radius: 5px; }
-  .meter.over i { background: var(--err); }
-  .buys { list-style: none; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--line); }
-  .buys li { display: flex; gap: 10px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
-  .buys li:last-child { border-bottom: 0; padding-bottom: 0; }
+  /* Budget */
+  .pcard { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .pcard-head { width: 100%; border: 0; background: none; padding: 16px; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+  .pcard-top { display: flex; align-items: center; gap: 12px; width: 100%; }
+  .pcard-top .avatar { width: 44px; height: 44px; font-size: 19px; }
+  .pcard-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .pcard-who strong { font-size: 17px; }
+  .pcard-who small { color: var(--muted); font-size: 14px; }
+  .pill { font-size: 14px; font-weight: 700; padding: 5px 10px; border-radius: 10px; white-space: nowrap; background: var(--ok-soft); color: var(--ok); }
+  .pill.over { background: var(--warn-soft); color: var(--warn); }
+  .pill.none { background: var(--panel); color: var(--muted); }
+  .pcard .chev-d { color: var(--muted); flex: none; transition: transform .3s var(--spring); }
+  .pcard.is-open .chev-d { transform: rotate(180deg); }
+  .meter { width: 100%; height: 8px; border-radius: 4px; background: var(--panel); overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--brand); border-radius: 4px; transform-origin: left; animation: fill 1s var(--spring) .25s both; }
+  .meter.over i { background: var(--warn-bar); }
+  .pcard-body { padding: 0 16px 16px; animation: open .32s cubic-bezier(.2, .8, .3, 1) both; }
+  .buys { list-style: none; margin: 0 0 12px; padding: 0; }
+  .buys li { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 16px; }
   .buys small { display: block; color: var(--muted); font-size: 13px; }
-  .buys b { white-space: nowrap; }
+  .buys b { font-family: var(--serif); font-weight: 600; color: var(--soft-ink); white-space: nowrap; }
+  .pcard-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .pcard-body .stack { margin: 12px 0; }
+  .pcard-body .row { box-shadow: none; border: 1.5px solid var(--line); }
+
+  /* Motion. Every animation marks a real moment; all of it turns off with Reduce Motion. */
+  .slide { animation: slide .45s cubic-bezier(.2, .8, .3, 1) both; }
+  .drop { animation: drop .6s cubic-bezier(.2, .8, .3, 1) both; }
+  .drop .price-tag { animation: swing 1s ease .35s both; }
+  @keyframes slide { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes drop { 0% { opacity: 0; transform: translateY(-28px) scale(.96); } 55% { opacity: 1; transform: translateY(5px) scale(1.01); } 80% { transform: translateY(-2px); } 100% { opacity: 1; transform: none; } }
+  @keyframes swing { 0% { transform: rotate(-3deg); } 25% { transform: rotate(9deg); } 50% { transform: rotate(-7deg); } 75% { transform: rotate(3deg); } 100% { transform: rotate(-3deg); } }
+  @keyframes pop { 0% { transform: scale(1) rotate(-6deg); } 30% { transform: scale(1.5) rotate(-18deg); } 60% { transform: scale(.9) rotate(4deg); } 100% { transform: scale(1) rotate(-6deg); } }
+  @keyframes spark { 0% { opacity: 1; transform: translate(0, 0) scale(.3); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); } }
+  @keyframes burst { 0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(.5); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--r)) scale(1); } }
+  @keyframes checkpop { 0% { transform: scale(0) rotate(-30deg); } 60% { transform: scale(1.25) rotate(8deg); } 100% { transform: scale(1) rotate(0); } }
+  @keyframes hop { 0%, 100% { transform: none; } 35% { transform: translateY(-6px); } 65% { transform: translateY(1px); } }
+  @keyframes bob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-9px) rotate(2deg); } }
+  @keyframes shadow { 0%, 100% { transform: scaleX(1); opacity: .9; } 50% { transform: scaleX(.8); opacity: .5; } }
+  @keyframes lid { 0% { transform: none; } 45% { transform: translateY(-26px) rotate(-20deg); } 100% { transform: translateY(-16px) rotate(-14deg); } }
+  @keyframes fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes open { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes sheetUp { 0% { transform: translateY(100%); } 70% { transform: translateY(-6px); } 100% { transform: none; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes toastIn { 0% { opacity: 0; transform: translateY(20px) scale(.96); } 100% { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
+<header class="hero" id="hero"></header>
 <main>
-  <header class="top">
-    <img class="logo" src="/icons/icon.svg" alt="">
-    <div>
-      <div class="name">Wishlist</div>
-      <div class="group-name" id="groupName" hidden></div>
-    </div>
-    <span class="spacer"></span>
-    <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings" hidden>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
-    </button>
-  </header>
   <div id="offline" class="offline" hidden>You're offline. Showing what was last loaded; changes need a connection.</div>
   <div id="view"><div class="loading">Loading...</div></div>
 </main>
 
-<nav class="tabs" id="tabs" hidden>
+<nav class="tabs" id="tabs" aria-label="Main" hidden>
   <div class="inner">
     <button class="tab" type="button" data-tab="mine">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="1.5"/><path d="M12 8v13M3 12h18M12 8c-1.5-3-5-4-6-2s2 2 6 2zM12 8c1.5-3 5-4 6-2s-2 2-6 2z"/></svg>
+      <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg></span>
       My list
     </button>
     <button class="tab" type="button" data-tab="family">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5.5 6.5-5.5s5.5 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.6c2.6-.3 4.6 1.4 5.5 4.4"/></svg>
+      <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
       Family
     </button>
+    <button class="tab add-tab" type="button" id="addTab">
+      <span class="fab"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+      Add a wish
+    </button>
     <button class="tab" type="button" data-tab="notes">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
-      Tracker
+      <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><path d="M16 11h.01"/></svg></span>
+      Budget
+    </button>
+    <button class="tab" type="button" id="settingsTab">
+      <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+      Settings
     </button>
   </div>
 </nav>
@@ -251,6 +398,7 @@
 const API = "/api/";
 const TOKEN_KEY = "wishlist-token";
 const CACHE_KEY = "wishlist-cache";
+const TEXT_KEY = "wishlist-text";
 
 // ---------- tiny helpers ----------
 const $ = (s, el = document) => el.querySelector(s);
@@ -258,21 +406,38 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const money = (c) => (c == null ? "" : (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: c % 100 ? 2 : 0 }));
 const priceIn = (c) => (c == null ? "" : String(c / 100));
 const initial = (n) => (n || "?").trim().charAt(0).toUpperCase();
-const AV_COLORS = ["#8E2440", "#2F6A55", "#B5651D", "#3D5A99", "#7A4E9C", "#A23B6D", "#4F7A2B", "#2C7A86"];
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const hash = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
+const AV_COLORS = ["#7A1B36", "#2F6B4F", "#33407A", "#6A3667", "#A0651A", "#A23B6D", "#4F7A2B", "#2C7A86"];
 function avatar(name, id, big) {
-  let h = 0;
-  for (const ch of String(id || name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `<span class="avatar${big ? " big" : ""}" style="background:${AV_COLORS[h % AV_COLORS.length]}" aria-hidden="true">${esc(initial(name))}</span>`;
+  return `<span class="avatar${big ? " big" : ""}" style="background:${AV_COLORS[hash(id || name) % AV_COLORS.length]}" aria-hidden="true">${esc(initial(name))}</span>`;
 }
-const GIFT = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="1.5"/><path d="M12 8v13M3 12h18M12 8c-1.5-3-5-4-6-2s2 2 6 2zM12 8c1.5-3 5-4 6-2s-2 2-6 2z"/></svg>';
-const GIFT_SM = GIFT.replace(/width="28" height="28"/, 'width="18" height="18"');
-const emptyBox = (title, text) => `<div class="empty"><div class="em-icon">${GIFT}</div><strong>${title}</strong>${text}</div>`;
+// A soft letter tile, like a label on a jar, until the item has a photo.
+const tile = (title, id) => `<span class="tile t${hash(id || title) % 4}" aria-hidden="true">${esc(initial(title))}</span>`;
+const GIFT_SM = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg>';
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return "Link"; } };
-const CHEV = '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
-const LOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const CHEV = '<svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+const CHEV_D = '<svg class="chev-d" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
+const LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const CAMERA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
-const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
-const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
+const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+const CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const STAR = '<svg width="18" height="18" viewBox="0 0 24 24" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2l2.7 5.4 5.9.8-4.3 4.2 1.1 5.9L12 16.7l-5.3 2.8 1-5.9-4.2-4.2 5.9-.8z"/></svg>';
+const MSG = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5A8 8 0 1 1 21 12z"/></svg>';
+const DOWN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>';
+const DOODLE = '<svg class="doodle" viewBox="0 0 230 170" aria-hidden="true"><path d="M8 150 C 50 90, 96 170, 120 104 S 176 18, 150 52 S 108 112, 168 84 S 222 30, 226 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M150 52 c -14 -18 -40 -16 -34 -2 c 4 9 22 6 34 2 z M150 52 c 4 -22 28 -32 30 -16 c 1 10 -18 14 -30 16 z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+const SQUIGGLE = '<svg class="squiggle" width="120" height="12" viewBox="0 0 120 12" aria-hidden="true"><path d="M2 7c10-6 18 4 28 0s18-6 28 0 18 4 28 0 18-5 32-1" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>';
+const GIFTBOX = `<svg viewBox="0 0 120 112" aria-hidden="true">
+  <rect class="box" x="22" y="50" width="76" height="54" rx="8" stroke-width="3"/><rect class="ribbon" x="54" y="50" width="12" height="54"/>
+  <g class="lid"><rect class="lidfill" x="16" y="36" width="88" height="18" rx="6" stroke-width="3"/><rect class="ribbon" x="54" y="36" width="12" height="18"/>
+  <path class="bow" d="M60 36c-6-12-22-17-22-6 0 6 12 6 22 6zM60 36c6-12 22-17 22-6 0 6-12 6-22 6z" stroke-width="2.5" stroke-linejoin="round"/></g></svg>`;
+const CONFETTI = [["#7A1B36", -40, -46, -140], ["#D9A94A", -8, -62, 200], ["#2F6B4F", 30, -50, 120], ["#E8A5B5", 58, -24, -90], ["#D9A94A", 70, 6, 160],
+  ["#7A1B36", -60, -10, 90], ["#E8A5B5", -30, 18, -200], ["#2F6B4F", 16, -74, 60], ["#D9A94A", 44, -70, -60], ["#7A1B36", 92, -40, 220]]
+  .map(([c, x, y, r]) => `<i class="bit" style="background:${c};--dx:${x}px;--dy:${y}px;--r:${r}deg"></i>`).join("");
+const SPARKS = '<i class="spark" style="left:16px;top:10px;--dx:-10px;--dy:-14px"></i><i class="spark" style="left:20px;top:12px;--dx:12px;--dy:-12px;background:#E8A5B5"></i><i class="spark" style="left:18px;top:26px;--dx:-12px;--dy:10px;width:4px;height:4px"></i>';
 
 function getToken() { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
 function setToken(t) { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} }
@@ -306,16 +471,39 @@ async function load(path) {
     throw e;
   }
 }
+// The private tracker feeds budget bars on other screens; those screens still work without it.
+const loadTracker = () => load("tracker").catch(() => null);
 
 let toastTimer;
 function toast(msg, undo) {
   const el = $("#toast");
-  el.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button type="button">Undo</button>' : "");
+  el.hidden = true;
+  el.innerHTML = CHECK.replace('width="15" height="15"', 'width="20" height="20"') + `<span>${esc(msg)}</span>` + (undo ? '<button type="button">Undo</button>' : "");
+  void el.offsetWidth;
   el.hidden = false;
   if (undo) el.querySelector("button").onclick = () => { el.hidden = true; undo(); };
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (el.hidden = true), undo ? 5000 : 2600);
 }
+
+// Counts a big number up (or down) to its value, like an odometer.
+function countUp(el, fromCents, toCents) {
+  if (!el) return;
+  if (reduceMotion() || fromCents === toCents) { el.textContent = money(toCents); return; }
+  const t0 = performance.now(), d = 900;
+  const step = (t) => {
+    const p = Math.min(1, (t - t0) / d), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = money(Math.round((fromCents + (toCents - fromCents) * e) / 100) * 100);
+    if (p < 1) requestAnimationFrame(step); else el.textContent = money(toCents);
+  };
+  requestAnimationFrame(step);
+}
+
+function buzz() { try { navigator.vibrate?.(12); } catch {} }
+
+// ---------- header band ----------
+function setHero(html) { $("#hero").innerHTML = DOODLE + `<div class="hero-in">${html}</div>`; }
+const heroTitle = (kicker, title) => `${kicker ? `<p class="kicker">${esc(kicker)}</p>` : ""}<h1>${esc(title)}</h1>${SQUIGGLE}`;
 
 // ---------- sheet (bottom drawer) ----------
 const sheet = $("#sheet");
@@ -348,22 +536,29 @@ function wireForm(form, submit) {
 }
 
 // ---------- state + routing ----------
-const state = { me: null, groups: [], season: null, tab: "mine", person: null };
+// One-shot animation flags: the next render plays them once, then they're cleared.
+const state = { me: null, groups: [], season: null, tab: "mine", person: null, filter: "all", openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
 
+const hashFor = (tab) => (tab === "notes" ? "budget" : tab);
 function setTab(tab, person = null) {
   state.tab = tab;
   state.person = person;
-  const hash = person ? `#person/${person}` : `#${tab}`;
-  if (location.hash !== hash) history.pushState(null, "", hash);
+  state.filter = "all";
+  const h = person ? `#person/${person}` : `#${hashFor(tab)}`;
+  if (location.hash !== h) history.pushState(null, "", h);
+  window.scrollTo(0, 0);
   render();
 }
 window.addEventListener("popstate", () => { readHash(); render(); });
 function readHash() {
   const h = location.hash.slice(1);
-  if (h.startsWith("person/")) { state.tab = "family"; state.person = h.slice(7); }
-  else if (["mine", "family", "notes"].includes(h)) { state.tab = h; state.person = null; }
+  if (h.startsWith("person/")) { if (state.person !== h.slice(7)) state.filter = "all"; state.tab = "family"; state.person = h.slice(7); }
+  else if (h === "budget" || h === "notes") { state.tab = "notes"; state.person = null; }
+  else if (["mine", "family"].includes(h)) { state.tab = h; state.person = null; }
 }
-document.querySelectorAll(".tab").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+document.querySelectorAll(".tab[data-tab]").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+$("#addTab").onclick = () => editItem();
+$("#settingsTab").onclick = () => openSettings();
 
 const group = () => state.groups[0] || null;
 const others = () => (group()?.members || []).filter((m) => m.id !== state.me.id);
@@ -379,16 +574,14 @@ async function refreshMe() {
 async function render() {
   const signedIn = !!getToken();
   $("#tabs").hidden = !signedIn;
-  $("#settingsBtn").hidden = !signedIn;
-  $("#groupName").hidden = !signedIn;
   if (!signedIn) return renderWelcome();
 
-  document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-current", b.dataset.tab === state.tab ? "page" : "false"));
+  document.querySelectorAll(".tab[data-tab]").forEach((b) => b.setAttribute("aria-current", !state.person && b.dataset.tab === state.tab ? "page" : "false"));
+  if (state.person) $('.tab[data-tab="family"]').setAttribute("aria-current", "page");
   try {
     if (!state.me) await refreshMe();
-    $("#groupName").textContent = group()?.name || "";
     if (state.person) await renderPerson(state.person);
-    else if (state.tab === "family") renderFamily();
+    else if (state.tab === "family") await renderFamily();
     else if (state.tab === "notes") await renderTracker();
     else await renderMine();
   } catch (e) {
@@ -396,6 +589,7 @@ async function render() {
     $("#view").innerHTML = `<div class="err">${esc(e.message)}</div><button class="btn" type="button" id="retry">Try again</button>`;
     $("#retry").onclick = () => { state.me = null; render(); };
   }
+  state.flash = state.burst = state.pop = null;
 }
 
 // ---------- welcome / join ----------
@@ -403,9 +597,9 @@ function renderWelcome(step = "code", info = {}) {
   const v = $("#view");
   const codeFromLink = new URLSearchParams(location.search).get("code") || "";
   if (step === "code") {
+    setHero(`<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Family wish lists", "Welcome to Wishlist")}`);
     v.innerHTML = `
-      <h2>Welcome to the family Wishlist</h2>
-      <p class="lead">Make your own wish list, see what everyone else would love, and quietly mark what you've bought.</p>
+      <p class="lead">Make your own wish list, see what everyone else would love, and quietly mark what you're getting them.</p>
       <form class="card" id="codeForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>Enter your family code</span>
@@ -421,13 +615,12 @@ function renderWelcome(step = "code", info = {}) {
     return;
   }
 
+  const backBtn = `<button class="back" type="button" id="backBtn">${BACK} Back</button>`;
   if (step === "who") {
+    setHero(backBtn + heroTitle("Tap your name", info.group.name));
     v.innerHTML = `
-      <button class="back" type="button" id="backBtn">&larr; Back</button>
-      <h2>${esc(info.group.name)}</h2>
-      <p class="lead">Tap your name.</p>
       <div class="picker">
-        ${info.members.map((m) => `<button class="member" type="button" data-id="${esc(m.id)}">
+        ${info.members.map((m, i) => `<button class="member slide" style="animation-delay:${i * 0.05}s" type="button" data-id="${esc(m.id)}">
             ${avatar(m.name, m.id)}
             <span class="who"><strong>${esc(m.name)}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
           </button>`).join("")}
@@ -445,10 +638,8 @@ function renderWelcome(step = "code", info = {}) {
   }
 
   if (step === "pin") {
+    setHero(backBtn + heroTitle("Enter your PIN", `Hi ${info.member.name}`));
     v.innerHTML = `
-      <button class="back" type="button" id="backBtn">&larr; Back</button>
-      <h2>Hi ${esc(info.member.name)}</h2>
-      <p class="lead">Enter your PIN.</p>
       <form class="card" id="pinForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>PIN</span>
@@ -462,10 +653,8 @@ function renderWelcome(step = "code", info = {}) {
 
   if (step === "new" || step === "start") {
     const starting = step === "start";
+    setHero(backBtn + heroTitle(starting ? "You'll get a code to share" : "Add yourself", starting ? "Start a new family" : `Join ${info.group.name}`));
     v.innerHTML = `
-      <button class="back" type="button" id="backBtn">&larr; Back</button>
-      <h2>${starting ? "Start a new family" : `Join ${esc(info.group.name)}`}</h2>
-      <p class="lead">${starting ? "You'll get a code to share so everyone else can join." : "Add yourself so everyone can see your list."}</p>
       <form class="card" id="newForm" autocomplete="off">
         <div class="err" hidden></div>
         ${starting ? `<label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>` : ""}
@@ -491,58 +680,120 @@ function finishJoin({ token }) {
   render();
 }
 
+// ---------- empty state: a bobbing gift box that pops open ----------
+function giftBox(label) {
+  return `<button class="giftbox" type="button" data-giftbox aria-label="${esc(label)}">${GIFTBOX}<span class="shadow"></span></button>`;
+}
+function wireGiftBox(root, action) {
+  const box = root.querySelector("[data-giftbox]");
+  if (!box) return;
+  box.onclick = () => {
+    box.classList.add("opened");
+    setTimeout(() => { action(); setTimeout(() => box.classList.remove("opened"), 400); }, reduceMotion() ? 0 : 420);
+  };
+}
+
 // ---------- my list ----------
 async function renderMine() {
   const data = await load("list");
+  state.myItems = data.items;
+  setHero(heroTitle(`Hi ${state.me.name}`, "Your wishlist"));
   const v = $("#view");
-  v.innerHTML = `
-    <h2>Hi, ${esc(state.me.name)}</h2>
-    <p class="lead">Here's your wish list. Don't worry, you'll never see what's been bought.</p>
-    <div class="stack">
-      <button class="add" type="button" id="addItem">${PLUS} Add a wish</button>
-      ${data.items.length ? data.items.map(itemRow).join("") : emptyBox("Your list is empty", "Add your first wish so your family knows what to get you.")}
+  v.innerHTML = data.items.length ? `
+    <p class="count-line">${plural(data.items.length, "wish", "wishes")} on your list</p>
+    <div class="stack">${data.items.map((i, n) => itemRow(i, n)).join("")}</div>
+    <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : `
+    <div class="empty">
+      ${giftBox("Add your first wish")}
+      <strong>Your list is empty</strong>
+      <p>Add your first wish so your family knows what to get you. A name is all you need.</p>
+      <button class="add" type="button" id="addFirst">${PLUS} Add a wish</button>
+      <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>
     </div>`;
-  $("#addItem").onclick = () => editItem();
+  $("#addFirst")?.addEventListener("click", () => editItem());
+  wireGiftBox(v, () => editItem());
   v.querySelectorAll(".row[data-id]").forEach((el) => {
-    el.onclick = (e) => { if (!e.target.closest("a")) editItem(data.items.find((i) => i.id === el.dataset.id)); };
+    const item = data.items.find((i) => i.id === el.dataset.id);
+    el.onclick = (e) => { if (!e.target.closest("a, button")) editItem(item); };
   });
+  v.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => toggleTopPick(data.items.find((i) => i.id === b.dataset.star), b)));
 }
 
-function itemRow(i) {
-  return `<div class="row" role="button" tabindex="0" data-id="${esc(i.id)}">
-    <div class="row-top"><span class="row-title">${esc(i.title)}</span>${i.price_cents != null ? `<span class="price">${money(i.price_cents)}</span>` : ""}</div>
-    ${i.notes ? `<div class="row-notes">${esc(i.notes)}</div>` : ""}
-    <div class="row-foot">${i.priority === "must" ? '<span class="tag">Must have</span>' : ""}${i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))} ${OUT}</a>` : ""}</div>
+function itemRow(i, n = 0) {
+  const top = i.priority === "must";
+  const anim = state.flash === i.id ? " drop" : " slide";
+  return `<div class="row${anim}" style="animation-delay:${anim === " slide" ? n * 0.04 : 0}s" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
+    <div class="row-top">${tile(i.title, i.id)}
+      <div class="row-main">
+        <span class="row-title">${esc(i.title)}</span>
+        ${i.notes ? `<span class="row-notes">${esc(i.notes)}</span>` : ""}
+        ${i.url ? `<span class="from">from <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a></span>` : ""}
+        <div class="row-foot">
+          ${i.price_cents != null ? `<span class="price-tag">${money(i.price_cents)}</span>` : '<span class="anyprice">Any price</span>'}
+          <span class="spacer"></span>
+          <button class="star-btn${state.pop === i.id ? " pop" : ""}" type="button" data-star="${esc(i.id)}" aria-pressed="${top}">${STAR} Top pick${state.pop === i.id && top ? SPARKS : ""}</button>
+        </div>
+      </div>
+    </div>
   </div>`;
+}
+
+// Top pick is the old "must have": one tap on the card, saved right away.
+async function toggleTopPick(item, btn) {
+  const next = item.priority === "must" ? null : "must";
+  item.priority = next;
+  btn.setAttribute("aria-pressed", String(!!next));
+  btn.classList.remove("pop");
+  void btn.offsetWidth;
+  btn.classList.add("pop");
+  btn.querySelectorAll(".spark").forEach((s) => s.remove());
+  if (next) btn.insertAdjacentHTML("beforeend", SPARKS);
+  try {
+    await api("item/save", { id: item.id, title: item.title, url: item.url, price: priceIn(item.price_cents), notes: item.notes, priority: next });
+  } catch (e) {
+    item.priority = next ? null : "must";
+    btn.setAttribute("aria-pressed", String(!next));
+    toast(e.message);
+  }
 }
 
 function editItem(item) {
   const isNew = !item;
   item ||= {};
+  const hasDetails = item.price_cents != null || !!item.notes;
   openSheet(`
-    <h3>${isNew ? "Add a wish" : "Edit wish"}</h3>
+    <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
     <form id="itemForm" autocomplete="off">
       <div class="err" hidden></div>
+      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title)}" placeholder="Warm slippers, size 8" required></label>
       ${linkField(item.url)}
-      <label class="field"><span>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title)}" placeholder="Cozy slippers" required></label>
-      <label class="field"><span>Price <em>(optional)</em></span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="25"></label>
-      <label class="field"><span>Notes <em>(size, color, where to buy)</em></span><textarea class="input" name="notes" maxlength="1000">${esc(item.notes)}</textarea></label>
-      <label class="check"><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}> This is a must-have</label>
+      <details class="more"${hasDetails ? " open" : ""}>
+        <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, notes)</span></summary>
+        <div>
+          <label class="field"><span>Price <em>(optional)</em></span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="25"></label>
+          <label class="field"><span>Notes <em>(size, color, where to buy)</em></span><textarea class="input" name="notes" maxlength="1000">${esc(item.notes)}</textarea></label>
+        </div>
+      </details>
+      <label class="check"><span>Top pick<small>Shows a gold star so family knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeItem">Remove</button>'}
-        <button class="btn primary" type="submit">${isNew ? "Add to my list" : "Save"}</button>
+        <button class="btn primary" type="submit">${isNew ? "Save wish" : "Save"}</button>
       </div>
     </form>`, (el) => {
       const form = $("#itemForm", el);
       // type=url rejects links without https://, so let the server fix those up instead.
       form.noValidate = true;
       wireAutofill(form);
+      if (isNew) setTimeout(() => form.elements.title.focus(), 300);
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        await api("item/save", { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, priority: d.must ? "must" : null });
+        const { id } = await api("item/save", { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, priority: d.must ? "must" : null });
         closeSheet();
-        toast(isNew ? "Added to your list" : "Saved");
+        if (isNew) toast("Saved to your list", () => api("item/remove", { id }).then(() => { state.me = null; render(); }, (e) => toast(e.message)));
+        else toast("Saved");
         state.me = null;
+        state.flash = isNew ? id : null;
+        if (isNew && (state.tab !== "mine" || state.person)) return setTab("mine");
         render();
       });
       $("#removeItem", el)?.addEventListener("click", async () => {
@@ -554,16 +805,16 @@ function editItem(item) {
 }
 // ---------- autofill from a link ----------
 function linkField(value) {
-  return `<div class="photo-box">
-      <input type="file" accept="image/*" data-photo hidden>
-      <button class="btn wide photo-btn" type="button" data-photo-btn>${CAMERA} Snap or upload a photo</button>
-      <div class="photo-status" hidden></div>
-      <div class="picks" hidden></div>
-    </div>
-    <label class="field"><span>Link <em>(optional, paste one to fill in the rest)</em></span>
+  return `<label class="field"><span>Have a link? <em>Paste it to fill in the rest</em></span>
     <div class="linkrow"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="Paste a link">
     <button class="btn small" type="button" data-fill>Fill</button></div>
-    <small class="fillmsg" hidden></small></label>`;
+    <small class="fillmsg" hidden></small></label>
+    <div class="photo-box">
+      <input type="file" accept="image/*" data-photo hidden>
+      <button class="btn wide photo-btn" type="button" data-photo-btn>${CAMERA} Or snap a photo of it</button>
+      <div class="photo-status" hidden></div>
+      <div class="picks" hidden></div>
+    </div>`;
 }
 
 // Shrink the photo on the phone before sending (faster, cheaper). Returns a JPEG data URL.
@@ -605,7 +856,7 @@ function wirePhoto(form) {
       status.hidden = false;
       const { suggestions } = await api("identify", { image: photo.data });
       if (!suggestions.length) {
-        status.innerHTML = `<img src="${photo.preview}" alt=""><span>Couldn't tell what this is. Try a closer photo, or type it in below.</span>`;
+        status.innerHTML = `<img src="${photo.preview}" alt=""><span>Couldn't tell what this is. Try a closer photo, or type it in above.</span>`;
         return;
       }
       status.innerHTML = `<img src="${photo.preview}" alt=""><span><strong>Is it one of these?</strong> Tap the closest match.</span>`;
@@ -623,7 +874,7 @@ function wirePhoto(form) {
       }));
       picks.querySelector("[data-none]").onclick = () => {
         picks.hidden = true;
-        status.innerHTML = `<img src="${photo.preview}" alt=""><span>No problem. Type the name below, or try another photo.</span>`;
+        status.innerHTML = `<img src="${photo.preview}" alt=""><span>No problem. Type the name above, or try another photo.</span>`;
         form.elements.title.focus();
       };
     } catch (e) {
@@ -638,7 +889,7 @@ function wireAutofill(form) {
   wirePhoto(form);
   const url = form.elements.url, btn = form.querySelector("[data-fill]"), msg = form.querySelector(".fillmsg");
   const title = form.elements.title, price = form.elements.price;
-  const say = (t) => { msg.textContent = t; msg.hidden = !t; };
+  const say = (t, ok) => { msg.textContent = t; msg.hidden = !t; msg.classList.toggle("ok", !!ok); };
   let busy = false;
   async function fill(force) {
     const v = url.value.trim();
@@ -649,9 +900,10 @@ function wireAutofill(form) {
       let filled = [];
       if (r.title && (force || !title.value.trim())) { title.value = r.title; filled.push("name"); }
       if (r.price != null && (force || !price.value.trim())) { price.value = String(r.price); filled.push("price"); }
+      if (filled.includes("price")) { const d = form.querySelector("details.more"); if (d) d.open = true; }
       say(filled.length ? `Filled in the ${filled.join(" and ")} from ${r.site}. Check it looks right.`
         : r.title || r.price != null ? "Already filled in. Tap Fill to replace with the link's details."
-        : `Couldn't read details from ${r.site}. Type them in instead.`);
+        : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0);
     } catch (e) { say(e.message); }
     finally { busy = false; btn.disabled = false; }
   }
@@ -663,35 +915,58 @@ function wireAutofill(form) {
 const confirmRemove = () => window.confirm("Remove this from your list?");
 
 // ---------- family ----------
-function renderFamily() {
+async function renderFamily() {
   const g = group();
   const people = others();
+  const t = await loadTracker();
+  const plan = new Map((t?.people || []).map((p) => [p.id, p]));
+  setHero(heroTitle(g?.name || "", "Family"));
   const v = $("#view");
   v.innerHTML = `
-    <h2>Family</h2>
-    <p class="lead">Tap someone to see what they'd like.</p>
-    <div class="stack">
-      ${people.length ? people.map((m) => `<button class="member" type="button" data-id="${esc(m.id)}">
-          ${avatar(m.name, m.id)}
-          <span class="who"><strong>${esc(m.name)}</strong><small>${m.itemCount} ${m.itemCount === 1 ? "wish" : "wishes"}${m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : ""}</small></span>${CHEV}
-        </button>`).join("") : emptyBox("Just you so far", "Invite your family with the code below.")}
+    ${people.length ? `<div class="label" style="margin-top:0">Who you're shopping for</div><div class="stack" style="margin-top:12px">
+      ${people.map((m, i) => {
+        const p = plan.get(m.id);
+        const getting = p?.purchases.length || 0;
+        const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
+        const real = m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : "";
+        return `<button class="member slide" style="animation-delay:${i * 0.06}s" type="button" data-id="${esc(m.id)}">
+          ${avatar(m.name, m.id, true)}
+          <span class="who"><strong>${esc(m.name)}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${budgetMini(p)}</span>${CHEV}
+        </button>`;
+      }).join("")}</div>` : `
+      <div class="empty">${giftBox("Invite your family")}<strong>Just you so far</strong><p>Invite your family with the code below and their lists will show up here.</p></div>`}
+    <div class="label">You</div>
+    <div class="stack" style="margin-top:12px">
+      <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
     </div>
-    <div class="label">Invite your family</div>
-    <div class="card invite">
+    <div class="label">Invite someone</div>
+    <div class="card invite" style="margin-top:12px">
       <div style="flex:1"><div class="code">${esc(g?.code || "")}</div><small style="color:var(--muted)">Family code</small></div>
       <button class="btn primary" type="button" id="shareBtn">Send invite</button>
     </div>`;
   v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
+  $("#meRow").onclick = () => setTab("mine");
   $("#shareBtn").onclick = () => shareInvite(g);
+  wireGiftBox(v, () => shareInvite(g));
 }
 
-async function shareInvite(g) {
+function budgetMini(p) {
+  if (!p || p.budget_cents == null) return "";
+  const over = p.spent_cents > p.budget_cents;
+  const pct = p.budget_cents ? Math.min(100, Math.round((p.spent_cents / p.budget_cents) * 100)) : 100;
+  return `<span class="mini${over ? " over" : ""}"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
+    <span>${over ? `${money(p.spent_cents - p.budget_cents)} over` : `${money(p.spent_cents)} of ${money(p.budget_cents)}`}</span></span>`;
+}
+
+async function shareInvite(g, nudgeName) {
   const link = `${location.origin}/?code=${encodeURIComponent(g.code)}`;
-  const text = `Join our family Wishlist (${g.name}). Code: ${g.code}`;
+  const text = nudgeName
+    ? `Hi ${nudgeName}! Add a few things to your Wishlist so we know what to get you. Family code: ${g.code}`
+    : `Join our family Wishlist (${g.name}). Code: ${g.code}`;
   try {
     if (navigator.share) return await navigator.share({ title: "Wishlist", text, url: link });
     await navigator.clipboard.writeText(`${text}\n${link}`);
-    toast("Invite copied");
+    toast(nudgeName ? "Reminder copied" : "Invite copied");
   } catch (e) {
     if (e?.name !== "AbortError") toast(`Code: ${g.code}`);
   }
@@ -699,59 +974,85 @@ async function shareInvite(g) {
 
 // ---------- someone else's list ----------
 async function renderPerson(id) {
-  const list = await load(`list?member=${encodeURIComponent(id)}`);
+  const [list, t] = await Promise.all([load(`list?member=${encodeURIComponent(id)}`), loadTracker()]);
+  state.tracker = t;
   const name = list.member.name;
-  const open = list.items.filter((i) => !i.claim);
-  const bought = list.items.filter((i) => i.claim);
+  const plan = t?.people.find((p) => p.id === id);
   const sugg = list.suggestions || [];
   const mine = list.myIdeas || [];
+  const rank = (i) => (!i.claim ? 0 : i.claim.mine ? 1 : 2);
+  const max = state.filter === "25" ? 2500 : state.filter === "50" ? 5000 : Infinity;
+  const priced = list.items.filter((i) => i.price_cents != null).length;
+  const items = list.items
+    .filter((i) => max === Infinity || (i.price_cents != null && i.price_cents <= max))
+    .slice().sort((a, b) => rank(a) - rank(b) || (b.priority === "must") - (a.priority === "must"));
+
+  let meter = "";
+  if (plan?.budget_cents != null) {
+    const over = plan.spent_cents > plan.budget_cents;
+    const pct = plan.budget_cents ? Math.min(100, Math.round((plan.spent_cents / plan.budget_cents) * 100)) : 100;
+    meter = `<div class="hero-meter"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
+      <span><b>${money(plan.spent_cents)}</b> of ${money(plan.budget_cents)} for ${esc(name)}</span></div>`;
+  } else if (plan) {
+    meter = `<button class="hero-btn" type="button" id="setBudget">${PLUS} Set a budget for ${esc(name)}</button>`;
+  }
+  setHero(`<button class="back" type="button" id="backBtn">${BACK} Family</button>
+    <div class="hero-row">${avatar(name, id, true)}
+      <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}</div>
+      <button class="hero-link" type="button" id="renameBtn">Rename</button></div>${meter}`);
+
   const v = $("#view");
   v.innerHTML = `
-    <button class="back" type="button" id="backBtn">&larr; Family</button>
-    <div class="person-head">${avatar(name, id, true)}
-      <div class="who-name"><h2>${esc(name)}'s list</h2>${list.member.fullName !== name ? `<small>${esc(list.member.fullName)}</small>` : ""}</div>
-      <button class="btn quiet small" type="button" id="renameBtn">Rename</button></div>
-    <p class="lead">${esc(name)} can't see what's been bought or any ideas below.</p>
-    <div class="stack">
-      ${list.items.length ? "" : emptyBox("Nothing yet", `${esc(name)} hasn't added any wishes.`)}
-      ${open.map((i) => personRow(i, "item")).join("")}
-    </div>
-    ${bought.length ? `<div class="label">Already bought <span class="count">${bought.length}</span></div><div class="stack">${bought.map((i) => personRow(i, "item")).join("")}</div>` : ""}
-    ${sugg.length ? `<div class="label">Ideas from family <span class="count">${sugg.length}</span></div>
-      <p style="margin:-4px 0 10px"><span class="private">${LOCK} Hidden from ${esc(name)}</span></p>
-      <div class="stack">${sugg.map((i) => personRow(i, "idea")).join("")}</div>` : ""}
+    ${priced >= 3 ? `<div class="chips" role="group" aria-label="Filter by price">
+      ${[["all", "All"], ["25", "Under $25"], ["50", "Under $50"]].map(([k, l]) => `<button class="chip" type="button" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
+    </div>` : ""}
+    ${list.items.length ? `<div class="stack">${items.length ? items.map((i, n) => personRow(i, "item", n)).join("") : `<p class="subtle">Nothing in that price range.</p>`}</div>` : `
+      <div class="empty">
+        ${giftBox(`Add your own idea for ${name}`)}
+        <strong>${esc(name)} hasn't added any wishes yet</strong>
+        <p>Give ${esc(name)} a little nudge, or jot down your own idea. ${esc(name)} will never see your ideas.</p>
+        <div class="stack"><button class="add" type="button" id="nudge">${MSG} Send ${esc(name)} a reminder</button></div>
+      </div>`}
+    ${sugg.length ? `<div class="label">Ideas from family</div><p class="subtle">Hidden from ${esc(name)}.</p>
+      <div class="stack">${sugg.map((i, n) => personRow(i, "idea", n)).join("")}</div>` : ""}
     <div class="label">Your ideas for ${esc(name)}</div>
-    <p class="hint" style="margin:-4px 0 12px">Just for you, unless you choose to share one with the family. ${esc(name)} never sees these.</p>
+    <p class="subtle">Just for you, unless you share one with the family.</p>
     <div class="stack">
-      <button class="add soft" type="button" id="addIdea">${PLUS} Add a gift idea</button>
       ${mine.map(ideaRow).join("")}
+      <button class="add soft" type="button" id="addIdea">${PLUS} Add your own idea for ${esc(name)}</button>
     </div>`;
   $("#backBtn").onclick = () => setTab("family");
   $("#renameBtn").onclick = () => editNickname(list.member);
   $("#addIdea").onclick = () => editIdea(null, id);
+  $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
+  $("#setBudget")?.addEventListener("click", () => editBudget(plan));
+  wireGiftBox(v, () => editIdea(null, id));
+  v.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => { state.filter = b.dataset.filter; render(); }));
   wireIdeaRows(v, mine);
   const all = { item: list.items, idea: sugg };
   v.querySelectorAll("[data-mark]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.mark.split(":");
-    markPurchased(kind, all[kind].find((x) => x.id === itemId));
+    markPurchased(kind, all[kind].find((x) => x.id === itemId), name);
   }));
 }
 
 // Your own name for someone ("Grandma" instead of "Jane Doe"). Only you see it.
 function editNickname(member) {
-  const hasNick = member.name !== member.fullName;
+  const real = member.fullName || member.name;
+  const hasNick = member.name !== real;
   openSheet(`
-    <h3>What do you call ${esc(member.fullName)}?</h3>
-    <p>${LOCK} Only you see this. Everyone else still sees ${esc(member.fullName)}.</p>
+    <h3>What do you call ${esc(real)}?</h3>
     <form id="nickForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span>Nickname</span>
-        <input class="input" name="nickname" maxlength="40" value="${hasNick ? esc(member.name) : ""}" placeholder="Grandma" required autofocus></label>
+        <input class="input" name="nickname" maxlength="40" value="${hasNick ? esc(member.name) : ""}" placeholder="Grandma" required></label>
+      <p class="hint">${LOCK} Just for you. Everyone else still sees ${esc(real)}.</p>
       <div class="actions">
         ${hasNick ? '<button class="btn danger" type="button" id="clearNick">Use real name</button>' : ""}
         <button class="btn primary" type="submit">Save</button>
       </div>
     </form>`, (el) => {
+      setTimeout(() => $("#nickForm", el).elements.nickname.focus(), 300);
       const done = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
       wireForm($("#nickForm", el), async ({ nickname }) => { await api("nickname", { subjectId: member.id, nickname }); done("Nickname saved"); });
       $("#clearNick", el)?.addEventListener("click", async () => {
@@ -760,114 +1061,164 @@ function editNickname(member) {
     });
 }
 
-function personRow(i, kind) {
-  let foot = "";
-  if (i.claim) {
-    foot = i.claim.mine
-      ? `<span class="tag ok">You bought this${i.claim.price_cents != null ? ` · ${money(i.claim.price_cents)}` : ""}</span><span class="spacer"></span><button class="btn small" type="button" data-mark="${kind}:${esc(i.id)}">Edit</button>`
-      : `<span class="spacer"></span><span class="tag muted">Bought by ${esc(i.claim.buyerName)}</span>`;
-    if (i.removed) foot = `<span class="tag muted">Removed by ${esc(personName(state.person))}</span>` + foot;
+function personRow(i, kind, n = 0) {
+  const key = `${kind}:${i.id}`;
+  const fresh = state.burst === key;
+  let foot = "", cls = "";
+  if (i.claim?.mine) {
+    cls = " mine";
+    foot = `<span class="mine-line"><span class="chk${fresh ? " new" : ""}">${CHECK}</span>You're getting this one</span><span class="spacer"></span>
+      <button class="btn small quiet" type="button" data-mark="${key}">Edit</button>`;
+  } else if (i.claim) {
+    cls = " taken";
+    foot = `<span class="taken-line">${esc(i.claim.buyerName)} is getting this</span>`;
   } else {
-    foot = `<span class="spacer"></span><button class="btn small primary" type="button" data-mark="${kind}:${esc(i.id)}">${GIFT_SM} I bought this</button>`;
+    foot = `${i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">View at ${esc(host(i.url))} ${OUT}</a>` : ""}<span class="spacer"></span>
+      <button class="btn small primary" type="button" data-mark="${key}">${GIFT_SM} I'll get this</button>`;
   }
-  const by = kind === "idea" ? `<span class="tag">Idea from ${esc(i.author_name)}</span>` : i.priority === "must" && !i.claim ? '<span class="tag">Must have</span>' : "";
+  if (i.removed) foot = `<span class="taken-line">Removed by ${esc(personName(state.person))}</span><span class="spacer"></span>` + foot;
+  const tag = kind === "idea" ? `<span class="from">Idea from ${esc(i.author_name)}</span>`
+    : i.priority === "must" && !i.claim ? `<span class="toppick">${STAR} Top pick</span>` : "";
   const notes = kind === "idea" ? i.note : i.notes;
-  return `<div class="row${i.claim ? " done" : ""}">
-    <div class="row-top"><span class="row-title">${esc(i.title)}</span>${i.price_cents != null ? `<span class="price">${money(i.price_cents)}</span>` : ""}</div>
-    ${notes ? `<div class="row-notes">${esc(notes)}</div>` : ""}
-    <div class="row-foot">${by}${i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))} ${OUT}</a>` : ""}${foot}</div>
+  const paid = i.claim?.mine && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
+  return `<div class="row${cls} ${fresh ? "" : "slide"}" style="animation-delay:${n * 0.05}s">
+    <div class="row-top">${tile(i.title, i.id)}
+      <div class="row-main">
+        <div class="row-head"><span class="row-title">${esc(i.title)}</span>${paid != null ? `<span class="row-price">${money(paid)}</span>` : ""}</div>
+        ${tag}
+        ${notes ? `<span class="row-notes">${esc(notes)}</span>` : ""}
+      </div>
+    </div>
+    <div class="row-foot">${foot}</div>
+    ${fresh && !reduceMotion() ? `<span class="burst" aria-hidden="true">${CONFETTI}</span>` : ""}
   </div>`;
 }
 
-// Mark purchased (or edit the price / unmark) for a list item or an idea.
-function markPurchased(kind, x) {
+// "I'll get this" (or edit what you paid / take it back) for a list item or a shared idea.
+function markPurchased(kind, x, name) {
   const path = kind === "item" ? "claim" : "idea/claim";
   const key = kind === "item" ? "itemId" : "ideaId";
   const editing = !!x.claim?.mine;
   const paid = editing ? x.claim.price_cents ?? x.price_cents : x.price_cents;
+  const who = name || "them";
   openSheet(`
-    <h3>${editing ? "Your purchase" : "Mark as bought"}</h3>
-    <p style="color:var(--ink);font-weight:600">${esc(x.title)}</p>
+    <h3>${editing ? "Your gift" : "Getting this one?"}</h3>
+    <p class="what">${esc(x.title)}</p>
     <form id="markForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>What you paid <em>(optional, for your tracker)</em></span>
-        <input class="input" name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="0.00"></label>
-      <div class="actions">
-        ${editing ? '<button class="btn danger" type="button" id="unmark">Unmark</button>' : ""}
-        <button class="btn primary" type="submit">${editing ? "Save" : "Mark as bought"}</button>
-      </div>
+      <label class="field"><span>Price you paid <em>(optional)</em></span>
+        <div class="input money-in"><span>$</span><input name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="0" aria-label="Price you paid"></div></label>
+      <p class="hint">This goes toward your budget for ${esc(who)}.</p>
+      ${editing ? `<div class="actions"><button class="btn danger" type="button" id="unmark">Not getting it</button><button class="btn primary" type="submit">Save</button></div>`
+        : `<button class="btn primary wide" type="submit">Yes, I'm getting it</button><button class="btn quiet wide" type="button" id="cancelMark" style="margin-top:6px">Cancel</button>`}
     </form>`, (el) => {
+      $("#cancelMark", el)?.addEventListener("click", closeSheet);
       wireForm($("#markForm", el), async ({ price }) => {
         await api(path, { [key]: x.id, on: true, price });
         closeSheet();
-        toast(editing ? "Saved" : "Marked as bought", editing ? null : () => api(path, { [key]: x.id, on: false }).then(render, (e) => toast(e.message)));
+        if (editing) { toast("Saved"); return render(); }
+        buzz();
+        const amount = price && parseFloat(price) > 0 ? money(Math.round(parseFloat(price) * 100)) : "";
+        toast(amount ? `Added ${amount} to ${who}'s budget` : "It's yours. Nobody else will get it.",
+          () => api(path, { [key]: x.id, on: false }).then(render, (e) => toast(e.message)));
+        state.burst = `${kind}:${x.id}`;
         render();
       });
       $("#unmark", el)?.addEventListener("click", async () => {
-        try { await api(path, { [key]: x.id, on: false }); closeSheet(); toast("Unmarked"); render(); }
+        try { await api(path, { [key]: x.id, on: false }); closeSheet(); toast("Taken back"); render(); }
         catch (e) { toast(e.message); }
       });
     });
 }
 
-// ---------- tracker: budgets, spending, ideas (private) ----------
+// ---------- budget: per person budgets, spending, ideas (private) ----------
 async function renderTracker() {
   const t = await load("tracker");
   state.tracker = t;
-  const v = $("#view");
   const totalBudget = t.people.reduce((n, p) => n + (p.budget_cents || 0), 0);
   const totalSpent = t.people.reduce((n, p) => n + p.spent_cents, 0);
-  v.innerHTML = `
-    <h2>Tracker</h2>
-    <p class="lead">Your budgets, what you've bought, and your gift ideas for ${t.season}. <span class="private">${LOCK} Only you can see this page</span></p>
-    ${t.people.length ? `
-    <div class="card totals">
-      <div><small>Budget</small><strong>${totalBudget ? money(totalBudget) : "None set"}</strong></div>
-      <div><small>Spent</small><strong>${money(totalSpent)}</strong></div>
-      <div><small>Left</small><strong class="${totalBudget && totalSpent > totalBudget ? "over" : ""}">${totalBudget ? money(totalBudget - totalSpent) : "-"}</strong></div>
-    </div>
-    <div class="actions" style="margin:12px 0 4px">
-      <button class="btn" type="button" id="addIdea">${PLUS} Gift idea</button>
-      <button class="btn" type="button" id="exportBtn">Export to Excel</button>
-    </div>` : `<div class="empty"><strong>No one to plan for yet</strong>Once family members join, you can set budgets and track gifts for each of them here.</div>`}
-    ${t.people.map(personCard).join("")}`;
+  const left = totalBudget - totalSpent;
+  const hasBudget = totalBudget > 0;
+  const shown = hasBudget ? Math.abs(left) : totalSpent;
+  const pct = hasBudget ? Math.min(100, Math.round((totalSpent / totalBudget) * 100)) : 0;
+  setHero(`
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1>Budget</h1><span class="lockline">${LOCK} just for you</span></div>
+    <div class="hero-stat">
+      <p class="kicker">${hasBudget ? (left < 0 ? "Over budget by" : "Left to spend") : `Spent so far in ${esc(t.season)}`}</p>
+      <span class="big-num" id="bigNum">${money(shown)}</span>
+      <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : "Set a budget for anyone below to see what's left."}</p>
+      ${hasBudget ? `<div class="hero-meter" style="margin-top:12px"><span class="bar"><i style="width:${pct}%"></i></span></div>` : ""}
+    </div>`);
+  const from = state.lastLeft ?? (hasBudget ? totalBudget : 0);
+  countUp($("#bigNum"), from, shown);
+  state.lastLeft = shown;
+
+  const v = $("#view");
+  v.innerHTML = t.people.length ? `
+    <div class="label" style="margin-top:0">By person</div>
+    <div class="stack" style="margin-top:12px">${t.people.map(personCard).join("")}</div>
+    <div class="stack" style="margin-top:18px">
+      <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
+      <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
+      <button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>
+    </div>` : `<div class="empty">${giftBox("Invite your family")}<strong>No one to plan for yet</strong><p>Once family members join, you can set budgets and track gifts for each of them here.</p></div>`;
+  $("#addPurchase")?.addEventListener("click", () => editIdea(null, null, { purchase: true }));
   $("#addIdea")?.addEventListener("click", () => editIdea(null, null));
   $("#exportBtn")?.addEventListener("click", () => exportExcel(t));
-  v.querySelectorAll("[data-budget]").forEach((b) => (b.onclick = () => editBudget(t.people.find((p) => p.id === b.dataset.budget))));
-  v.querySelectorAll("[data-for]").forEach((b) => (b.onclick = () => editIdea(null, b.dataset.for)));
-  v.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
-  wireIdeaRows(v, t.people.flatMap((p) => p.ideas));
+  wireGiftBox(v, () => setTab("family"));
+  v.querySelectorAll(".pcard").forEach((c) => wireTrackerCard(c, t));
 }
 
-function personCard(p) {
+function wireTrackerCard(card, t) {
+  if (!card) return;
+  card.querySelector("[data-toggle]").onclick = () => {
+    const id = card.dataset.person;
+    if (state.openPeople.has(id)) state.openPeople.delete(id); else state.openPeople.add(id);
+    const p = t.people.find((x) => x.id === id);
+    card.outerHTML = personCard(p, 0, true);
+    wireTrackerCard($(`.pcard[data-person="${CSS.escape(id)}"]`), t);
+  };
+  card.querySelector("[data-budget]")?.addEventListener("click", () => editBudget(t.people.find((p) => p.id === card.dataset.person)));
+  card.querySelector("[data-for]")?.addEventListener("click", () => editIdea(null, card.dataset.person));
+  card.querySelector("[data-open]")?.addEventListener("click", () => setTab("family", card.dataset.person));
+  wireIdeaRows(card, t.people.flatMap((p) => p.ideas));
+}
+
+function personCard(p, n = 0, still = false) {
   const budget = p.budget_cents;
-  const pct = budget ? Math.min(100, Math.round((p.spent_cents / budget) * 100)) : 0;
+  const isOpen = state.openPeople.has(p.id);
   const over = budget != null && p.spent_cents > budget;
-  return `
-    <div class="label" style="margin-top:30px">${avatar(p.name, p.id)} ${esc(p.name)}<span class="spacer" style="flex:1"></span><button class="btn quiet small" type="button" data-open="${esc(p.id)}" style="padding:0">Their list &rarr;</button></div>
-    <div class="card">
-      <div class="budget-line">
-        <div><strong>${money(p.spent_cents)}</strong> <span style="color:var(--muted)">spent${budget != null ? ` of ${money(budget)}` : ""}</span></div>
-        <button class="btn small" type="button" data-budget="${esc(p.id)}">${budget != null ? "Edit budget" : "Set budget"}</button>
+  const pct = budget ? Math.min(100, Math.round((p.spent_cents / budget) * 100)) : 100;
+  const pill = budget == null ? '<span class="pill none">No budget</span>'
+    : over ? `<span class="pill over">${money(p.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - p.spent_cents)} left</span>`;
+  return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-person="${esc(p.id)}">
+    <button class="pcard-head" type="button" data-toggle="${esc(p.id)}" aria-expanded="${isOpen}">
+      <span class="pcard-top">${avatar(p.name, p.id)}
+        <span class="pcard-who"><strong>${esc(p.name)}</strong><small>${money(p.spent_cents)}${budget != null ? ` of ${money(budget)}` : " spent"}</small></span>
+        ${pill}${CHEV_D}</span>
+      ${budget != null ? `<span class="meter${over ? " over" : ""}"><i style="width:${over ? 100 : pct}%${still ? ";animation:none" : ""}"></i></span>` : ""}
+    </button>
+    ${isOpen ? `<div class="pcard-body">
+      ${p.purchases.length ? `<ul class="buys">${p.purchases.map((x) => `<li><span>${esc(x.title)}<small>${esc(x.from)}</small></span><b>${money(x.spent_cents)}</b></li>`).join("")}</ul>`
+        : '<p class="subtle">Nothing bought yet.</p>'}
+      ${p.ideas.length ? `<div class="stack">${p.ideas.map(ideaRow).join("")}</div>` : ""}
+      <div class="pcard-actions">
+        <button class="btn small" type="button" data-budget="${esc(p.id)}">${budget != null ? "Change budget" : "Set a budget"}</button>
+        <button class="btn small" type="button" data-for="${esc(p.id)}">${PLUS} Gift idea</button>
+        <button class="btn small quiet" type="button" data-open="${esc(p.id)}">${esc(p.name)}'s list</button>
       </div>
-      ${budget != null ? `<div class="meter${over ? " over" : ""}"><i style="width:${over ? 100 : pct}%"></i></div>
-        <small style="color:${over ? "var(--err)" : "var(--muted)"}">${over ? `${money(p.spent_cents - budget)} over budget` : `${money(budget - p.spent_cents)} left`}</small>` : ""}
-      ${p.purchases.length ? `<ul class="buys">${p.purchases.map((x) => `<li><span>${esc(x.title)}<small>${esc(x.from)}</small></span><b>${money(x.spent_cents)}</b></li>`).join("")}</ul>` : ""}
-    </div>
-    <div class="stack" style="margin-top:10px">
-      ${p.ideas.map(ideaRow).join("")}
-      <button class="add soft" type="button" data-for="${esc(p.id)}">${PLUS} Gift idea for ${esc(p.name)}</button>
-    </div>`;
+    </div>` : ""}
+  </div>`;
 }
 
 function editBudget(p) {
   openSheet(`
     <h3>Budget for ${esc(p.name)}</h3>
-    <p>${LOCK} Only you can see this.</p>
     <form id="budgetForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Budget for ${state.tracker?.season || "this year"}</span>
-        <input class="input" name="amount" inputmode="decimal" value="${esc(priceIn(p.budget_cents))}" placeholder="100"></label>
+      <label class="field"><span>How much for ${state.tracker?.season || "this year"}?</span>
+        <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(p.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
+      <p class="hint">${LOCK} Just for you.</p>
       <div class="actions">
         ${p.budget_cents != null ? '<button class="btn danger" type="button" id="clearBudget">Clear</button>' : ""}
         <button class="btn primary" type="submit">Save</button>
@@ -882,11 +1233,16 @@ function editBudget(p) {
 
 function ideaRow(i) {
   const bought = !!i.claim;
-  const who = !bought ? "" : i.claim.mine ? `<span class="tag ok">You bought this${i.claim.price_cents != null ? ` · ${money(i.claim.price_cents)}` : ""}</span>` : `<span class="tag muted">Bought by ${esc(i.claim.buyerName)}</span>`;
-  return `<div class="row${bought ? " done" : ""}" role="button" tabindex="0" data-idea="${esc(i.id)}">
-    <div class="row-top"><span class="row-title">${esc(i.title)}</span>${i.price_cents != null ? `<span class="price">${money(i.price_cents)}</span>` : ""}</div>
-    ${i.note ? `<div class="row-notes">${esc(i.note)}</div>` : ""}
-    <div class="row-foot">${i.shared ? '<span class="tag">Shared with family</span>' : '<span class="tag muted">Just for you</span>'}${who}${i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))} ${OUT}</a>` : ""}</div>
+  const status = !bought ? (i.shared ? "Shared with family" : "Just for you")
+    : i.claim.mine ? "You're getting this one" : `${i.claim.buyerName} is getting this`;
+  return `<div class="row${bought ? (i.claim.mine ? " mine" : " taken") : ""}" role="button" tabindex="0" data-idea="${esc(i.id)}" aria-label="Edit idea ${esc(i.title)}">
+    <div class="row-top">${tile(i.title, i.id)}
+      <div class="row-main">
+        <div class="row-head"><span class="row-title">${esc(i.title)}</span>${i.price_cents != null ? `<span class="row-price">${money(i.price_cents)}</span>` : ""}</div>
+        ${i.note ? `<span class="row-notes">${esc(i.note)}</span>` : ""}
+        <span class="from">${esc(status)}${i.url ? ` · <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : ""}</span>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -896,30 +1252,31 @@ function wireIdeaRows(root, ideas) {
   });
 }
 
-function editIdea(idea, subjectId) {
+// A gift idea for someone. With { purchase: true } it's "Add a purchase": an idea already marked bought.
+function editIdea(idea, subjectId, opts = {}) {
   const isNew = !idea;
+  const purchase = isNew && opts.purchase;
   idea ||= { subject_id: subjectId };
   const people = others();
   const boughtByOther = idea.claim && !idea.claim.mine;
   openSheet(`
-    <h3>${isNew ? "Gift idea" : "Edit idea"}</h3>
+    <h3>${purchase ? "Add a purchase" : isNew ? "Gift idea" : "Edit idea"}</h3>
     <form id="ideaForm" autocomplete="off">
       <div class="err" hidden></div>
-      ${isNew && !subjectId ? `<label class="field"><span>For</span><select class="input" name="subjectId" required>
+      ${isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
           <option value="">Choose someone</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`
-        : `<p style="color:var(--ink);font-weight:600">For ${esc(personName(idea.subject_id))}</p>`}
+        : `<p class="what">For ${esc(personName(idea.subject_id))}</p>`}
+      <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : "That book she mentioned"}" required></label>
       ${linkField(idea.url)}
-      <label class="field"><span>Idea</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="That book she mentioned" required></label>
       <label class="field"><span>Price <em>(optional)</em></span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}"></label>
       <label class="field"><span>Note <em>(optional)</em></span><textarea class="input" name="note" maxlength="1000">${esc(idea.note)}</textarea></label>
-      <label class="check"><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}> Share with the family</label>
-      <p class="hint" id="shareHint"></p>
-      ${boughtByOther ? `<p class="hint">Bought by ${esc(idea.claim.buyerName)}.</p>` : `
-      <label class="check"><input type="checkbox" name="bought" ${idea.claim?.mine ? "checked" : ""}> I bought this</label>
-      <label class="field" id="paidField"><span>What you paid <em>(optional)</em></span><input class="input" name="paid" inputmode="decimal" value="${esc(priceIn(idea.claim?.price_cents ?? idea.price_cents))}"></label>`}
+      <label class="check"><span>Let family see this idea<small id="shareHint"></small></span><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}></label>
+      ${boughtByOther ? `<p class="hint">${esc(idea.claim.buyerName)} is getting this.</p>` : `
+      <label class="check"${purchase ? " hidden" : ""}><span>I'm getting this</span><input type="checkbox" name="bought" ${idea.claim?.mine || purchase ? "checked" : ""}></label>
+      <label class="field" id="paidField"><span>Price you paid <em>(optional)</em></span><input class="input" name="paid" inputmode="decimal" value="${esc(priceIn(idea.claim?.price_cents ?? idea.price_cents))}"></label>`}
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeIdea">Delete</button>'}
-        <button class="btn primary" type="submit">Save</button>
+        <button class="btn primary" type="submit">${purchase ? "Save purchase" : "Save"}</button>
       </div>
     </form>`, (el) => {
       const form = $("#ideaForm", el);
@@ -928,18 +1285,22 @@ function editIdea(idea, subjectId) {
       const sync = () => {
         const shared = form.shared.checked;
         $("#shareHint", el).textContent = shared
-          ? `Everyone in the family except ${personName(form.subjectId?.value || idea.subject_id)} can see it and mark it as bought.`
-          : "Only you can see this idea.";
+          ? `Everyone except ${personName(form.subjectId?.value || idea.subject_id)} can see it and get it.`
+          : "Only you can see it.";
         if (form.bought) $("#paidField", el).hidden = !form.bought.checked;
+        // When adding a purchase, the price you type is what you paid.
+        if (purchase && form.paid && document.activeElement === form.price) form.paid.value = form.price.value;
       };
       form.addEventListener("change", sync);
+      form.addEventListener("input", sync);
       sync();
       wireForm(form, async (d) => {
         const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, note: d.note, shared: d.shared };
         if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; }
         await api("idea/save", payload);
         closeSheet();
-        toast("Saved");
+        toast(purchase ? "Purchase added" : "Saved");
+        if (purchase && payload.subjectId) state.openPeople.add(payload.subjectId);
         render();
       });
       $("#removeIdea", el)?.addEventListener("click", async () => {
@@ -984,7 +1345,7 @@ async function exportExcel(t) {
           { header: "Note", width: 40 }, { header: "Link", width: 40 }],
         rows: t.people.flatMap((p) => p.ideas.map((i) => [p.name, i.title, dollars(i.price_cents), i.shared ? "Yes" : "No", i.note, i.url])) },
     ]);
-    const filename = `Wishlist tracker ${t.season}.xlsx`;
+    const filename = `Wishlist budget ${t.season}.xlsx`;
     const file = new File([blob], filename, { type: blob.type });
     // Phones: the share sheet lets you save to Files or send it. Computers: a normal download.
     if (navigator.canShare?.({ files: [file] }) && matchMedia("(pointer: coarse)").matches) {
@@ -1000,16 +1361,44 @@ async function exportExcel(t) {
 }
 
 // ---------- settings ----------
-$("#settingsBtn").onclick = () => {
+function seg(name, options, current) {
+  return `<div class="seg" role="radiogroup" aria-label="${esc(name)}">${options.map(([v, l]) =>
+    `<button type="button" role="radio" data-v="${v}" aria-checked="${v === current}">${l}</button>`).join("")}</div>`;
+}
+function wireSeg(el, onPick) {
+  el.querySelectorAll("button").forEach((b) => (b.onclick = () => {
+    el.querySelectorAll("button").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+    onPick(b.dataset.v);
+  }));
+}
+function setTheme(v) {
+  const root = document.documentElement;
+  try { v === "auto" ? localStorage.removeItem("theme") : localStorage.setItem("theme", v); } catch {}
+  if (v === "auto") delete root.dataset.theme; else root.dataset.theme = v;
+}
+function setTextSize(v) {
+  const root = document.documentElement;
+  try { v === "md" ? localStorage.removeItem(TEXT_KEY) : localStorage.setItem(TEXT_KEY, v); } catch {}
+  if (v === "md") delete root.dataset.text; else root.dataset.text = v;
+}
+
+function openSettings() {
   const g = group();
   const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const root = document.documentElement;
   openSheet(`
     <h3>Settings</h3>
-    <form id="nameForm" autocomplete="off">
-      <div class="err" hidden></div>
-      <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
-      <button class="btn wide" type="submit">Save name</button>
-    </form>
+    <h4 style="margin:0 0 8px;font-size:17px">Text size</h4>
+    <div id="textSeg">${seg("Text size", [["md", "Default"], ["lg", "Large"], ["xl", "Extra large"]], root.dataset.text || "md")}</div>
+    <h4 style="margin:18px 0 8px;font-size:17px">Appearance</h4>
+    <div id="themeSeg">${seg("Appearance", [["auto", "Automatic"], ["light", "Light"], ["dark", "Dark"]], root.dataset.theme || "auto")}</div>
+    <div class="sheet-sec">
+      <form id="nameForm" autocomplete="off">
+        <div class="err" hidden></div>
+        <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
+        <button class="btn wide" type="submit">Save name</button>
+      </form>
+    </div>
     <div class="sheet-sec">
       <h4>PIN</h4>
       <p>${state.me.hasPin ? "Your name is PIN protected." : "No PIN yet. Add one so nobody else can sign in as you and see your notes."}</p>
@@ -1022,7 +1411,7 @@ $("#settingsBtn").onclick = () => {
         </div>
       </form>
     </div>
-    ${g ? `<div class="sheet-sec"><h4>Family</h4><p>${esc(g.name)}: code <strong style="font-family:var(--mono);color:var(--ink)">${esc(g.code)}</strong></p></div>` : ""}
+    ${g ? `<div class="sheet-sec"><h4>Family</h4><p>${esc(g.name)}: code <strong style="color:var(--ink);letter-spacing:.08em">${esc(g.code)}</strong></p></div>` : ""}
     <div class="sheet-sec">
       <h4>Add to home screen</h4>
       <p>${iOS ? "In Safari, tap Share, then Add to Home Screen." : "In Chrome, open the menu, then Add to Home screen or Install app."}</p>
@@ -1030,6 +1419,8 @@ $("#settingsBtn").onclick = () => {
     <div class="sheet-sec">
       <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
     </div>`, (el) => {
+      wireSeg($("#textSeg", el), setTextSize);
+      wireSeg($("#themeSeg", el), setTheme);
       wireForm($("#nameForm", el), async ({ name }) => { await api("profile", { name }); closeSheet(); toast("Name saved"); state.me = null; render(); });
       wireForm($("#pinForm", el), async ({ pin }) => { await api("profile", { pin }); closeSheet(); toast("PIN saved"); state.me = null; render(); });
       $("#removePin", el)?.addEventListener("click", async () => {
@@ -1045,7 +1436,7 @@ $("#settingsBtn").onclick = () => {
         render();
       };
     });
-};
+}
 
 // Keyboard: Enter/Space on role=button rows.
 document.addEventListener("keydown", (e) => {

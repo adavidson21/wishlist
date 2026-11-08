@@ -1,6 +1,6 @@
 # Wishlist
 
-Family wish lists at **wishlist.alexisdavidson.org**. Mark what you bought (hidden from the list owner) and keep private gift notes per person. Installable on phones as a PWA.
+Family wish lists at **wishlist.alexisdavidson.org**. Mark what you're getting someone (hidden from the list owner) and keep private gift notes per person. Installable on phones as a PWA.
 
 One Cloudflare Worker with a D1 database. No build step.
 
@@ -14,9 +14,9 @@ src/gemini.js         Gemini call used by photo search
 migrations/           D1 schema (wrangler d1 migrations)
 public/index.html     The app (single page)
 public/sw.js          Service worker (network first, offline fallback)
-public/manifest.webmanifest, icons/, fonts/ (Figtree, Gelasio, OFL)
-public/theme.js       Light/dark toggle
-public/xlsx.js        Builds the Tracker's Excel export in the browser
+public/manifest.webmanifest, icons/, fonts/ (Figtree, Fraunces, OFL)
+public/theme.js       Applies the saved light/dark choice (picked in Settings)
+public/xlsx.js        Builds the Budget tab's Excel export in the browser
 ```
 
 ## Deploy
@@ -43,8 +43,11 @@ public/xlsx.js        Builds the Tracker's Excel export in the browser
 - **Ideas and suggestions:** an idea about someone is private to its author. "Share as a suggestion" shows it to everyone in the family except the person it's for, who never gets it from the API.
 - **Autofill:** pasting a link calls `/api/preview`, which reads the product name and price from JSON-LD, Open Graph tags, or Amazon's markup. Stores that block bots fall back to a name guessed from the URL.
 - **Photo search:** `/api/identify` sends a shrunk photo to Gemini (`GEMINI_MODEL` in `wrangler.jsonc`) for up to 4 matches. Photos are not stored.
-- **Nicknames:** on someone's list, Rename lets you call them what you call them ("Grandma" instead of "Jane Doe"). Only you see it: the API swaps names for the viewer's nicknames everywhere (family, lists, "Bought by", tracker, Excel), and the real name still shows in small text. Table `nicknames` (`migrations/0003_nicknames.sql`).
-- **Tracker:** your private budget per person, what you bought, and your open ideas, per season. "Export to Excel" builds the .xlsx in the browser.
+- **Nicknames:** on someone's list, Rename lets you call them what you call them ("Grandma" instead of "Jane Doe"). Only you see it: the API swaps names for the viewer's nicknames everywhere (family, lists, "is getting this", budget, Excel), and the real name still shows in small text. Table `nicknames` (`migrations/0003_nicknames.sql`).
+- **Budget:** your private budget per person, what you're getting them, and your open ideas, per season. "Add a purchase" records a gift that isn't on anyone's list (saved as an idea marked bought). "Download as Excel" builds the .xlsx in the browser. The URL hash is `#budget` (the old `#notes` still works).
+- **Tabs:** My list, Family, a raised center Add a wish button (adds to your list from any screen), Budget, Settings.
+- **Settings:** text size (Default, Large, Extra large) and appearance (Automatic, Light, Dark) are saved on the device.
+- **Look and motion:** cream background, a wine header band, burgundy actions, gold for top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for everything else. Animations mark real moments (adding a wish, starring a top pick, "I'll get this" confetti, budget numbers counting) and all turn off with the device's Reduce Motion setting.
 
 ## Schema changes
 
