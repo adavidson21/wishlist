@@ -18,6 +18,8 @@ import { json, callGemini } from "./gemini.js";
 import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost, cleanBrandDomain } from "./stores.js";
 
 const BASE = "/api/";
+const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
+const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
 const LIMITS = { nickname: 40, name: 40, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "giftcards", "other"]);
@@ -543,13 +545,13 @@ const handlers = {
   async "POST lookup"(req, env) {
     const group = await groupByCode(env, (await body(req)).code);
     const { results } = await env.DB.prepare(
-      "SELECT m.id, m.name, m.pin_hash FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? ORDER BY m.name COLLATE NOCASE",
+      "SELECT m.id, m.name, m.pin_hash, m.photo_at FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? ORDER BY m.name COLLATE NOCASE",
     )
       .bind(group.id)
       .all();
     return {
       group: { name: group.name },
-      members: results.map((m) => ({ id: m.id, name: m.name, hasPin: !!m.pin_hash })),
+      members: results.map((m) => ({ id: m.id, name: m.name, hasPin: !!m.pin_hash, photo: m.photo_at || null })),
     };
   },
 
@@ -627,7 +629,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name,
+      `SELECT gm.group_id, m.id, m.name, m.photo_at,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -637,9 +639,9 @@ const handlers = {
       .bind(me.id)
       .all();
     const nicks = await nicknamesFor(env, me.id);
-    const person = (p) => ({ id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count });
+    const person = (p) => ({ id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null });
     return {
-      me: { id: me.id, name: me.name, hasPin: me.hasPin },
+      me: { id: me.id, name: me.name, hasPin: me.hasPin, photo: people.find((p) => p.id === me.id)?.photo_at || null },
       season: season(),
       groups: groups.map((g) => ({
         id: g.id,
@@ -655,7 +657,7 @@ const handlers = {
     const me = await auth(req, env);
     const memberId = url.searchParams.get("member") || me.id;
     if (!(await sharesGroup(env, me.id, memberId))) fail(404, "List not found.");
-    const member = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?").bind(memberId).first();
+    const member = await env.DB.prepare("SELECT id, name, photo_at AS photo FROM members WHERE id = ?").bind(memberId).first();
     if (!member) fail(404, "List not found.");
     const own = memberId === me.id;
     const nicks = own ? new Map() : await nicknamesFor(env, me.id);
@@ -991,7 +993,7 @@ const handlers = {
     const s = season();
     const [people, budgets, itemBuys, ideaBuys, ideas] = await Promise.all([
       env.DB.prepare(
-        `SELECT DISTINCT m.id, m.name FROM group_members gm JOIN members m ON m.id = gm.member_id
+        `SELECT DISTINCT m.id, m.name, m.photo_at FROM group_members gm JOIN members m ON m.id = gm.member_id
           WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ?
           ORDER BY m.name COLLATE NOCASE`,
       ).bind(me.id, me.id).all(),
@@ -1031,6 +1033,7 @@ const handlers = {
           id: p.id,
           name: nicks.get(p.id) || p.name,
           fullName: p.name,
+          photo: p.photo_at || null,
           budget_cents: budgetOf.get(p.id) ?? null,
           spent_cents: bought.reduce((sum, x) => sum + x.spent_cents, 0),
           purchases: bought,
@@ -1102,7 +1105,8 @@ const handlers = {
     return { ok: true };
   },
 
-  // Change your name and/or PIN. pin: "1234" sets it, "" removes it, absent leaves it alone.
+  // Change your name, PIN and/or photo. pin: "1234" sets it, "" removes it, absent leaves it alone.
+  // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
   async "POST profile"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
@@ -1116,7 +1120,22 @@ const handlers = {
         .bind(pin ? await hashPin(me.id, pin) : null, me.id)
         .run();
     }
+    if (b.photo !== undefined) {
+      const photo = b.photo ? String(b.photo) : null;
+      if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
+      await env.DB.prepare("UPDATE members SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, me.id).run();
+    }
     return { ok: true };
+  },
+
+  // A profile photo. No sign-in needed (an <img> can't send the token); ids are random and photos aren't private.
+  // The app adds the photo's version (?v=photo_at), so a changed photo is a new URL and this one can be cached for good.
+  async "GET photo"(req, env, url) {
+    const row = await env.DB.prepare("SELECT photo FROM members WHERE id = ?").bind(url.searchParams.get("m") || "").first();
+    const m = row?.photo && PHOTO_RE.exec(row.photo);
+    if (!m) return new Response("Not found", { status: 404 });
+    const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+    return new Response(bytes, { headers: { "content-type": `image/${m[1]}`, "cache-control": "public, max-age=31536000, immutable" } });
   },
 
   async "POST signout"(req, env) {
