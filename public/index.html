@@ -322,6 +322,11 @@
   .pick-person { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--card); text-align: left; font-weight: 700; font-size: 17px; }
   .pick-person + .pick-person { margin-top: 8px; }
   .pick-person:disabled { opacity: .55; }
+  .pick-person[aria-pressed="true"] { border-color: var(--brand); background: var(--soft); }
+  .pick-person .tick-box { margin-left: auto; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; color: transparent; flex: none; }
+  .pick-person[aria-pressed="true"] .tick-box { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  .hh-name .btn { margin-left: auto; }
+  .fam-label .btns { display: flex; gap: 6px; }
   .pick-person small { display: block; color: var(--muted); font-weight: 600; font-size: 14px; }
   .code { font-size: 26px; font-weight: 800; letter-spacing: .14em; }
 
@@ -2332,7 +2337,7 @@ async function renderFamily() {
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
   const sections = state.groups.map((fam, n) => {
     const ppl = fam.members.filter((m) => m.id !== state.me.id);
-    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${esc(fam.name)}</span><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></div>
+    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${esc(fam.name)}</span><span class="btns"><button class="btn quiet small" type="button" data-hhs="${esc(fam.id)}">Households</button><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>
       <div class="stack" style="margin-top:12px">${ppl.length ? peopleHtml(ppl, personBtn) : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
   }).join("");
   v.innerHTML = multi() ? `${sections}
@@ -2340,7 +2345,7 @@ async function renderFamily() {
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
     </div>` : `
-    ${people.length ? `<div class="label" style="margin-top:0">Who you're shopping for</div><div class="stack" style="margin-top:12px">
+    ${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${g ? `<button class="btn quiet small" type="button" data-hhs="${esc(g.id)}">Households</button>` : ""}</div><div class="stack" style="margin-top:12px">
       ${peopleHtml(people, personBtn)}</div>` : `
       <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Send the invite below and everyone's lists will show up here.</p></div>`}
     <div class="label">You</div>
@@ -2354,11 +2359,94 @@ async function renderFamily() {
   $("#meRow").onclick = () => setTab("mine");
   if (g && !multi()) wireInviteCard(v, g);
   v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((x) => x.id === b.dataset.share))));
+  v.querySelectorAll("[data-hhs]").forEach((b) => (b.onclick = () => openHouseholds(b.dataset.hhs)));
   wireGiftBox(v, () => {
     const card = $("[data-ticket]", v);
     if (!card) return openInvite(g);
     card.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" });
     setTimeout(() => { card.classList.remove("wiggle"); void card.offsetWidth; card.classList.add("wiggle"); }, 450);
+  });
+}
+
+// "Households" on a circle: anyone in the circle can group its people into households, rename them,
+// and add or take people out. A new household made here is put in this circle.
+function openHouseholds(gid) {
+  const g = state.groups.find((x) => x.id === gid);
+  if (!g) return closeSheet();
+  const by = new Map(), loose = [];
+  for (const m of g.members) m.householdId ? by.set(m.householdId, [...(by.get(m.householdId) || []), m]) : loose.push(m);
+  const nm = (m) => `${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}`;
+  const row = (m, extra = "") => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${nm(m)}</strong>${extra}</div>`;
+  const back = async (msg) => {
+    await refreshMe();
+    toast(msg);
+    render();
+    openHouseholds(gid);
+  };
+  const showErr = (el, e) => { const err = $(".err", el); err.textContent = e.message; err.hidden = false; };
+  openSheet(`<h3>Households in ${esc(g.name)}</h3>
+    <p>Group people who live or gift together, like Mom &amp; Dad or Jen, Mike &amp; the kids. Anyone in ${esc(g.name)} can set these up.</p>
+    <div class="err" hidden></div>
+    ${[...by].map(([id, ppl]) => `<div class="hh" style="margin-bottom:12px">
+      <div class="hh-name">${HOME_I} ${esc(householdLabel(id))}<button class="btn quiet small" type="button" data-rename="${esc(id)}">Rename</button></div>
+      <div style="background:var(--card);border-radius:14px;padding:4px 12px">${ppl.map((m) => row(m, `<button class="btn small quiet danger" type="button" data-out="${esc(m.id)}" data-hh="${esc(id)}">Remove</button>`)).join("")}</div>
+      <button class="btn small wide" type="button" data-addto="${esc(id)}" style="margin-top:8px">${PLUS} Add someone</button></div>`).join("")}
+    ${by.size ? "" : `<p class="subtle">No households yet.</p>`}
+    ${loose.length ? `<div class="label" style="margin-top:18px">Not in a household</div>
+      <div>${loose.map((m) => row(m)).join("")}</div>
+      <button class="btn primary wide" type="button" id="newHh" style="margin-top:14px">${PLUS} New household</button>` : ""}`,
+  (el) => {
+    el.querySelectorAll("[data-out]").forEach((b) => (b.onclick = async () => {
+      const name = b.dataset.out === state.me.id ? "yourself" : personName(b.dataset.out);
+      if (!window.confirm(`Take ${name} out of ${householdLabel(b.dataset.hh)}?`)) return;
+      b.disabled = true;
+      try { await api("household/remove", { householdId: b.dataset.hh, memberId: b.dataset.out }); await back(b.dataset.out === state.me.id ? "You left that household" : `${name} is out`); }
+      catch (e) { showErr(el, e); b.disabled = false; }
+    }));
+    el.querySelectorAll("[data-rename]").forEach((b) => (b.onclick = () => {
+      const id = b.dataset.rename;
+      const h = state.households[id] || {};
+      const auto = householdAuto((by.get(id) || []).map((m) => m.name));
+      openSheet(`<h3>Name this household</h3>
+        <form id="hhRename" autocomplete="off"><div class="err" hidden></div>
+          <label class="field"><span>Household name</span><input class="input" name="name" maxlength="40" value="${esc(h.name || "")}" placeholder="${esc(auto)}"></label>
+          <p class="hint" style="margin-top:-10px">Leave it empty to use first names.</p>
+          <div class="actions"><button class="btn" type="button" id="hhBack">Back</button><button class="btn primary" type="submit">Save</button></div></form>`, (el2) => {
+        $("#hhBack", el2).onclick = () => openHouseholds(gid);
+        wireForm($("#hhRename", el2), async ({ name }) => { await api("household/rename", { householdId: id, name }); await back("Household name saved"); });
+      });
+    }));
+    // Pick people: one for adding to a household, several for a new one.
+    const picker = (title, many, onDone) => openSheet(`<h3>${esc(title)}</h3>
+      <div class="err" hidden></div>
+      ${many ? `<label class="field"><span>Household name <em style="font-weight:600;color:var(--muted)">(optional)</em></span><input class="input" id="hhNewName" maxlength="40" placeholder="Uses first names if empty"></label>` : ""}
+      ${loose.map((m) => `<button class="pick-person" type="button" data-pick="${esc(m.id)}" aria-pressed="false">${avatar(m.name, m.id)}<span>${nm(m)}</span>${many ? `<span class="tick-box">${CHECK}</span>` : ""}</button>`).join("")}
+      <div class="actions" style="margin-top:16px"><button class="btn" type="button" id="hhBack">Back</button>${many ? `<button class="btn primary" type="button" id="hhMake">Create</button>` : ""}</div>`, (el2) => {
+      $("#hhBack", el2).onclick = () => openHouseholds(gid);
+      el2.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = async () => {
+        if (many) { b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")); buzz(); return; }
+        b.disabled = true;
+        try { await onDone([b.dataset.pick]); } catch (e) { showErr(el2, e); b.disabled = false; }
+      }));
+      $("#hhMake", el2)?.addEventListener("click", async (e) => {
+        const ids = [...el2.querySelectorAll('[data-pick][aria-pressed="true"]')].map((b) => b.dataset.pick);
+        if (!ids.length) return showErr(el2, new Error("Pick who's in the household."));
+        e.currentTarget.disabled = true;
+        try { await onDone(ids, $("#hhNewName", el2).value); } catch (err) { showErr(el2, err); e.currentTarget.disabled = false; }
+      });
+    });
+    el.querySelectorAll("[data-addto]").forEach((b) => (b.onclick = () => {
+      if (!loose.length) return showErr(el, new Error(`Everyone in ${g.name} is already in a household.`));
+      const id = b.dataset.addto;
+      picker(`Add to ${householdLabel(id)}`, false, async ([memberId]) => {
+        await api("household/add", { householdId: id, memberId });
+        await back(`Added ${memberId === state.me.id ? "you" : personName(memberId)}`);
+      });
+    }));
+    $("#newHh", el)?.addEventListener("click", () => picker("New household", true, async (memberIds, name) => {
+      await api("household/create", { groupId: gid, memberIds, name });
+      await back("Household made");
+    }));
   });
 }
 
