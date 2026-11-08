@@ -922,19 +922,51 @@ function wirePhoto(form) {
   });
 }
 
+// Share buttons in store apps paste text plus a link ("Check out X! https://...").
+// Split it into the link and the leftover words. Must match sharedUrl() in src/wishlist.js.
+function splitShared(raw) {
+  const s = String(raw || "").trim();
+  if (/^https?:\/\/\S+$/i.test(s)) return { url: s, hint: "" };
+  const m = s.match(/https?:\/\/[^\s<>"']+/i) || s.match(/(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s<>"']*/i);
+  if (!m) return { url: s, hint: "" };
+  const url = m[0].replace(/[).,!?;:'"\]]+$/, "");
+  return { url, hint: shareHint(s.slice(0, m.index) + " " + s.slice(m.index + m[0].length)) };
+}
+
+// Turn "Check out Lip Oil on Ulta Beauty!" into "Lip Oil". Only used when the page gives no name.
+function shareHint(t) {
+  t = t.replace(/\s+/g, " ").trim()
+    .replace(/^(hey[,!]?\s*)?(check (this|it) out|check out( this( product| item)?)?|look (at )?(what|this)( i found)?|i found this|found this|shop( now)?|buy( now)?)\s*(on|at|from)?\s*[:!.\-]*\s*/i, "")
+    .replace(/(\s+(on|at|from|via)\s+|\s+[|\-–]\s+)[\w&'. ]{2,30}[!.]*$/i, (x) => (/\b(app|beauty|store|shop|amazon|target|walmart|sephora|ulta|etsy)\b/i.test(x) ? "" : x))
+    .replace(/^[\w&'. ]{2,30}:\s*/, (x) => (/\b(app|beauty|store|shop|amazon|target|walmart|sephora|ulta|etsy)\b/i.test(x) ? "" : x))
+    .replace(/^["'\s:!.\-([]+|["'\s:!.\-([]+$/g, "");
+  return t.length >= 3 && t.length <= 150 && /[a-z]/i.test(t) ? t : "";
+}
+
 // Pasting a link (or tapping Fill) looks up the product and fills the empty name and price fields.
 function wireAutofill(form) {
   wirePhoto(form);
   const url = form.elements.url, btn = form.querySelector("[data-fill]"), msg = form.querySelector(".fillmsg");
   const title = form.elements.title, price = form.elements.price;
   const say = (t, ok) => { msg.textContent = t; msg.hidden = !t; msg.classList.toggle("ok", !!ok); };
-  let busy = false;
+  let busy = false, hint = "";
+  // Keep just the link in the box; remember the shared words as a backup name.
+  const tidy = (raw) => {
+    const s = splitShared(raw);
+    if (s.url !== url.value) url.value = s.url;
+    if (s.hint) hint = s.hint;
+  };
   async function fill(force) {
+    tidy(url.value);
     const v = url.value.trim();
     if (!v || busy) return;
     busy = true; btn.disabled = true; say("Looking it up...");
     try {
-      const r = await api("preview", { url: v });
+      const r = await api("preview", { url: v }).catch((e) => {
+        if (!hint) throw e;
+        return { site: "the link" };
+      });
+      if (!r.title && hint) r.title = hint;
       let filled = [];
       if (r.title && (force || !title.value.trim())) { title.value = r.title; filled.push("name"); }
       if (r.price != null && (force || !price.value.trim())) { price.value = String(r.price); filled.push("price"); }
@@ -946,7 +978,14 @@ function wireAutofill(form) {
     finally { busy = false; btn.disabled = false; }
   }
   btn.addEventListener("click", () => fill(true));
-  url.addEventListener("paste", () => setTimeout(() => fill(false), 0));
+  // Read the raw clipboard: a type=url box drops line breaks, which would glue the words onto the link.
+  url.addEventListener("paste", (e) => {
+    const raw = e.clipboardData?.getData("text");
+    if (raw && splitShared(raw).url !== raw.trim()) { e.preventDefault(); hint = ""; tidy(raw); }
+    else hint = "";
+    setTimeout(() => fill(false), 0);
+  });
+  url.addEventListener("blur", () => tidy(url.value));
 }
 
 // Native confirm() is fine here: one tap, rare action.
