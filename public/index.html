@@ -33,7 +33,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="/theme.js"></script>
 <script>try { var ts = localStorage.getItem("wishlist-text"); if (ts) document.documentElement.dataset.text = ts;
-  if (localStorage.getItem("wishlist-motion") === "off") document.documentElement.dataset.motion = "off"; } catch (e) {}</script>
+  if (localStorage.getItem("wishlist-motion") === "off") document.documentElement.dataset.motion = "off";
+  var ac = localStorage.getItem("wishlist-accent"); if (ac) document.documentElement.dataset.accent = ac; } catch (e) {}</script>
 <style>
   /* Warm and a little handmade: cream paper, a wine header band, burgundy for actions, gold for
      top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for the rest.
@@ -66,6 +67,20 @@
     --ok: #8FD0B4; --ok-soft: #1E3029; --warn: #F2C27A; --warn-soft: #3A2C17; --warn-bar: #D9A04A; --err-bg: #3A1F1D; --err: #F2BDB7;
     --t0: #3A2129; --t0-ink: #F0B5C4; --t1: #1E3029; --t1-ink: #8FD0B4; --t2: #3A2F1C; --t2-ink: #F1D08A; --t3: #252A3D; --t3-ink: #B4BDF0;
     --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
+
+  /* App color (Settings > Look and feel): Wine is the default above. Each one swaps the action color,
+     soft tints and the header band, in light and dark. Saved per device (wishlist-accent). */
+  :root[data-accent="navy"] { --brand: #2E4A7D; --soft: #E7ECF6; --soft-ink: #2E4A7D; --hero: #17284A; --hero-muted: #BCC8E4; }
+  :root[data-accent="plum"] { --brand: #5E2A73; --soft: #F0E7F4; --soft-ink: #5E2A73; --hero: #351543; --hero-muted: #D4BCDF; }
+  :root[data-accent="clay"] { --brand: #A0472A; --soft: #F8E9E2; --soft-ink: #8A3B22; --hero: #4E2114; --hero-muted: #EBC3B3; }
+  @media (prefers-color-scheme: dark) {
+    :root[data-accent="navy"]:not([data-theme="light"]) { --brand: #A9BDF0; --brand-ink: #111B33; --soft: #232B40; --soft-ink: #BFCDF5; --hero: #121B30; --hero-muted: #A7B4D8; }
+    :root[data-accent="plum"]:not([data-theme="light"]) { --brand: #D2A8E6; --brand-ink: #24102D; --soft: #33213D; --soft-ink: #DDBDEB; --hero: #22102B; --hero-muted: #C3A3D2; }
+    :root[data-accent="clay"]:not([data-theme="light"]) { --brand: #EBA88F; --brand-ink: #2E140B; --soft: #3A251E; --soft-ink: #F2BFAB; --hero: #2E150D; --hero-muted: #D9AE9E; }
+  }
+  :root[data-accent="navy"][data-theme="dark"] { --brand: #A9BDF0; --brand-ink: #111B33; --soft: #232B40; --soft-ink: #BFCDF5; --hero: #121B30; --hero-muted: #A7B4D8; }
+  :root[data-accent="plum"][data-theme="dark"] { --brand: #D2A8E6; --brand-ink: #24102D; --soft: #33213D; --soft-ink: #DDBDEB; --hero: #22102B; --hero-muted: #C3A3D2; }
+  :root[data-accent="clay"][data-theme="dark"] { --brand: #EBA88F; --brand-ink: #2E140B; --soft: #3A251E; --soft-ink: #F2BFAB; --hero: #2E150D; --hero-muted: #D9AE9E; }
 
   /* Text size setting (Settings > Text size): Small, Normal, Large, Extra large. */
   :root[data-text="sm"] :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: .9; }
@@ -412,6 +427,26 @@
   .brand-chips.edit { margin-bottom: 10px; }
   .brand-chips.edit .brand-chip { padding: 0 2px 0 12px; animation: avPop .35s var(--spring) both; }
   .brand-add { display: flex; gap: 8px; margin-bottom: 16px; }
+  /* Just for fun: gift style chips, favorite color swatches, little loves */
+  .fun-h { display: flex; align-items: center; gap: 8px; margin: 22px 0 4px; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  .pick-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .pick-chips .chip { min-height: 40px; font-size: 14px; padding: 0 13px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .swatch { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--line); background: var(--c); padding: 0; position: relative; cursor: pointer;
+    transition: transform .14s var(--spring); }
+  .swatch:active { transform: scale(.92); }
+  .swatch[aria-pressed="true"] { border-color: var(--card); box-shadow: 0 0 0 3px var(--brand); }
+  .swatch[aria-pressed="true"]::after { content: ""; position: absolute; inset: 0; margin: auto; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--tick, #fff); box-shadow: 0 0 0 1.5px rgba(0,0,0,.18); }
+  .swatch:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
+  .cdots { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .cdot { display: inline-flex; align-items: center; gap: 6px; }
+  .cdot i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+  .accents { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .accent { border: 2px solid var(--line); background: var(--card); border-radius: 14px; padding: 10px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    font-weight: 700; font-size: 13px; color: var(--muted); }
+  .accent i { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--a) 50%, var(--h) 50%); }
+  .accent[aria-checked="true"] { border-color: var(--brand); color: var(--ink); }
   .brand-add .input { flex: 1; min-width: 0; }
 
   /* Gift cards: little cards in the brand's color, never "taken". */
@@ -3044,7 +3079,16 @@ function bdayIn(b) {
   if (next < t) next = new Date(t.getFullYear() + 1, m - 1, d);
   return Math.round((next - t) / 86400000);
 }
-const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || Object.values(p.sizes || {}).some(Boolean));
+// Fun profile extras. Keys must match GIFT_STYLES and FAV_COLORS in src/wishlist.js (never rename one).
+const GIFT_STYLES = [["surprise", "🎁 Surprise me"], ["experiences", "🎟️ Experiences over things"], ["practical", "🧰 Practical please"],
+  ["homemade", "🧶 Homemade melts my heart"], ["consumable", "🍫 No clutter, treats please"], ["books", "📚 Books, always"],
+  ["together", "☕ Time together"], ["giftcards", "💳 Gift cards are great"]];
+const FAV_COLORS = [["red", "Red", "#C62E2E"], ["pink", "Pink", "#F08AB0"], ["orange", "Orange", "#EE8A2E"], ["yellow", "Yellow", "#F2C94C"],
+  ["green", "Green", "#4E9A5A"], ["teal", "Teal", "#2A9D8F"], ["blue", "Blue", "#4A8FD8"], ["navy", "Navy", "#1F3263"], ["purple", "Purple", "#8A5CC2"],
+  ["brown", "Brown", "#8B5E3C"], ["black", "Black", "#1C1C1C"], ["white", "White", "#FFFFFF"], ["gray", "Gray", "#9A9A9A"], ["gold", "Gold", "#C9A227"], ["silver", "Silver", "#C4C8CC"]];
+const STYLE_LABEL = Object.fromEntries(GIFT_STYLES), COLOR_OF = Object.fromEntries(FAV_COLORS.map(([k, l, c]) => [k, { l, c }]));
+const colorDots = (keys) => `<span class="cdots">${keys.filter((k) => COLOR_OF[k]).map((k) => `<span class="cdot"><i style="--c:${COLOR_OF[k].c}"></i>${COLOR_OF[k].l}</span>`).join("")}</span>`;
+const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || p.loves || Object.values(p.sizes || {}).some(Boolean));
 const brandChips = (brands, edit) => `<span class="brand-chips${edit ? " edit" : ""}">${brands.map((b, k) => `<span class="brand-chip">${esc(b)}${edit
   ? `<button type="button" data-unbrand="${k}" aria-label="Remove ${esc(b)}">&times;</button>` : ""}</span>`).join("")}</span>`;
 function knowCard(p) {
@@ -3058,7 +3102,10 @@ function knowCard(p) {
     rows.push(["Birthday", `${esc(bdayText(p.birthday))}${turning ? `, turning ${turning}` : ""}${soon ? `<span class="soon">${soon}</span>` : ""}`]);
   }
   for (const [k, l] of SIZE_LABELS) if (p.sizes?.[k]) rows.push([l.replace(" / top", ""), esc(p.sizes[k])]);
+  if (p.giftStyle?.length) rows.push(["Gift style", brandChips(p.giftStyle.filter((k) => STYLE_LABEL[k]).map((k) => STYLE_LABEL[k])).replace(/(<span class="brand-chip">)(\S+) /g, '$1<span aria-hidden="true">$2</span>')]);
   if (p.brands?.length) rows.push(["Favorite brands", brandChips(p.brands)]);
+  if (p.colors?.length) rows.push(["Favorite colors", colorDots(p.colors)]);
+  if (p.loves) rows.push(["Little loves", esc(p.loves)]);
   if (p.avoid) rows.push(["Avoid", `<span class="no">${esc(p.avoid)}</span>`]);
   return `<div class="know"><div class="know-h">Good to know</div><dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join("")}</dl></div>`;
 }
@@ -3095,6 +3142,13 @@ function setTextSize(v) {
   const root = document.documentElement;
   try { v === "md" ? localStorage.removeItem(TEXT_KEY) : localStorage.setItem(TEXT_KEY, v); } catch {}
   if (v === "md") delete root.dataset.text; else root.dataset.text = v;
+}
+// [key, label, action color, header color] (light values, for the picker). Palettes are in the CSS.
+const ACCENTS = [["wine", "Wine", "#7A1B36", "#4A0E22"], ["navy", "Navy", "#2E4A7D", "#17284A"], ["plum", "Plum", "#5E2A73", "#351543"], ["clay", "Clay", "#A0472A", "#4E2114"]];
+function setAccent(v) {
+  const root = document.documentElement;
+  try { v === "wine" ? localStorage.removeItem("wishlist-accent") : localStorage.setItem("wishlist-accent", v); } catch {}
+  if (v === "wine") delete root.dataset.accent; else root.dataset.accent = v;
 }
 function setMotion(on) {
   const root = document.documentElement;
@@ -3143,6 +3197,15 @@ async function renderSettings() {
           <button class="btn small" type="button" id="brandAdd">${PLUS} Add</button>
         </div>
         <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
+        <div class="fun-h">✨ Just for fun</div>
+        <p class="sub" style="margin:0 0 12px">Small things that help family pick something you'll love.</p>
+        <span class="flabel">Gift style <em>(up to 3)</em></span>
+        <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
+        <span class="flabel">Favorite colors <em>(up to 3)</em></span>
+        <div class="swatches" id="colorPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch" type="button" data-color="${k}" aria-pressed="${(prof.colors || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
+        <label class="field"><span>Little things I love</span>
+          <input class="input" name="loves" maxlength="200" value="${esc(prof.loves || "")}" placeholder="Oat lattes, sour gummies, anything lavender"></label>
+        <p class="hint" style="margin-top:-10px">Great for stocking stuffers.</p>
         <label class="field" style="margin-top:4px"><span>Dislikes and allergies</span>
           <textarea class="input" name="avoid" maxlength="300" placeholder="No scented candles, allergic to wool">${esc(prof.avoid || "")}</textarea></label>
         <button class="btn primary wide" type="submit">Save profile</button>
@@ -3164,6 +3227,10 @@ async function renderSettings() {
       <h4>Text size</h4>
       <div id="textSeg">${seg("Text size", TEXT_SIZES.map(([k, l, px]) => [k, `<b style="font-size:${px}px">Aa</b>${l}`]), root.dataset.text || "md", "four")}</div>
       <div class="ts-preview"><small>Preview</small>Cozy socks, size medium. Any color but orange!</div>
+      <hr class="set-div">
+      <h4>App color</h4>
+      <div class="accents" role="radiogroup" aria-label="App color" id="accents">${ACCENTS.map(([k, l, a, h]) => `<button class="accent" type="button" role="radio" data-accent="${k}" aria-checked="${(root.dataset.accent || "wine") === k}"><i style="--a:${a};--h:${h}"></i>${l}</button>`).join("")}</div>
+      <p class="sub" style="margin:8px 0 0">Just on this device.</p>
       <hr class="set-div">
       ${swRow("motionSw", "Animations", "", root.dataset.motion !== "off")}
     </div>
@@ -3228,6 +3295,11 @@ async function renderSettings() {
   mq.onchange = () => { if (state.tab === "settings" && $("#modes")) paintTheme(); };
 
   wireSeg($("#textSeg", v), setTextSize);
+  v.querySelectorAll("[data-accent]").forEach((b) => (b.onclick = () => {
+    setAccent(b.dataset.accent);
+    v.querySelectorAll("[data-accent]").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+    buzz();
+  }));
   $("#motionSw", v).onclick = (e) => {
     const on = e.currentTarget.getAttribute("aria-checked") !== "true";
     setMotion(on);
@@ -3289,6 +3361,16 @@ async function renderSettings() {
   brandIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addBrand(); } });
   // Picking a suggestion from the list adds it right away.
   brandIn.addEventListener("input", (e) => { if (e.inputType === "insertReplacementText" || (!e.inputType && GIFT_LIST.some((g) => g.name === brandIn.value))) addBrand(); });
+  // Gift style and favorite colors: tap on and off, up to 3 each. Saved with the rest of the profile.
+  const picked = (attr) => [...v.querySelectorAll(`[${attr}][aria-pressed="true"]`)].map((b) => b.getAttribute(attr));
+  for (const [attr, what] of [["data-style", "gift styles"], ["data-color", "colors"]]) {
+    v.querySelectorAll(`[${attr}]`).forEach((b) => (b.onclick = () => {
+      const on = b.getAttribute("aria-pressed") !== "true";
+      if (on && picked(attr).length >= 3) return toast(`Pick up to 3 ${what}`);
+      b.setAttribute("aria-pressed", String(on));
+      buzz();
+    }));
+  }
   wireForm($("#profileForm", v), async (f) => {
     if (!!f.bmonth !== !!f.bday) throw new Error("Pick both a month and a day for your birthday, or leave both empty.");
     if (brandIn.value.trim()) addBrand();
@@ -3300,6 +3382,9 @@ async function renderSettings() {
       sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, f[`size_${k}`]])),
       avoid: f.avoid,
       brands,
+      giftStyle: picked("data-style"),
+      colors: picked("data-color"),
+      loves: f.loves,
     });
     reload("Profile saved");
   });
