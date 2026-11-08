@@ -1,6 +1,6 @@
 // wishlist.alexisdavidson.org: static files in public/ are served first (see wrangler.jsonc);
 // anything else comes here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
-// with a link preview for that family, everything else is a static file.
+// with a link preview for that circle, everything else is a static file.
 import { routes, inviteInfo } from "./wishlist.js";
 import { json } from "./gemini.js";
 
@@ -31,7 +31,7 @@ async function invitePage(env, url, code) {
   const title = info ? `Join ${info.group.name} on Wishlist` : "You're invited to Wishlist";
   const description = info
     ? `${info.inviter ? `${info.inviter} invited you` : "You're invited"} to share wish lists with ${info.group.name}. Add what you'd love, see what everyone's hoping for, and keep gifts a surprise.`
-    : "Family wish lists: share what you'd like, mark what you're getting, keep gifts a surprise.";
+    : "Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.";
   const setContent = (value) => ({ element: (el) => el.setAttribute("content", value) });
   const out = new HTMLRewriter()
     .on("title", { element: (el) => el.setInnerContent(title) })
