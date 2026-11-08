@@ -849,7 +849,7 @@ const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } 
 const CHEV = '<svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 const CHEV_D = '<svg class="chev-d" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
-const SEND = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+const PUBLISH_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
 const LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const CAMERA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
@@ -1496,7 +1496,7 @@ function itemRow(i, n = 0) {
   const top = i.priority === "must";
   const anim = state.flash === i.id ? " drop" : " slide";
   const action = i.draft
-    ? `<button class="publish-btn" type="button" data-publish="${esc(i.id)}">${SEND} Publish</button>`
+    ? `<button class="publish-btn" type="button" data-publish="${esc(i.id)}">${PUBLISH_ICON} Publish</button>`
     : `<button class="star-btn${state.pop === i.id ? " pop" : ""}" type="button" data-star="${esc(i.id)}" aria-pressed="${top}">${STAR} Top pick${state.pop === i.id && top ? SPARKS : ""}</button>`;
   return `<div class="row${i.draft ? " draft" : ""}${anim}" style="animation-delay:${anim === " slide" ? n * 0.04 : 0}s" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
     <div class="row-top">${tile(i, "item")}
@@ -1525,7 +1525,7 @@ function confirmPublish(item) {
     <p class="just-me-note">${LOCK}<span><strong>This can't be undone.</strong> Published wishes can't be moved back to Just me. You can still edit or remove it later.</span></p>
     <div class="actions">
       <button class="btn" type="button" id="pubCancel">Not yet</button>
-      <button class="btn primary" type="button" id="pubGo">${SEND} Publish</button>
+      <button class="btn primary" type="button" id="pubGo">${PUBLISH_ICON} Publish</button>
     </div>`, (el) => {
     $("#pubCancel", el).onclick = closeSheet;
     const go = $("#pubGo", el);
@@ -1609,7 +1609,7 @@ function editItem(item, opts = {}) {
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeItem">Remove</button>'}
         <button class="btn primary" type="submit">${isNew ? "Save to Just me" : "Save"}</button>
       </div>
-      ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${SEND} Publish to my wish list</button>` : ""}
+      ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
     </form>`, (el) => {
       const form = $("#itemForm", el);
       // type=url rejects links without https://, so let the server fix those up instead.
