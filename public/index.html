@@ -191,6 +191,59 @@
   .chips { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; scrollbar-width: none; }
   .chip { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); font-weight: 700; font-size: 15px; white-space: nowrap; }
   .chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  .chip { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+  .chip svg { opacity: .8; }
+  .chip-n { font-size: 13px; font-weight: 700; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; display: inline-grid; place-items: center;
+    background: var(--panel); color: var(--muted); }
+  .chip[aria-pressed="true"] .chip-n { background: color-mix(in srgb, var(--brand-ink) 22%, transparent); color: var(--brand-ink); }
+
+  /* Someone's list: summary, filters, wish cards */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+  .stat { background: var(--card); border-radius: 16px; padding: 12px 12px 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; }
+  .stat b { font-family: var(--serif); font-weight: 600; font-size: 26px; line-height: 1.1; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .stat b.sm { font-size: 16px; line-height: 1.25; white-space: normal; padding: 2px 0 3px; }
+  .stat span { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .stat.ok { background: var(--ok-soft); box-shadow: none; } .stat.ok b { color: var(--ok); }
+  .toolbar { margin-bottom: 16px; }
+  .toolbar .chips { margin: 0 -18px 10px; padding: 2px 18px; }
+  .toolbar-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toggle { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--ink); cursor: pointer; }
+  .toggle input { width: 22px; height: 22px; accent-color: var(--brand); margin: 0; }
+  .sort { position: relative; display: inline-flex; align-items: center; }
+  .sort select { appearance: none; -webkit-appearance: none; min-height: 44px; padding: 0 38px 0 14px; border-radius: 12px; border: 1.5px solid var(--line);
+    background: var(--card); font-weight: 700; font-size: 15px; cursor: pointer; }
+  .sort .chev-d { position: absolute; right: 10px; pointer-events: none; color: var(--muted); }
+  .showing { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+  .linkbtn { border: 0; background: none; padding: 0 0 0 6px; color: var(--brand); font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; min-height: 32px; }
+  .nomatch { text-align: center; background: var(--card); border-radius: var(--r); padding: 24px 18px; box-shadow: var(--shadow); }
+  .nomatch p { margin: 4px 0 14px; color: var(--muted); }
+
+  .wish { padding: 16px; }
+  .wish .tile { width: 92px; height: 92px; border-radius: 16px; }
+  .wish .tile svg { width: 40px; height: 40px; }
+  .wish .tile.photo { padding: 7px; }
+  .wish .row-main { gap: 4px; }
+  .wish .row-title { font-size: 18px; }
+  .wish-price { font-family: var(--serif); font-weight: 600; font-size: 21px; line-height: 1.2; color: var(--soft-ink); font-variant-numeric: tabular-nums; }
+  .wish-price.none { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--faint); }
+  .wish-price.fresh { animation: fade .45s ease both; }
+  .wish-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+  .wish-meta a { color: inherit; }
+  .wish-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--faint); }
+  .cat-tag { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--ink); }
+  .cat-tag svg { color: var(--brand); }
+  .from .cat-tag { margin-right: 2px; }
+  .wish-note { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--panel); font-size: 15px; line-height: 1.45; color: var(--ink);
+    white-space: pre-wrap; overflow-wrap: anywhere; }
+  .wish-note span { display: block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+  .wish .row-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .wish.mine .row-foot, .wish.taken .row-foot { border-top-color: transparent; padding-top: 0; }
+  .wish.is-top { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--gold) 70%, transparent), var(--shadow); }
+  .top-ribbon { position: absolute; top: -9px; right: 14px; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 7px; border-radius: 12px;
+    background: var(--gold); color: #3B2A06; font-size: 13px; font-weight: 800; box-shadow: 0 2px 6px rgba(74, 14, 34, .15); }
+  .top-ribbon svg { width: 14px; height: 14px; } .top-ribbon path { fill: #FFF6DE; stroke: #3B2A06; }
+  .wish.taken .wish-price { color: var(--muted); }
+  @media (max-width: 380px) { .wish .tile { width: 72px; height: 72px; } .stat b { font-size: 22px; } }
 
   /* People */
   .member { width: 100%; display: flex; align-items: center; gap: 14px; background: var(--card); border: 0; border-radius: var(--r);
@@ -470,13 +523,49 @@ const ICON_RULES = [
   [/ticket|concert|experience|\bspa\b|massage|lesson|class\b/i, "ticket"],
 ];
 const iconFor = (title) => (ICON_RULES.find(([re]) => re.test(title || "")) || [, "gift"])[1];
+// Wish categories: [key, label, icon]. Must match CATEGORIES in src/wishlist.js. The owner can pick one;
+// otherwise it's guessed from the title (first match wins, so bags beat "Hat Company" and Kindle beats books).
+const CATS = [
+  ["beauty", "Beauty", "bottle"], ["tech", "Tech", "device"], ["clothing", "Clothing", "shirt"], ["shoes", "Shoes", "shoe"],
+  ["accessories", "Bags & jewelry", "gem"], ["home", "Home", "candle"], ["kitchen", "Kitchen", "pan"], ["books", "Books", "book"],
+  ["toys", "Toys & games", "toy"], ["outdoors", "Outdoors & fitness", "pack"], ["treats", "Food & drink", "treat"],
+  ["experiences", "Experiences", "ticket"], ["giftcards", "Gift cards", "card"], ["other", "Other", "gift"],
+];
+const CAT = Object.fromEntries(CATS.map(([k, label, icon]) => [k, { label, icon }]));
+const CAT_RULES = [
+  [/gift ?card|e-?gift|voucher/i, "giftcards"],
+  [/perfume|parfum|cologne|fragrance|eau de|lipstick|makeup|mascara|skin ?care|serum|lotion|moisturi|nail polish|shampoo|beauty|razor|beard/i, "beauty"],
+  [/kindle|paperwhite|ipad|tablet|laptop|iphone|phone|camera|smart ?watch|apple watch|charger|\btv\b|monitor|echo|alexa|keyboard|mouse|headphone|earbud|airpod|speaker|soundbar|beats|drone|\bssd\b|router/i, "tech"],
+  [/playstation|ps5|xbox|nintendo|switch|controller|video game|lego|puzzle|\btoy|doll|plush|board game|blocks|card game/i, "toys"],
+  [/book|novel|journal|notebook|comic/i, "books"],
+  [/slipper|shoe|sneaker|boot|sandal|heels|loafer|crocs/i, "shoes"],
+  [/\bbag\b|tote|purse|handbag|wallet|backpack|duffel|necklace|\bring\b|earring|bracelet|jewel|pendant|watch|sunglasses|belt\b/i, "accessories"],
+  [/shirt|sweater|cardigan|hoodie|jacket|coat|dress|pants|jeans|sock|pajama|scarf|\bhats?\b|\bcap\b|beanie|glove|legging|robe|sweatshirt/i, "clothing"],
+  [/skillet|\bpans?\b|\bpots?\b|cookware|dutch oven|air fryer|wok|griddle|mug|tumbler|water bottle|stanley|yeti|coffee|\btea\b|kitchen|knife|blender|baking/i, "kitchen"],
+  [/candle|blanket|throw|pillow|vase|decor|lamp|frame|plant|towel|sheets/i, "home"],
+  [/tent|camping|hiking|yoga|golf|bike|fitness|dumbbell|\bball\b|fishing|kayak|ski/i, "outdoors"],
+  [/wine|whiskey|bourbon|beer|chocolate|candy|cookie|snack/i, "treats"],
+  [/ticket|concert|experience|\bspa\b|massage|lesson|class\b/i, "experiences"],
+];
+const catOf = (i) => (i.category && CAT[i.category] ? i.category : (CAT_RULES.find(([re]) => re.test(i.title || "")) || [, "other"])[1]);
+const catIcon = (k, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON_PATHS[CAT[k].icon]}"/></svg>`;
+// "Added today", "Added 3 days ago", "Added Oct 2".
+function addedOn(iso) {
+  if (!iso) return "";
+  const d = new Date(iso), days = Math.floor((Date.now() - d) / 86400000);
+  if (days < 1) return "Added today";
+  if (days < 2) return "Added yesterday";
+  if (days < 7) return `Added ${days} days ago`;
+  return `Added ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(d.getFullYear() !== new Date().getFullYear() && { year: "numeric" }) })}`;
+}
 const iconTile = (title, id) => `<span class="tile t${hash(id || title) % 4}" data-tile-title="${esc(title)}" data-tile-id="${esc(id)}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${ICON_PATHS[iconFor(title)]}"/></svg></span>`;
 const photoTile = (src, title, id, fresh) => `<span class="tile photo${fresh ? " fresh" : ""}" data-tile-title="${esc(title)}" data-tile-id="${esc(id)}" aria-hidden="true"><img class="thumb" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
 // kind: "item" or "idea". A link we haven't looked at yet gets its photo fetched after the page draws.
+// Also looks up a missing price from the link, once (price_checked).
 function tile(i, kind) {
-  if (i.image_url) return photoTile(i.image_url, i.title, i.id);
-  const html = iconTile(i.title, i.id);
-  return i.url && !i.image_checked && kind ? html.replace('<span class="tile', `<span data-fetch="${kind}:${esc(i.id)}" class="tile`) : html;
+  const html = i.image_url ? photoTile(i.image_url, i.title, i.id) : iconTile(i.title, i.id);
+  const need = i.url && kind && (!i.image_checked || (i.price_cents == null && !i.price_checked));
+  return need ? html.replace('<span class="tile', `<span data-fetch="${kind}:${esc(i.id)}" class="tile`) : html;
 }
 // A store image that won't load (moved, blocked) falls back to the drawing.
 document.addEventListener("error", (e) => {
@@ -501,9 +590,11 @@ function pumpImages() {
     const key = imageQueue.shift();
     const [kind, id] = key.split(":");
     imageBusy++;
-    api("image", { kind, id }).then(({ image }) => {
-      if (!image) return;
-      document.querySelectorAll(`[data-fetch="${CSS.escape(key)}"]`).forEach((t) => (t.outerHTML = photoTile(image, t.dataset.tileTitle, t.dataset.tileId, true)));
+    api("image", { kind, id }).then(({ image, price_cents }) => {
+      if (image) document.querySelectorAll(`[data-fetch="${CSS.escape(key)}"]:not(.photo)`).forEach((t) => (t.outerHTML = photoTile(image, t.dataset.tileTitle, t.dataset.tileId, true)));
+      if (price_cents != null) document.querySelectorAll(`[data-price-slot="${CSS.escape(key)}"]`).forEach((el) => {
+        el.outerHTML = `<span class="wish-price fresh">${money(price_cents)}</span>`;
+      });
     }, () => {}).finally(() => { imageBusy--; pumpImages(); });
   }
 }
@@ -629,13 +720,13 @@ function wireForm(form, submit) {
 
 // ---------- state + routing ----------
 // One-shot animation flags: the next render plays them once, then they're cleared.
-const state = { me: null, groups: [], season: null, tab: "mine", person: null, filter: "all", openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
+const state = { me: null, groups: [], season: null, tab: "mine", person: null, view: null, openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
 
 const hashFor = (tab) => (tab === "notes" ? "budget" : tab);
 function setTab(tab, person = null) {
   state.tab = tab;
   state.person = person;
-  state.filter = "all";
+  state.view = null;
   const h = person ? `#person/${person}` : `#${hashFor(tab)}`;
   if (location.hash !== h) history.pushState(null, "", h);
   window.scrollTo(0, 0);
@@ -644,7 +735,7 @@ function setTab(tab, person = null) {
 window.addEventListener("popstate", () => { readHash(); render(); });
 function readHash() {
   const h = location.hash.slice(1);
-  if (h.startsWith("person/")) { if (state.person !== h.slice(7)) state.filter = "all"; state.tab = "family"; state.person = h.slice(7); }
+  if (h.startsWith("person/")) { if (state.person !== h.slice(7)) state.view = null; state.tab = "family"; state.person = h.slice(7); }
   else if (h === "budget" || h === "notes") { state.tab = "notes"; state.person = null; }
   else if (["mine", "family"].includes(h)) { state.tab = h; state.person = null; }
 }
@@ -829,7 +920,7 @@ function itemRow(i, n = 0) {
       <div class="row-main">
         <span class="row-title">${esc(i.title)}</span>
         ${i.notes ? `<span class="row-notes">${esc(i.notes)}</span>` : ""}
-        ${i.url ? `<span class="from">from <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a></span>` : ""}
+        <span class="from"><span class="cat-tag">${catIcon(catOf(i), 14)}${esc(CAT[catOf(i)].label)}</span>${i.url ? ` from <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : ""}</span>
         ${hiddenTag(i)}
         <div class="row-foot">
           ${i.price_cents != null ? `<span class="price-tag">${money(i.price_cents)}</span>` : '<span class="anyprice">Any price</span>'}
@@ -879,7 +970,7 @@ async function toggleTopPick(item, btn) {
 function editItem(item) {
   const isNew = !item;
   item ||= {};
-  const hasDetails = item.price_cents != null || !!item.notes;
+  const hasDetails = item.price_cents != null || !!item.notes || !!item.category;
   openSheet(`
     <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
     <form id="itemForm" autocomplete="off">
@@ -887,9 +978,12 @@ function editItem(item) {
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title)}" placeholder="Warm slippers, size 8" required></label>
       ${linkField(item.url)}
       <details class="more"${hasDetails ? " open" : ""}>
-        <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, notes)</span></summary>
+        <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
         <div>
           <label class="field"><span>Price <em>(optional)</em></span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="25"></label>
+          <label class="field"><span>Category <em>(helps family filter your list)</em></span>
+            <select class="input" name="category"><option value="">Pick for me${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
+              ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
           <label class="field"><span>Notes <em>(size, color, where to buy)</em></span><textarea class="input" name="notes" maxlength="1000">${esc(item.notes)}</textarea></label>
         </div>
       </details>
@@ -907,7 +1001,7 @@ function editItem(item) {
       if (isNew) setTimeout(() => form.elements.title.focus(), 300);
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, priority: d.must ? "must" : null, image: imageFor(form) };
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, category: d.category || null, priority: d.must ? "must" : null, image: imageFor(form) };
         if (multi()) payload.hiddenFrom = hiddenFromForm(form);
         const { id } = await api("item/save", payload);
         closeSheet();
@@ -1164,19 +1258,52 @@ async function shareInvite(g, nudgeName) {
 }
 
 // ---------- someone else's list ----------
+// Filters and sort for someone's list. Reset when you open a different person.
+const PRICE_BUCKETS = [["u25", "Under $25", 0, 2500], ["25-50", "$25 to $50", 2500, 5000], ["50-100", "$50 to $100", 5000, 10000], ["100", "$100+", 10000, Infinity]];
+const SORTS = [["top", "Top picks first"], ["low", "Lowest price"], ["high", "Highest price"], ["new", "Newest"]];
+const freshView = () => ({ cat: "all", price: "all", sort: "top", open: false });
+const inBucket = (c, k) => { const b = PRICE_BUCKETS.find((x) => x[0] === k); return c != null && c >= b[2] && c < b[3]; };
+
 async function renderPerson(id) {
   const [list, t] = await Promise.all([load(`list?member=${encodeURIComponent(id)}`), loadTracker()]);
   state.tracker = t;
+  state.view ||= freshView();
+  const view = state.view;
   const name = list.member.name;
   const plan = t?.people.find((p) => p.id === id);
   const sugg = list.suggestions || [];
   const mine = list.myIdeas || [];
+  const all = list.items;
+
+  // Summary numbers.
+  const open = all.filter((i) => !i.claim && !i.removed);
+  const gettingN = all.filter((i) => i.claim?.mine).length;
+  const prices = all.map((i) => i.price_cents).filter((c) => c != null);
+  const lo = Math.min(...prices), hi = Math.max(...prices);
+  const range = !prices.length ? "" : lo === hi ? money(lo) : `${money(lo)} to ${money(hi)}`;
+
+  // Filter options: only categories and price ranges that are actually on the list.
+  const catCount = {};
+  for (const i of all) { const k = catOf(i); catCount[k] = (catCount[k] || 0) + 1; }
+  const cats = CATS.filter(([k]) => catCount[k]);
+  const buckets = PRICE_BUCKETS.filter(([k]) => all.some((i) => inBucket(i.price_cents, k)));
+  if (view.cat !== "all" && !catCount[view.cat]) view.cat = "all";
+  if (view.price !== "all" && !buckets.some(([k]) => k === view.price)) view.price = "all";
+
   const rank = (i) => (!i.claim ? 0 : i.claim.mine ? 1 : 2);
-  const max = state.filter === "25" ? 2500 : state.filter === "50" ? 5000 : Infinity;
-  const priced = list.items.filter((i) => i.price_cents != null).length;
-  const items = list.items
-    .filter((i) => max === Infinity || (i.price_cents != null && i.price_cents <= max))
-    .slice().sort((a, b) => rank(a) - rank(b) || (b.priority === "must") - (a.priority === "must"));
+  const byPrice = (dir) => (a, b) => (a.price_cents == null) - (b.price_cents == null) || dir * ((a.price_cents ?? 0) - (b.price_cents ?? 0));
+  const sorter = {
+    top: (a, b) => rank(a) - rank(b) || (b.priority === "must") - (a.priority === "must"),
+    low: byPrice(1),
+    high: byPrice(-1),
+    new: (a, b) => String(b.created_at).localeCompare(String(a.created_at)),
+  }[view.sort] || (() => 0);
+  const items = all
+    .filter((i) => view.cat === "all" || catOf(i) === view.cat)
+    .filter((i) => view.price === "all" || inBucket(i.price_cents, view.price))
+    .filter((i) => !view.open || (!i.claim && !i.removed))
+    .slice().sort(sorter);
+  const filtering = view.cat !== "all" || view.price !== "all" || view.open;
 
   let meter = "";
   if (plan?.budget_cents != null) {
@@ -1192,12 +1319,34 @@ async function renderPerson(id) {
       <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}</div>
       <button class="hero-link" type="button" id="renameBtn">Rename</button></div>${meter}`);
 
+  const chip = (group, k, label, count, icon = "") =>
+    `<button class="chip" type="button" data-${group}="${k}" aria-pressed="${view[group] === k}">${icon}${esc(label)}${count != null ? `<span class="chip-n">${count}</span>` : ""}</button>`;
+  const toolbar = all.length < 2 ? "" : `
+    <div class="toolbar">
+      ${cats.length > 1 ? `<div class="chips" role="group" aria-label="Filter by category">
+        ${chip("cat", "all", "All", all.length)}${cats.map(([k, label]) => chip("cat", k, label, catCount[k], catIcon(k))).join("")}</div>` : ""}
+      ${buckets.length > 1 || (buckets.length && prices.length < all.length) ? `<div class="chips" role="group" aria-label="Filter by price">
+        ${chip("price", "all", "Any price")}${buckets.map(([k, label]) => chip("price", k, label)).join("")}</div>` : ""}
+      <div class="toolbar-row">
+        <label class="toggle"><input type="checkbox" id="openOnly" ${view.open ? "checked" : ""}><span>Still available only</span></label>
+        <span class="spacer"></span>
+        <label class="sort"><span class="vh">Sort by</span>
+          <select id="sortSel">${SORTS.map(([k, l]) => `<option value="${k}"${view.sort === k ? " selected" : ""}>${l}</option>`).join("")}</select>${CHEV_D}</label>
+      </div>
+      ${filtering ? `<p class="showing">Showing ${items.length} of ${plural(all.length, "wish", "wishes")} <button class="linkbtn" type="button" id="clearFilters">Clear filters</button></p>` : ""}
+    </div>`;
+
   const v = $("#view");
   v.innerHTML = `
-    ${priced >= 3 ? `<div class="chips" role="group" aria-label="Filter by price">
-      ${[["all", "All"], ["25", "Under $25"], ["50", "Under $50"]].map(([k, l]) => `<button class="chip" type="button" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
+    ${all.length ? `<div class="stats">
+      <div class="stat"><b>${all.length}</b><span>${all.length === 1 ? "wish" : "wishes"}</span></div>
+      <div class="stat"><b>${open.length}</b><span>still available</span></div>
+      ${gettingN ? `<div class="stat ok"><b>${gettingN}</b><span>you're getting</span></div>`
+        : `<div class="stat"><b class="${range.length > 7 ? "sm" : ""}">${range || "?"}</b><span>${range ? "price range" : "no prices yet"}</span></div>`}
     </div>` : ""}
-    ${list.items.length ? `<div class="stack">${items.length ? items.map((i, n) => personRow(i, "item", n)).join("") : `<p class="subtle">Nothing in that price range.</p>`}</div>` : `
+    ${toolbar}
+    ${all.length ? `<div class="stack">${items.length ? items.map((i, n) => personRow(i, "item", n)).join("")
+      : `<div class="nomatch"><strong>Nothing matches</strong><p>Try another category or price.</p><button class="btn small" type="button" id="clearFilters2">Show everything</button></div>`}</div>` : `
       <div class="empty">
         ${giftBox(`Add your own idea for ${name}`)}
         <strong>${esc(name)} hasn't added any wishes yet</strong>
@@ -1218,12 +1367,19 @@ async function renderPerson(id) {
   $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
   $("#setBudget")?.addEventListener("click", () => editBudget(plan));
   wireGiftBox(v, () => editIdea(null, id));
-  v.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => { state.filter = b.dataset.filter; render(); }));
+  const redo = () => render();
+  v.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { view.cat = b.dataset.cat; redo(); }));
+  v.querySelectorAll("[data-price]").forEach((b) => (b.onclick = () => { view.price = b.dataset.price; redo(); }));
+  $("#sortSel")?.addEventListener("change", (e) => { view.sort = e.target.value; redo(); });
+  $("#openOnly")?.addEventListener("change", (e) => { view.open = e.target.checked; redo(); });
+  for (const b of v.querySelectorAll("#clearFilters, #clearFilters2")) b.onclick = () => { Object.assign(view, freshView(), { sort: view.sort }); redo(); };
+  // Keep the chosen chip in view when the row scrolls sideways.
+  v.querySelectorAll('.chip[aria-pressed="true"]').forEach((c) => c.scrollIntoView({ block: "nearest", inline: "nearest" }));
   wireIdeaRows(v, mine);
-  const all = { item: list.items, idea: sugg };
+  const byKind = { item: all, idea: sugg };
   v.querySelectorAll("[data-mark]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.mark.split(":");
-    markPurchased(kind, all[kind].find((x) => x.id === itemId), name);
+    markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name);
   }));
 }
 
@@ -1256,6 +1412,7 @@ function personRow(i, kind, n = 0) {
   const key = `${kind}:${i.id}`;
   const fresh = state.burst === key;
   let foot = "", cls = "";
+  const visit = i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">View at ${esc(host(i.url))} ${OUT}</a>` : "";
   if (i.claim?.mine) {
     cls = " mine";
     foot = `<span class="mine-line"><span class="chk${fresh ? " new" : ""}">${CHECK}</span>You're getting this one</span><span class="spacer"></span>
@@ -1264,25 +1421,36 @@ function personRow(i, kind, n = 0) {
     cls = " taken";
     foot = `<span class="taken-line">${esc(i.claim.buyerName)} is getting this</span>`;
   } else {
-    foot = `${i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">View at ${esc(host(i.url))} ${OUT}</a>` : ""}<span class="spacer"></span>
+    foot = `${visit}<span class="spacer"></span>
       <button class="btn small primary" type="button" data-mark="${key}">${GIFT_SM} I'll get this</button>`;
   }
   if (i.removed) foot = `<span class="taken-line">Removed by ${esc(personName(state.person))}</span><span class="spacer"></span>` + foot;
-  const tag = kind === "idea" ? `<span class="from">Idea from ${esc(i.author_name)}</span>`
-    : i.priority === "must" && !i.claim ? `<span class="toppick">${STAR} Top pick</span>` : "";
+  const top = kind === "item" && i.priority === "must" && !i.claim;
+  const cat = catOf(i);
   const notes = kind === "idea" ? i.note : i.notes;
   const paid = i.claim?.mine && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
-  return `<div class="row${cls} ${fresh ? "" : "slide"}" style="animation-delay:${n * 0.05}s">
+  const lookingUp = paid == null && i.url && !i.price_checked;
+  const price = paid != null ? `<span class="wish-price">${money(paid)}</span>`
+    : `<span class="wish-price none"${lookingUp ? ` data-price-slot="${esc(key)}"` : ""}>No price listed</span>`;
+  const meta = [
+    `<span class="cat-tag">${catIcon(cat, 14)}${esc(CAT[cat].label)}</span>`,
+    kind === "idea" ? `<span>Idea from ${esc(i.author_name)}</span>` : i.created_at ? `<span>${addedOn(i.created_at)}</span>` : "",
+    (i.claim || i.removed) && i.url ? `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : "",
+  ].filter(Boolean).join('<span class="dot" aria-hidden="true"></span>');
+  const whose = kind === "idea" ? `${esc(i.author_name)}'s note` : `${esc(personName(state.person))}'s note`;
+  return `<article class="row wish${cls}${top ? " is-top" : ""} ${fresh ? "" : "slide"}" style="animation-delay:${n * 0.05}s">
+    ${top ? `<span class="top-ribbon">${STAR} Top pick</span>` : ""}
     <div class="row-top">${tile(i, kind)}
       <div class="row-main">
-        <div class="row-head"><span class="row-title">${esc(i.title)}</span>${paid != null ? `<span class="row-price">${money(paid)}</span>` : ""}</div>
-        ${tag}
-        ${notes ? `<span class="row-notes">${esc(notes)}</span>` : ""}
+        <span class="row-title">${esc(i.title)}</span>
+        ${price}
+        <div class="wish-meta">${meta}</div>
       </div>
     </div>
+    ${notes ? `<div class="wish-note"><span>${whose}</span>${esc(notes)}</div>` : ""}
     <div class="row-foot">${foot}</div>
     ${fresh && !reduceMotion() ? `<span class="burst" aria-hidden="true">${CONFETTI}</span>` : ""}
-  </div>`;
+  </article>`;
 }
 
 // "I'll get this" (or edit what you paid / take it back) for a list item or a shared idea.

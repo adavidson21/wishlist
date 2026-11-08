@@ -19,6 +19,9 @@ import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost
 
 const BASE = "/api/";
 const LIMITS = { nickname: 40, name: 40, group: 60, title: 200, url: 2000, notes: 1000 };
+// Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
+const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "giftcards", "other"]);
+const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
 
 // ---------- helpers ----------
 
@@ -109,7 +112,8 @@ function imageLink(value) {
 // SET clause pieces for image columns on save: a fresh image from autofill wins; otherwise keep the
 // image while the link is unchanged, and clear it when the link changes so it's looked up again.
 const IMAGE_SET = `image_url = CASE WHEN ?1 IS NOT NULL THEN ?1 WHEN url IS ?2 THEN image_url ELSE NULL END,
-  image_checked_at = CASE WHEN ?1 IS NOT NULL THEN ?3 WHEN url IS ?2 THEN image_checked_at ELSE NULL END`;
+  image_checked_at = CASE WHEN ?1 IS NOT NULL THEN ?3 WHEN url IS ?2 THEN image_checked_at ELSE NULL END,
+  price_checked_at = CASE WHEN url IS ?2 THEN price_checked_at ELSE NULL END`;
 
 function cents(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -204,9 +208,12 @@ const itemOut = (r) => ({
   price_cents: r.price_cents,
   notes: r.notes,
   priority: r.priority,
+  category: r.category || null,
   created_at: r.created_at,
+  updated_at: r.updated_at,
   image_url: r.image_url || null,
   image_checked: !!r.image_checked_at,
+  price_checked: !!r.price_checked_at,
 });
 
 // Expects the idea row joined with its claim (buyer_id, buyer_name, paid_cents) and author_name.
@@ -223,6 +230,7 @@ const ideaOut = (r, meId) => ({
   shared: !!r.shared,
   image_url: r.image_url || null,
   image_checked: !!r.image_checked_at,
+  price_checked: !!r.price_checked_at,
   updated_at: r.updated_at,
   claim: r.buyer_id
     ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === meId, price_cents: r.paid_cents }
@@ -743,14 +751,16 @@ const handlers = {
         .run();
       if (!res.meta.changes) fail(404, "Item not found.");
       const rows = await hideRows(b.id)();
+      // category absent (e.g. the Top pick toggle) leaves it as is.
+      if (b.category !== undefined) rows.push(env.DB.prepare("UPDATE items SET category = ? WHERE id = ?").bind(category(b.category), b.id));
       if (rows.length) await env.DB.batch(rows);
       return { id: b.id };
     }
     const id = newId();
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(id, me.id, ...fields, t, t, image, image ? t : null),
+        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(id, me.id, ...fields, t, t, image, image ? t : null, category(b.category)),
       ...(await hideRows(id)()),
     ]);
     return { id };
@@ -910,7 +920,7 @@ const handlers = {
     let row;
     if (kind === "item") {
       row = await env.DB.prepare(
-        `SELECT i.id, i.url, i.image_url, i.image_checked_at FROM items i
+        `SELECT i.id, i.url, i.image_url, i.image_checked_at, i.price_cents, i.price_checked_at FROM items i
            LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
           WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
       ).bind(me.id, id, me.id, me.id).first();
@@ -919,12 +929,20 @@ const handlers = {
       if (idea && (await canSeeIdea(env, me.id, idea))) row = idea;
     }
     if (!row) fail(404, "Not found.");
-    if (!row.url || row.image_checked_at) return { image: row.image_url || null };
+    const needImage = !row.image_checked_at;
+    const needPrice = row.price_cents == null && !row.price_checked_at;
+    if (!row.url || (!needImage && !needPrice)) return { image: row.image_url || null, price_cents: row.price_cents ?? null };
     const preview = await previewLink(env, row.url).catch(() => ({}));
-    const image = preview.image || null;
+    const image = needImage ? preview.image || null : row.image_url || null;
+    const price = needPrice && preview.price ? Math.round(preview.price * 100) : row.price_cents ?? null;
     const table = kind === "item" ? "items" : "private_ideas";
-    await env.DB.prepare(`UPDATE ${table} SET image_url = ?, image_checked_at = ? WHERE id = ? AND url IS ?`).bind(image, now(), row.id, row.url).run();
-    return { image };
+    // Only fills a price that is still empty, so an owner's own price always wins.
+    await env.DB.prepare(
+      `UPDATE ${table} SET image_url = ?1, image_checked_at = ?2, price_checked_at = ?2,
+         price_cents = CASE WHEN price_cents IS NULL THEN ?3 ELSE price_cents END
+        WHERE id = ?4 AND url IS ?5`,
+    ).bind(image, now(), price, row.id, row.url).run();
+    return { image, price_cents: price };
   },
 
   // Autofill: read a product link and return its name and price (nothing is saved).
