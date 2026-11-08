@@ -313,6 +313,8 @@
   .pick strong { font-size: 16px; }
   .pick small { color: var(--muted); font-size: 14px; }
   .pick em { font-style: normal; font-size: 14px; font-weight: 700; color: var(--ok); }
+  .pick .where { font-size: 13px; color: var(--muted); }
+  .pick .where.found { color: var(--brand); font-weight: 600; }
   .pick.on { border-color: var(--brand); background: var(--soft); }
   .pick.none { color: var(--muted); font-weight: 600; text-align: center; display: block; }
   .fillmsg { display: block; color: var(--muted); font-size: 14px; margin-top: 7px; }
@@ -874,10 +876,10 @@ function shrinkPhoto(file, maxSide = 1024, quality = 0.8) {
   });
 }
 
-const shopUrl = (q) => `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(q)}`;
 const range = (lo, hi) => (lo && hi && lo !== hi ? `Usually $${lo} to $${hi}` : lo || hi ? `Usually about $${lo || hi}` : "");
+const where = (x) => (x.link === "product" ? `At ${x.store}${x.price ? ` for ${money(Math.round(x.price * 100))}` : ""}` : `Search ${x.store}`);
 
-// Photo: Gemini suggests what it might be; tapping a suggestion fills the name and a shopping-search link.
+// Photo: Gemini suggests what it might be; tapping a suggestion fills the name, a store link, and the price when known.
 function wirePhoto(form) {
   const input = form.querySelector("[data-photo]"), btn = form.querySelector("[data-photo-btn]");
   const status = form.querySelector(".photo-status"), picks = form.querySelector(".picks");
@@ -890,7 +892,7 @@ function wirePhoto(form) {
     btn.disabled = true;
     try {
       const photo = await shrinkPhoto(file);
-      status.innerHTML = `<img src="${photo.preview}" alt=""><span>Looking at your photo...</span>`;
+      status.innerHTML = `<img src="${photo.preview}" alt=""><span>Looking at your photo and checking stores...</span>`;
       status.hidden = false;
       const { suggestions } = await api("identify", { image: photo.data });
       if (!suggestions.length) {
@@ -899,15 +901,22 @@ function wirePhoto(form) {
       }
       status.innerHTML = `<img src="${photo.preview}" alt=""><span><strong>Is it one of these?</strong> Tap the closest match.</span>`;
       picks.innerHTML = suggestions.map((x, i) => `<button class="pick" type="button" data-i="${i}">
-          <strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}${range(x.price_low, x.price_high) ? `<em>${esc(range(x.price_low, x.price_high))}</em>` : ""}
+          <strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}${!x.price && range(x.price_low, x.price_high) ? `<em>${esc(range(x.price_low, x.price_high))}</em>` : ""}<span class="where${x.link === "product" ? " found" : ""}">${esc(where(x))}</span>
         </button>`).join("") + '<button class="pick none" type="button" data-none>None of these</button>';
       picks.hidden = false;
+      // Remember what a tap filled in, so tapping a different match replaces it but never overwrites your typing.
+      let filled = { url: "", price: "" };
       picks.querySelectorAll("[data-i]").forEach((b) => (b.onclick = () => {
         const x = suggestions[+b.dataset.i];
+        const { url, price } = form.elements;
         form.elements.title.value = x.title;
-        if (!form.elements.url.value.trim()) form.elements.url.value = shopUrl(x.search);
+        if (!url.value.trim() || url.value === filled.url) url.value = filled.url = x.url || "";
+        if (price && (!price.value.trim() || price.value === filled.price)) price.value = filled.price = x.price ? String(x.price) : "";
         picks.querySelectorAll(".pick").forEach((p) => p.classList.toggle("on", p === b));
-        status.innerHTML = `<img src="${photo.preview}" alt=""><span><strong>Added the name.</strong> The link searches stores for it. Paste a store link instead and tap Fill to get the exact price.</span>`;
+        const note = x.link === "product"
+          ? `<strong>Added it.</strong> The link goes to ${esc(x.store)}${x.price ? ", and the price is filled in" : ""}. Paste a different store link to change it.`
+          : `<strong>Added the name.</strong> We couldn't confirm a product page, so the link searches ${esc(x.store)}. Paste a store link instead and tap Fill to get the exact price.`;
+        status.innerHTML = `<img src="${photo.preview}" alt=""><span>${note}</span>`;
         form.elements.title.scrollIntoView({ behavior: "smooth", block: "center" });
       }));
       picks.querySelector("[data-none]").onclick = () => {
