@@ -1,0 +1,14 @@
+{
+  "name": "wishlist",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply wishlist --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

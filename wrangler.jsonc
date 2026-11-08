@@ -1,0 +1,15 @@
+{
+  "name": "wishlist",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "keep_vars": true,
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  // Attaches the domain on deploy (the domain's DNS is on Cloudflare).
+  "routes": [{ "pattern": "wishlist.alexisdavidson.org", "custom_domain": true }],
+  "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite" },
+  // Wishlist data (D1). Schema changes: add a file to migrations/, then
+  // `npx wrangler d1 migrations apply wishlist --remote`.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "wishlist", "database_id": "7b96cbbb-eb6e-4720-9b3a-4bce9f2e2d78", "migrations_dir": "migrations" }
+  ]
+}
