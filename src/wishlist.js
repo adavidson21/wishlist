@@ -1105,9 +1105,13 @@ const handlers = {
     if (!match) fail(400, "That photo didn't come through. Try again.");
     if (match[2].length > 4_000_000) fail(400, "That photo is too large. Try a smaller one.");
     const photo = [{ inline_data: { mime_type: match[1], data: match[2] } }];
-    // Search grounding finds real store pages. If the model or key can't do it, fall back to a plain guess.
+    // Search grounding finds real store pages. If the model or key can't do it (including a search quota or a
+    // daily limit), fall back to a plain guess, which still names the item and links a store search.
+    // The only time it doesn't fall back is a per-minute limit it already waited out: a second call would hit it too.
     let result = await callGemini(env, IDENTIFY_PROMPT, photo, IDENTIFY_SCHEMA, 40000, undefined, [{ google_search: {} }]);
-    if (result.error && result.status !== 429) result = await callGemini(env, IDENTIFY_PROMPT, photo, IDENTIFY_SCHEMA, 25000);
+    const q = result.quota;
+    const perMinute = result.status === 429 && q && !q.daily && !q.notInPlan && !q.search;
+    if (result.error && !perMinute) result = await callGemini(env, IDENTIFY_PROMPT, photo, IDENTIFY_SCHEMA, 25000);
     if (result.error) return result.error;
     const grounded = await groundedUrls(result.grounding);
     const clean = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");

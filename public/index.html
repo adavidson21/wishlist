@@ -917,7 +917,7 @@ async function api(path, data) {
   catch { const e = new Error("You're offline. Try again when you have a connection."); e.offline = true; throw e; }
   const out = await res.json().catch(() => ({}));
   if (res.status === 401 && t) { setToken(null); state.me = null; render(); }
-  if (!res.ok) { const e = new Error(out.error || "Something went wrong."); e.status = res.status; throw e; }
+  if (!res.ok) { const e = new Error(out.error || "Something went wrong."); e.status = res.status; e.detail = out.detail; throw e; }
   return out;
 }
 
@@ -1819,6 +1819,7 @@ function wirePhoto(form) {
         form.elements.title.focus();
       };
     } catch (e) {
+      if (e.detail) console.warn("Photo search:", e.detail);
       status.innerHTML = `<span>${esc(e.message)}</span>`;
       status.hidden = false;
     } finally { btn.disabled = false; }
