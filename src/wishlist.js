@@ -24,7 +24,7 @@ import "../public/giftcards.js";
 const BASE = "/api/";
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
 const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
-const LIMITS = { nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -233,6 +233,22 @@ async function auth(request, env) {
 // Profile details shown to family on your list (migration 0008). Reads with SELECT * so a missing column
 // just means an empty profile.
 const SIZE_KEYS = ["shirt", "pants", "shoe", "ring"];
+// Keys only; labels and colors live in public/index.html. Never rename a key (they're stored).
+const GIFT_STYLES = ["surprise", "experiences", "practical", "homemade", "consumable", "books", "together", "giftcards"];
+const FAV_COLORS = ["red", "pink", "orange", "yellow", "green", "teal", "blue", "navy", "purple", "brown", "black", "white", "gray", "gold", "silver"];
+function keysOut(v, allowed) {
+  try {
+    const a = JSON.parse(v || "[]");
+    return Array.isArray(a) ? a.filter((k) => allowed.includes(k)).slice(0, 3) : [];
+  } catch {
+    return [];
+  }
+}
+function keysIn(v, allowed) {
+  const keys = [...new Set((Array.isArray(v) ? v : []).map(String))].filter((k) => allowed.includes(k));
+  if (keys.length > 3) fail(400, "Pick up to 3.");
+  return keys.length ? JSON.stringify(keys) : null;
+}
 function profileOut(row) {
   let sizes = {};
   try { sizes = JSON.parse(row?.sizes || "{}") || {}; } catch {}
@@ -242,6 +258,9 @@ function profileOut(row) {
     sizes: Object.fromEntries(SIZE_KEYS.map((k) => [k, typeof sizes[k] === "string" ? sizes[k] : ""])),
     avoid: row?.avoid || "",
     brands: brandsOut(row?.brands),
+    giftStyle: keysOut(row?.gift_style, GIFT_STYLES),
+    colors: keysOut(row?.colors, FAV_COLORS),
+    loves: row?.loves || "",
   };
 }
 function brandsOut(v) {
@@ -1396,7 +1415,8 @@ const handlers = {
   // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
   // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text.
-  // brands: favorite brand names (free text). Absent = unchanged.
+  // brands: favorite brand names (free text). giftStyle, colors: up to 3 keys each. loves: short free text.
+  // Absent = unchanged.
   async "POST profile"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
@@ -1448,6 +1468,15 @@ const handlers = {
       }
       if (brands.length > LIMITS.brands) fail(400, `That's a lot of brands. Keep it to ${LIMITS.brands}.`);
       await env.DB.prepare("UPDATE members SET brands = ? WHERE id = ?").bind(brands.length ? JSON.stringify(brands) : null, me.id).run();
+    }
+    if (b.giftStyle !== undefined) {
+      await env.DB.prepare("UPDATE members SET gift_style = ? WHERE id = ?").bind(keysIn(b.giftStyle, GIFT_STYLES), me.id).run();
+    }
+    if (b.colors !== undefined) {
+      await env.DB.prepare("UPDATE members SET colors = ? WHERE id = ?").bind(keysIn(b.colors, FAV_COLORS), me.id).run();
+    }
+    if (b.loves !== undefined) {
+      await env.DB.prepare("UPDATE members SET loves = ? WHERE id = ?").bind(text(b.loves, LIMITS.loves, "Little things you love") || null, me.id).run();
     }
     if (b.pin !== undefined) {
       const pin = pinValue(b.pin);
