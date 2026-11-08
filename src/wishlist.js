@@ -12,18 +12,24 @@
 //   - You only see lists of people who share a group with you.
 //   - Nicknames ("Grandma" for "Jane Doe") are private to whoever set them. Every name in a response is
 //     already swapped for the viewer's nickname; fullName is sent alongside where the UI needs it.
+//   - Gift card gifts ("I'm giving one") are never returned to the person they're for. Any number of people
+//     can give the same brand, so gift cards never show as taken.
 //   - A person can be in several families. An item hidden from a family (item_hidden) is never shown through
 //     that family: you see it only if you share some other family with the owner where it isn't hidden.
 import { json, callGemini } from "./gemini.js";
 import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost, cleanBrandDomain } from "./stores.js";
+// Sets globalThis.GIFT_CARDS. Shared with the app, so both sides use the same brand list.
+import "../public/giftcards.js";
 
 const BASE = "/api/";
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
 const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
-const LIMITS = { nickname: 40, name: 40, size: 30, avoid: 300, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
-const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "giftcards", "other"]);
+const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
+// Gift card brands: key -> name.
+const GIFT_CARD_NAMES = new Map(globalThis.GIFT_CARDS.map((g) => [g.key, g.name]));
 
 // ---------- helpers ----------
 
@@ -235,7 +241,16 @@ function profileOut(row) {
     birthYear: row?.birthday ? row?.birth_year || null : null,
     sizes: Object.fromEntries(SIZE_KEYS.map((k) => [k, typeof sizes[k] === "string" ? sizes[k] : ""])),
     avoid: row?.avoid || "",
+    brands: brandsOut(row?.brands),
   };
+}
+function brandsOut(v) {
+  try {
+    const a = JSON.parse(v || "[]");
+    return Array.isArray(a) ? a.filter((x) => typeof x === "string" && x) : [];
+  } catch {
+    return [];
+  }
 }
 async function profileOf(env, memberId) {
   return profileOut(await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first());
@@ -304,6 +319,31 @@ export async function inviteInfo(env, code, fromId) {
     inviter = row?.name || null;
   }
   return { group, inviter };
+}
+
+// Someone's gift cards as another person sees them: the brands they picked, plus any brand you're
+// giving them for an upcoming occasion that they've since removed (flagged "removed").
+// mine: your gifts for upcoming occasions, [{ occasion, amount_cents }]. others: how many other people
+// are giving that brand for an upcoming occasion. Gifts reset after their occasion; brands stay.
+async function giftCardsFor(env, memberId, meId) {
+  const t = today();
+  const [{ results: cards }, { results: gifts }] = await Promise.all([
+    env.DB.prepare("SELECT brand, created_at FROM gift_cards WHERE member_id = ? ORDER BY created_at, brand").bind(memberId).all(),
+    env.DB.prepare("SELECT brand, season, buyer_id, amount_cents FROM gift_card_gifts WHERE member_id = ? AND season >= ? ORDER BY season")
+      .bind(memberId, t)
+      .all(),
+  ]);
+  const picked = new Set(cards.map((c) => c.brand));
+  const extra = new Set(gifts.filter((g) => g.buyer_id === meId && !picked.has(g.brand)).map((g) => g.brand));
+  return [...cards.map((c) => c.brand), ...extra].filter((b) => GIFT_CARD_NAMES.has(b)).map((brand) => {
+    const forBrand = gifts.filter((g) => g.brand === brand);
+    return {
+      brand,
+      removed: !picked.has(brand),
+      mine: forBrand.filter((g) => g.buyer_id === meId).map((g) => ({ occasion: g.season, amount_cents: g.amount_cents })),
+      others: new Set(forBrand.filter((g) => g.buyer_id !== meId).map((g) => g.buyer_id)).size,
+    };
+  });
 }
 
 const itemOut = (r) => ({
@@ -791,6 +831,9 @@ const handlers = {
       )
         .bind(me.id)
         .all();
+      const { results: cards } = await env.DB.prepare("SELECT brand FROM gift_cards WHERE member_id = ? ORDER BY created_at, brand")
+        .bind(me.id)
+        .all();
       return {
         member,
         own,
@@ -798,6 +841,8 @@ const handlers = {
           ...itemOut(r),
           hiddenFrom: hidden.filter((h) => h.item_id === r.id).map((h) => h.group_id),
         })),
+        // Just the brands. Who is giving one never comes back to the owner.
+        giftCards: cards.filter((c) => GIFT_CARD_NAMES.has(c.brand)).map((c) => ({ brand: c.brand })),
       };
     }
 
@@ -825,6 +870,7 @@ const handlers = {
     return {
       member,
       own,
+      giftCards: await giftCardsFor(env, memberId, me.id),
       items: results.map((r) => ({
         ...itemOut(r),
         removed: !!r.removed_at,
@@ -964,6 +1010,67 @@ const handlers = {
           env.DB.prepare("DELETE FROM items WHERE id = ?").bind(itemId),
         ]);
       }
+    }
+    return { ok: true };
+  },
+
+  // Replace your gift card brands with this set (keys from public/giftcards.js). No other details.
+  // Removing a brand someone is already giving keeps their gift (they see it flagged "removed").
+  async "POST giftcards/save"(req, env) {
+    const me = await auth(req, env);
+    const { brands } = await body(req);
+    if (!Array.isArray(brands)) fail(400, "Pick some gift cards.");
+    const keys = [...new Set(brands.map(String))].filter((k) => GIFT_CARD_NAMES.has(k));
+    if (keys.length > LIMITS.giftCards) fail(400, "That's more gift cards than we can show.");
+    const t = now();
+    const marks = keys.map(() => "?").join(", ");
+    await env.DB.batch([
+      keys.length
+        ? env.DB.prepare(`DELETE FROM gift_cards WHERE member_id = ? AND brand NOT IN (${marks})`).bind(me.id, ...keys)
+        : env.DB.prepare("DELETE FROM gift_cards WHERE member_id = ?").bind(me.id),
+      // Keeps the original date for brands already there, so the order on the list stays put.
+      ...keys.map((k) => env.DB.prepare("INSERT OR IGNORE INTO gift_cards (member_id, brand, created_at) VALUES (?, ?, ?)").bind(me.id, k, t)),
+    ]);
+    return { ok: true, brands: keys };
+  },
+
+  // Give (on: true) or stop giving a gift card to someone, for one of their occasions (occasion: YYYYMMDD
+  // of their Christmas or birthday; absent = the soonest). amount: optional, what you're putting on it.
+  // Marking again with a new amount updates it. Never limited: everyone can give the same brand.
+  // Stopping with no occasion takes back all your upcoming gifts of that brand for them.
+  async "POST giftcard/give"(req, env) {
+    const me = await auth(req, env);
+    const { memberId, brand, on, amount, occasion } = await body(req);
+    const key = String(brand || "");
+    if (!GIFT_CARD_NAMES.has(key)) fail(404, "Gift card not found.");
+    if (!memberId || memberId === me.id) fail(400, "You can't give yourself a gift card.");
+    if (!(await sharesGroup(env, me.id, memberId))) fail(404, "List not found.");
+    const mineAt = (s) =>
+      env.DB.prepare("SELECT 1 FROM gift_card_gifts WHERE member_id = ? AND brand = ? AND season = ? AND buyer_id = ?").bind(memberId, key, s, me.id).first();
+    if (on) {
+      const paid = cents(amount);
+      const s = await pickOccasion(env, memberId, occasion);
+      if (await mineAt(s)) {
+        await env.DB.prepare("UPDATE gift_card_gifts SET amount_cents = ? WHERE member_id = ? AND brand = ? AND season = ? AND buyer_id = ?")
+          .bind(paid, memberId, key, s, me.id)
+          .run();
+      } else {
+        const listed = await env.DB.prepare("SELECT 1 FROM gift_cards WHERE member_id = ? AND brand = ?").bind(memberId, key).first();
+        if (!listed) fail(400, "This gift card was removed from the list.");
+        await env.DB.prepare(
+          "INSERT INTO gift_card_gifts (member_id, brand, season, buyer_id, amount_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+          .bind(memberId, key, s, me.id, paid, now())
+          .run();
+      }
+    } else if (occasion !== undefined && occasion !== null && occasion !== "") {
+      await env.DB.prepare("DELETE FROM gift_card_gifts WHERE member_id = ? AND brand = ? AND season = ? AND buyer_id = ?")
+        .bind(memberId, key, Number(occasion), me.id)
+        .run();
+    } else {
+      await env.DB.prepare("DELETE FROM gift_card_gifts WHERE member_id = ? AND brand = ? AND buyer_id = ? AND season >= ?")
+        .bind(memberId, key, me.id, today())
+        .run();
     }
     return { ok: true };
   },
@@ -1138,7 +1245,7 @@ const handlers = {
   async "GET tracker"(req, env) {
     const me = await auth(req, env);
     const t = today();
-    const [people, budgets, itemBuys, ideaBuys, ideas] = await Promise.all([
+    const [people, budgets, itemBuys, ideaBuys, ideas, cardGifts] = await Promise.all([
       env.DB.prepare(
         `SELECT DISTINCT m.id, m.name, m.photo_at, m.birthday, m.birth_year FROM group_members gm JOIN members m ON m.id = gm.member_id
           WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ?
@@ -1156,6 +1263,9 @@ const handlers = {
           WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
       ).bind(me.id, t).all(),
       env.DB.prepare(`${IDEA_SELECT} WHERE p.author_id = ? AND c.buyer_id IS NULL ORDER BY p.updated_at DESC`).bind(t, me.id).all(),
+      env.DB.prepare(
+        "SELECT member_id AS subject_id, brand, season, amount_cents, created_at FROM gift_card_gifts WHERE buyer_id = ? AND season >= ? ORDER BY created_at",
+      ).bind(me.id, t).all(),
     ]);
     const nicks = await nicknamesFor(env, me.id);
     const purchase = (kind) => (r) => ({
@@ -1171,7 +1281,22 @@ const handlers = {
       date: r.created_at,
       from: kind === "item" ? "Their list" : r.author_id === me.id ? "My idea" : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
     });
-    const purchases = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea"))];
+    const cardBuy = (r) => ({
+      kind: "giftcard",
+      id: r.brand,
+      brand: r.brand,
+      subject_id: r.subject_id,
+      occasion: r.season,
+      title: `${GIFT_CARD_NAMES.get(r.brand) || "Gift"} gift card`,
+      url: null,
+      list_cents: null,
+      paid_cents: r.amount_cents,
+      spent_cents: r.amount_cents ?? 0,
+      date: r.created_at,
+      from: "Gift card",
+    });
+    const purchases = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea")), ...cardGifts.results.map(cardBuy)]
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     return {
       today: t,
       people: people.results.map((p) => {
@@ -1270,7 +1395,8 @@ const handlers = {
 
   // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
-  // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text. Absent = unchanged.
+  // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text.
+  // brands: favorite brand names (free text). Absent = unchanged.
   async "POST profile"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
@@ -1301,6 +1427,7 @@ const handlers = {
           env.DB.prepare("DELETE FROM budgets WHERE subject_id = ? AND season = ?").bind(me.id, oldBday),
           env.DB.prepare("UPDATE OR IGNORE claims SET season = ? WHERE season = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(newCode, oldBday, me.id),
           env.DB.prepare("UPDATE OR IGNORE idea_claims SET season = ? WHERE season = ? AND idea_id IN (SELECT id FROM private_ideas WHERE subject_id = ?)").bind(newCode, oldBday, me.id),
+          env.DB.prepare("UPDATE OR IGNORE gift_card_gifts SET season = ? WHERE member_id = ? AND season = ?").bind(newCode, me.id, oldBday),
         );
       }
       await env.DB.batch(rows);
@@ -1312,6 +1439,15 @@ const handlers = {
     }
     if (b.avoid !== undefined) {
       await env.DB.prepare("UPDATE members SET avoid = ? WHERE id = ?").bind(text(b.avoid, LIMITS.avoid, "Dislikes and allergies"), me.id).run();
+    }
+    if (b.brands !== undefined) {
+      const seen = new Set(), brands = [];
+      for (const v of Array.isArray(b.brands) ? b.brands : []) {
+        const name = text(typeof v === "string" ? v.replace(/\s+/g, " ") : "", LIMITS.brand, "Brand name");
+        if (name && !seen.has(name.toLowerCase())) { seen.add(name.toLowerCase()); brands.push(name); }
+      }
+      if (brands.length > LIMITS.brands) fail(400, `That's a lot of brands. Keep it to ${LIMITS.brands}.`);
+      await env.DB.prepare("UPDATE members SET brands = ? WHERE id = ?").bind(brands.length ? JSON.stringify(brands) : null, me.id).run();
     }
     if (b.pin !== undefined) {
       const pin = pinValue(b.pin);
