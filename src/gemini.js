@@ -1,10 +1,13 @@
 // Gemini helper (used by photo search). Copied from personal-tools.
 
-// Calls Gemini for structured JSON. Retries once on temporary errors. Returns { data } or { error: Response }.
-export async function callGemini(env, system, parts, schema, timeoutMs, model = env.GEMINI_MODEL || "gemini-3.5-flash-lite") {
+// Calls Gemini for structured JSON. Retries once on temporary errors.
+// Returns { data, grounding } or { error: Response, status }. `tools` turns on built-in tools such as
+// [{ google_search: {} }]; `grounding` is then the response's groundingMetadata (may be empty).
+export async function callGemini(env, system, parts, schema, timeoutMs, model = env.GEMINI_MODEL || "gemini-3.5-flash-lite", tools = null) {
   const requestBody = JSON.stringify({
     system_instruction: { parts: [{ text: system }] },
     contents: [{ role: "user", parts }],
+    ...(tools ? { tools } : {}),
     generationConfig: { responseMimeType: "application/json", responseSchema: schema },
   });
   let apiRes, data;
@@ -29,14 +32,14 @@ export async function callGemini(env, system, parts, schema, timeoutMs, model = 
         : apiRes.status === 429 ? "Hit the usage limit. Wait a minute and try again."
         : apiRes.status === 503 || apiRes.status === 504 ? "The AI is busy or slow right now. Try again in a moment."
         : "The AI request failed.";
-    return { error: json({ error: friendly, detail: `${apiRes.status}: ${msg}` }, 502) };
+    return { error: json({ error: friendly, detail: `${apiRes.status}: ${msg}` }, 502), status: apiRes.status };
   }
   const text = (data?.candidates?.[0]?.content?.parts || [])
     .filter((p) => typeof p.text === "string" && !p.thought)
     .map((p) => p.text)
     .join("");
   try {
-    return { data: JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")) };
+    return { data: JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")), grounding: data?.candidates?.[0]?.groundingMetadata || {} };
   } catch {
     return { error: json({ error: "The AI returned something unexpected. Try again.", detail: text.slice(0, 500) }, 502) };
   }

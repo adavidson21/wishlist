@@ -15,6 +15,7 @@
 //   - A person can be in several families. An item hidden from a family (item_hidden) is never shown through
 //     that family: you see it only if you share some other family with the owner where it isn't hidden.
 import { json, callGemini } from "./gemini.js";
+import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost, cleanBrandDomain } from "./stores.js";
 
 const BASE = "/api/";
 const LIMITS = { nickname: 40, name: 40, group: 60, title: 200, url: 2000, notes: 1000 };
@@ -323,26 +324,33 @@ function titleFromPath(u) {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-async function previewLink(env, rawUrl) {
-  const url = new URL(link(rawUrl) || fail(400, "Paste a link first."));
-  const host = url.hostname;
-  let html = "";
-  let finalUrl = url;
+// Fetches a page like a browser would. Returns the final URL after redirects and the HTML ("" if blocked or not HTML).
+async function readPage(url, timeoutMs = 7000) {
+  let html = "", finalUrl = url, status = 0;
   try {
     const res = await fetch(url, {
       redirect: "follow",
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
         accept: "text/html,application/xhtml+xml",
         "accept-language": "en-US,en;q=0.9",
       },
     });
+    status = res.status;
     finalUrl = new URL(res.url || url);
     if (res.ok && /html/i.test(res.headers.get("content-type") || "")) html = (await res.text()).slice(0, 1_500_000);
   } catch {
-    // Unreachable or slow: fall through to the URL-based guess.
+    // Unreachable or slow: html stays empty.
   }
+  return { html, finalUrl, status };
+}
+
+const BOT_PAGE = /robot check|captcha|access denied|just a moment|attention required|page not found|^amazon\.com$/i;
+
+async function previewLink(env, rawUrl) {
+  const url = new URL(link(rawUrl) || fail(400, "Paste a link first."));
+  const { html, finalUrl } = await readPage(url);
 
   let title = null, price = null, siteName = null;
   if (html) {
@@ -356,7 +364,7 @@ async function previewLink(env, rawUrl) {
       ?? toPrice(meta(html, "product:price:amount", "og:price:amount", "price", "twitter:data1"))
       ?? toPrice(html.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]); // Amazon
     // Captcha and bot-check pages have useless titles.
-    if (/robot check|captcha|access denied|just a moment|attention required|page not found|^amazon\.com$/i.test(title || "")) title = null;
+    if (BOT_PAGE.test(title || "")) title = null;
   }
 
   title = cleanTitle(title, finalUrl.hostname, siteName) || titleFromPath(finalUrl) || titleFromPath(url);
@@ -369,11 +377,19 @@ const IDENTIFY_PROMPT = `You help someone add an item to a gift wish list from a
 Look at the main product in the photo and suggest up to 4 specific products it could be, most likely first.
 Read any visible brand names, logos, labels, or model numbers. Prefer exact brand and model when you can tell;
 otherwise give a clear generic name a shopper would search for (for example "Women's grey knit cardigan").
+Then use Google Search to find where each one is sold new by a legitimate seller.
 For each suggestion give:
 - title: a short shopping name, under 70 characters, brand first when known
 - detail: one short line on how it differs from the others (color, size, model, version)
-- search: the words to type into a shopping search to find it
+- search: the words to type into a store's search box to find it
 - price_low and price_high: a typical new retail price range in US dollars, or null if you have no idea
+- brand_domain: the domain of the brand's own official online store (for example "nike.com"), or "" if unknown or the brand has none
+- links: up to 3 product page URLs for this item that appeared in your search results, best first. Only use
+  1) the brand's official site, 2) these retailers: ${PROMPT_STORE_LIST}, 3) amazon.com.
+  Never use marketplaces, resellers, or used sellers (eBay, Etsy, Poshmark, Mercari, Temu, AliExpress, Shein, StockX).
+  Copy each URL exactly as found. Never guess or build a URL. Product pages only, not search or category pages.
+  Use an empty list if you found none.
+- store: of the retailers above (or amazon), the one most likely to carry it, used to search if no link works
 If the photo has no product in it, return an empty list.`;
 
 const IDENTIFY_SCHEMA = {
@@ -389,13 +405,98 @@ const IDENTIFY_SCHEMA = {
           search: { type: "string" },
           price_low: { type: "number", nullable: true },
           price_high: { type: "number", nullable: true },
+          brand_domain: { type: "string" },
+          links: { type: "array", items: { type: "string" } },
+          store: { type: "string", enum: STORE_KEYS },
         },
-        required: ["title", "detail", "search", "price_low", "price_high"],
+        required: ["title", "detail", "search", "price_low", "price_high", "brand_domain", "links", "store"],
       },
     },
   },
   required: ["suggestions"],
 };
+
+// Host plus path, for comparing a URL the AI wrote with one Google Search actually returned.
+const urlKey = (u) => {
+  try {
+    const x = new URL(u);
+    return (x.hostname.replace(/^www\./, "") + x.pathname.replace(/\/+$/, "")).toLowerCase();
+  } catch { return ""; }
+};
+
+// Google Search grounding returns its sources as redirect links. Follow each once to learn the real URL.
+async function resolveRedirect(uri) {
+  try {
+    const res = await fetch(uri, { redirect: "manual", signal: AbortSignal.timeout(4000) });
+    return res.headers.get("location") || uri;
+  } catch { return uri; }
+}
+
+async function groundedUrls(grounding) {
+  const uris = (grounding?.groundingChunks || []).map((c) => c?.web?.uri).filter(Boolean).slice(0, 15);
+  const real = await Promise.all(uris.map((u) => (/vertexaisearch\.cloud\.google\.com/.test(u) ? resolveRedirect(u) : u)));
+  return new Set(real.map(urlKey).filter(Boolean));
+}
+
+// Does this page look like a single product (not a search, category, or home page)?
+function looksLikeProduct(html, url) {
+  if (url.pathname === "/" || /\/(search|s|sr|keyword\.php|searchpage\.jsp)$/i.test(url.pathname)) return false;
+  return !!(jsonLdProduct(html).title || /^product/i.test(meta(html, "og:type") || "") || meta(html, "product:price:amount")
+    || /id=["']productTitle["']/i.test(html));
+}
+
+// Amazon only counts as a trusted store when the page shows Amazon itself shipping and selling it.
+const soldByAmazon = (html) =>
+  /Ships from[\s\S]{0,400}?>\s*Amazon(?:\.com)?\s*</i.test(html) && /Sold by[\s\S]{0,400}?>\s*Amazon(?:\.com)?\s*</i.test(html);
+
+// Rank: 0 brand site, 1 retailer (or Amazon selling it itself), 2 Amazon with an unknown seller. null = not allowed.
+function tierFor(host, brandDomain, html) {
+  if (isBlocked(host)) return null;
+  if (isBrandHost(host, brandDomain)) return 0;
+  const store = storeFor(host);
+  if (!store) return null;
+  if (store !== "amazon") return 1;
+  return html && soldByAmazon(html) ? 1 : 2;
+}
+
+// Checks one URL the AI offered. Accepts it if the page loads as a product on an allowed store, or if a store
+// blocked us but Google Search really returned that exact URL. Returns null to drop it.
+async function checkLink(raw, brandDomain, grounded) {
+  let url;
+  try { url = new URL(/vertexaisearch\.cloud\.google\.com/.test(raw) ? await resolveRedirect(raw) : raw); } catch { return null; }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (tierFor(url.hostname, brandDomain, "") === null) return null;
+  const { html, finalUrl } = await readPage(url, 6000);
+  const page = html && !BOT_PAGE.test(decode(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])) ? html : "";
+  const tier = tierFor(finalUrl.hostname, brandDomain, page);
+  if (tier === null) return null; // redirected somewhere we don't link to
+  if (page) {
+    if (!looksLikeProduct(page, finalUrl)) return null;
+    const ld = jsonLdProduct(page);
+    const price = ld.price ?? toPrice(meta(page, "product:price:amount", "og:price:amount"))
+      ?? toPrice(page.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]);
+    return { url: finalUrl.toString(), host: finalUrl.hostname, tier, price, verified: true };
+  }
+  // Store blocked the check. Only trust the link if it came straight from Google Search.
+  if (grounded.has(urlKey(url.toString()))) return { url: url.toString(), host: url.hostname, tier, price: null, verified: false };
+  return null;
+}
+
+const storeName = (host, brandDomain) =>
+  isBrandHost(host, brandDomain) ? host.replace(/^www\./, "") : STORES[storeFor(host)]?.name || host.replace(/^www\./, "");
+
+// Picks the best confirmed link for a suggestion, or falls back to a search on the likeliest store.
+async function bestLink(x, grounded) {
+  const brandDomain = cleanBrandDomain(x.brand_domain);
+  const raws = [...new Set((Array.isArray(x.links) ? x.links : []).filter((u) => typeof u === "string").map((u) => u.trim()))].slice(0, 3);
+  const found = (await Promise.all(raws.map((u) => checkLink(u, brandDomain, grounded)))).filter(Boolean);
+  // Best tier first; within a tier, a page we could read beats one we couldn't.
+  found.sort((a, b) => a.tier - b.tier || b.verified - a.verified);
+  const best = found[0];
+  if (best) return { url: best.url, store: storeName(best.host, brandDomain), link: "product", price: best.price };
+  const key = STORES[x.store] ? x.store : "target";
+  return { url: STORES[key].search(x.search || x.title), store: STORES[key].name, link: "search", price: null };
+}
 
 // ---------- handlers ----------
 
@@ -774,7 +875,7 @@ const handlers = {
     return previewLink(env, url);
   },
 
-  // Photo to suggestions: Gemini guesses what the item is. Nothing is stored.
+  // Photo to suggestions: Gemini guesses what the item is and finds a store page for each. Nothing is stored.
   async "POST identify"(req, env) {
     await auth(req, env);
     if (!env.GEMINI_API_KEY) fail(500, "Photo search isn't set up (missing GEMINI_API_KEY).");
@@ -782,20 +883,27 @@ const handlers = {
     const match = typeof image === "string" && image.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
     if (!match) fail(400, "That photo didn't come through. Try again.");
     if (match[2].length > 4_000_000) fail(400, "That photo is too large. Try a smaller one.");
-    const result = await callGemini(env, IDENTIFY_PROMPT, [{ inline_data: { mime_type: match[1], data: match[2] } }], IDENTIFY_SCHEMA, 25000);
+    const photo = [{ inline_data: { mime_type: match[1], data: match[2] } }];
+    // Search grounding finds real store pages. If the model or key can't do it, fall back to a plain guess.
+    let result = await callGemini(env, IDENTIFY_PROMPT, photo, IDENTIFY_SCHEMA, 40000, undefined, [{ google_search: {} }]);
+    if (result.error && result.status !== 429) result = await callGemini(env, IDENTIFY_PROMPT, photo, IDENTIFY_SCHEMA, 25000);
     if (result.error) return result.error;
+    const grounded = await groundedUrls(result.grounding);
     const clean = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
     const dollars = (v) => (typeof v === "number" && v > 0 && v < 100_000 ? Math.round(v) : null);
-    const suggestions = (result.data?.suggestions || [])
-      .map((x) => ({
+    const picked = (result.data?.suggestions || []).filter((x) => clean(x?.title, 1)).slice(0, 4);
+    const suggestions = await Promise.all(picked.map(async (x) => {
+      const search = clean(x.search, 150) || clean(x.title, 150);
+      const where = await bestLink({ ...x, search }, grounded);
+      return {
         title: clean(x.title, LIMITS.title),
         detail: clean(x.detail, 160),
-        search: clean(x.search, 150) || clean(x.title, 150),
+        search,
         price_low: dollars(x.price_low),
         price_high: dollars(x.price_high),
-      }))
-      .filter((x) => x.title)
-      .slice(0, 4);
+        ...where,
+      };
+    }));
     return { suggestions };
   },
 
