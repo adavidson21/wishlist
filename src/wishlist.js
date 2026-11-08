@@ -1,4 +1,6 @@
-// Wishlist API: family wish lists, "purchased" marks hidden from the list owner, and private gift ideas.
+// Wishlist API: shared wish lists, "purchased" marks hidden from the list owner, and private gift ideas.
+// Three layers: people, optional households (a few people who live or gift together), and circles (the
+// `groups` table; the app used to call them families). A circle can include whole households and single people.
 // Binding (wrangler.jsonc): DB (D1 database "wishlist"). Schema: migrations/0001_wishlist.sql.
 //
 // Sign-in is the honor system: a family join code plus picking your name, with an optional 4-digit PIN.
@@ -9,7 +11,8 @@
 //   - Ideas are private to their author unless shared as a suggestion. A shared suggestion is visible to
 //     everyone in the family except the person it's for. The person it's for never gets it in any response.
 //   - Budgets and the spending tracker are only returned to their author.
-//   - You only see lists of people who share a group with you.
+//   - You only see lists of people who share a group (circle) with you. Households are synced into
+//     group_members (direct = 0), so that one table still answers "do these two share a circle?".
 //   - Nicknames ("Grandma" for "Jane Doe") are private to whoever set them. Every name in a response is
 //     already swapped for the viewer's nickname; fullName is sent alongside where the UI needs it.
 //   - Gift card gifts ("I'm giving one") are never returned to the person they're for. Any number of people
@@ -24,7 +27,7 @@ import "../public/giftcards.js";
 const BASE = "/api/";
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
 const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
-const LIMITS = { loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -222,7 +225,7 @@ async function auth(request, env) {
   )
     .bind(token)
     .first();
-  if (!me) fail(401, "Signed out. Join your family again.");
+  if (!me) fail(401, "Signed out. Join your circle again.");
   // Touch last_seen at most once a day to keep writes low.
   await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE token = ? AND last_seen < ?")
     .bind(now(), token, new Date(Date.now() - 86_400_000).toISOString())
@@ -304,19 +307,102 @@ async function myGroupIds(env, memberId) {
   return results.map((r) => r.group_id);
 }
 
+// Joining a circle yourself. If you were already in it through your household, you're now in it on your own too.
+const JOIN_DIRECT =
+  "INSERT INTO group_members (group_id, member_id, joined_at, direct) VALUES (?, ?, ?, 1) ON CONFLICT (group_id, member_id) DO UPDATE SET direct = 1";
+
+// ---------- households ----------
+// A household's display name: the name someone gave it, or its people's first names
+// ("Alexis & Sam", "Jen, Mike & Ella", "Jen, Mike & 3 more"). `people` are display names (nicknames welcome).
+function householdLabel(name, people) {
+  if (name) return name;
+  const first = people.map((p) => String(p || "").trim().split(/\s+/)[0]).filter(Boolean);
+  if (!first.length) return "Household";
+  if (first.length === 1) return `${first[0]}'s household`;
+  if (first.length <= 3) return `${first.slice(0, -1).join(", ")} & ${first.at(-1)}`;
+  return `${first.slice(0, 2).join(", ")} & ${first.length - 2} more`;
+}
+
+async function householdOf(env, memberId) {
+  const row = await env.DB.prepare("SELECT household_id FROM members WHERE id = ?").bind(memberId).first();
+  return row?.household_id || null;
+}
+
+// Signing in picks a name within a circle, so two people with the same name can't share one.
+// Returns the circle name where `memberIds` would clash, or null.
+async function nameClash(env, groupIds, memberIds) {
+  for (const g of groupIds) {
+    for (const m of memberIds) {
+      const row = await env.DB.prepare(
+        `SELECT g.name FROM groups g JOIN group_members gm ON gm.group_id = g.id JOIN members o ON o.id = gm.member_id
+           JOIN members me ON me.id = ?
+          WHERE g.id = ? AND o.id != me.id AND o.name = me.name COLLATE NOCASE LIMIT 1`,
+      ).bind(m, g).first();
+      if (row) return row.name;
+    }
+  }
+  return null;
+}
+
+// Takes someone out of a circle they were in only through their household. If it was their last circle,
+// they stay in it on their own instead, so nobody ends up in no circle at all.
+async function dropViaHousehold(env, memberId, groupId) {
+  const row = await env.DB.prepare("SELECT direct FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, memberId).first();
+  if (!row || row.direct) return [];
+  const others = await env.DB.prepare("SELECT COUNT(*) AS n FROM group_members WHERE member_id = ? AND group_id != ?").bind(memberId, groupId).first();
+  if (!others.n) return [env.DB.prepare("UPDATE group_members SET direct = 1 WHERE group_id = ? AND member_id = ?").bind(groupId, memberId)];
+  return [
+    env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(groupId, memberId),
+    env.DB.prepare("DELETE FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, memberId),
+  ];
+}
+
+// Someone leaves their household (or is taken out of it): they drop out of the circles they were in only
+// through it, and a household nobody is left in goes away.
+async function leaveHousehold(env, memberId) {
+  const hh = await householdOf(env, memberId);
+  if (!hh) return;
+  const { results } = await env.DB.prepare(
+    "SELECT gm.group_id FROM group_members gm JOIN group_households gh ON gh.group_id = gm.group_id WHERE gm.member_id = ? AND gh.household_id = ? AND gm.direct = 0",
+  ).bind(memberId, hh).all();
+  const rows = [];
+  // One at a time, so "last circle" is judged after the ones before it are gone.
+  let left = (await env.DB.prepare("SELECT COUNT(*) AS n FROM group_members WHERE member_id = ?").bind(memberId).first()).n;
+  for (const r of results) {
+    if (left > 1) {
+      rows.push(
+        env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(r.group_id, memberId),
+        env.DB.prepare("DELETE FROM group_members WHERE group_id = ? AND member_id = ?").bind(r.group_id, memberId),
+      );
+      left--;
+    } else {
+      rows.push(env.DB.prepare("UPDATE group_members SET direct = 1 WHERE group_id = ? AND member_id = ?").bind(r.group_id, memberId));
+    }
+  }
+  rows.push(env.DB.prepare("UPDATE members SET household_id = NULL WHERE id = ?").bind(memberId));
+  await env.DB.batch(rows);
+  const still = await env.DB.prepare("SELECT 1 FROM members WHERE household_id = ? LIMIT 1").bind(hh).first();
+  if (!still) {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM group_households WHERE household_id = ?").bind(hh),
+      env.DB.prepare("DELETE FROM households WHERE id = ?").bind(hh),
+    ]);
+  }
+}
+
 async function newUniqueJoinCode(env) {
   for (let i = 0; i < 5; i++) {
     const c = newJoinCode();
     if (!(await env.DB.prepare("SELECT 1 FROM groups WHERE join_code = ?").bind(c).first())) return c;
   }
-  fail(500, "Couldn't make a family code. Try again.");
+  fail(500, "Couldn't make an invite code. Try again.");
 }
 
 async function groupByCode(env, code) {
   const c = String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (!c) fail(400, "Enter your family code.");
+  if (!c) fail(400, "Enter your invite code.");
   const group = await env.DB.prepare("SELECT id, name, join_code FROM groups WHERE join_code = ?").bind(c).first();
-  if (!group) fail(404, "No family found with that code. Check it and try again.");
+  if (!group) fail(404, "No circle found with that code. Check it and try again.");
   return group;
 }
 
@@ -736,7 +822,7 @@ const handlers = {
       )
         .bind(group.id, b.memberId)
         .first();
-      if (!member) fail(404, "That person isn't in this family.");
+      if (!member) fail(404, "That person isn't in this circle.");
     } else {
       const name = text(b.name, LIMITS.name, "Name", true);
       member = await env.DB.prepare(
@@ -755,7 +841,7 @@ const handlers = {
             pin ? await hashPin(id, pin) : null,
             t,
           ),
-          env.DB.prepare("INSERT INTO group_members (group_id, member_id, joined_at) VALUES (?, ?, ?)").bind(group.id, id, t),
+          env.DB.prepare(JOIN_DIRECT).bind(group.id, id, t),
         ]);
         return { token: await signIn(env, id) };
       }
@@ -770,7 +856,7 @@ const handlers = {
   // Start a new family: creates the group, its join code, and you as its first member.
   async "POST start"(req, env) {
     const b = await body(req);
-    const groupName = text(b.groupName, LIMITS.group, "Family name", true);
+    const groupName = text(b.groupName, LIMITS.group, "Circle name", true);
     const name = text(b.name, LIMITS.name, "Your name", true);
     const pin = pinValue(b.pin);
     const groupId = newId();
@@ -785,7 +871,7 @@ const handlers = {
         pin ? await hashPin(memberId, pin) : null,
         t,
       ),
-      env.DB.prepare("INSERT INTO group_members (group_id, member_id, joined_at) VALUES (?, ?, ?)").bind(groupId, memberId, t),
+      env.DB.prepare(JOIN_DIRECT).bind(groupId, memberId, t),
     ]);
     return { token: await signIn(env, memberId) };
   },
@@ -799,7 +885,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year,
+      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -812,11 +898,49 @@ const handlers = {
     const t = today();
     const person = (p) => ({
       id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null,
-      occasions: occasionsFor(p, t),
+      occasions: occasionsFor(p, t), householdId: p.household_id || null,
     });
+    // Households of anyone you can see. Labels use only people you can see (and your nicknames for them),
+    // except your own household, which lists everyone in it.
+    const myHh = await householdOf(env, me.id);
+    const hhIds = [...new Set(people.map((p) => p.household_id).filter(Boolean))];
+    if (myHh && !hhIds.includes(myHh)) hhIds.push(myHh);
+    const households = {};
+    let myHousehold = null;
+    if (hhIds.length) {
+      const marks = hhIds.map(() => "?").join(",");
+      const [{ results: hhRows }, { results: inCircles }, { results: myPeople }] = await Promise.all([
+        env.DB.prepare(`SELECT id, name FROM households WHERE id IN (${marks})`).bind(...hhIds).all(),
+        env.DB.prepare(`SELECT group_id, household_id FROM group_households WHERE household_id IN (${marks})`).bind(...hhIds).all(),
+        myHh
+          ? env.DB.prepare("SELECT id, name, photo_at FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(myHh).all()
+          : Promise.resolve({ results: [] }),
+      ]);
+      const seen = new Map();
+      for (const p of people) if (p.household_id) seen.set(p.id, p);
+      for (const h of hhRows) {
+        const list = (h.id === myHh ? myPeople : [...seen.values()].filter((p) => p.household_id === h.id)).slice().sort(byName);
+        households[h.id] = {
+          id: h.id,
+          label: householdLabel(h.name, list.map((p) => (p.id === me.id ? me.name : nicks.get(p.id) || p.name))),
+          circles: inCircles.filter((c) => c.household_id === h.id).map((c) => c.group_id),
+        };
+        if (h.id === myHh) {
+          myHousehold = {
+            ...households[h.id],
+            name: h.name || null,
+            members: list.map((p) => ({ id: p.id, name: p.id === me.id ? me.name : nicks.get(p.id) || p.name, photo: p.photo_at || null })),
+          };
+        }
+      }
+    }
     return {
-      me: { id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || null, profile: await profileOf(env, me.id) },
+      me: {
+        id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || null,
+        profile: await profileOf(env, me.id), household: myHousehold,
+      },
       today: t,
+      households,
       groups: groups.map((g) => ({
         id: g.id,
         name: g.name,
@@ -1372,28 +1496,34 @@ const handlers = {
   async "POST family/join"(req, env) {
     const me = await auth(req, env);
     const group = await groupByCode(env, (await body(req)).code);
-    if ((await myGroupIds(env, me.id)).includes(group.id)) fail(409, `You're already in ${group.name}.`);
+    const already = await env.DB.prepare("SELECT direct FROM group_members WHERE group_id = ? AND member_id = ?").bind(group.id, me.id).first();
+    if (already?.direct) fail(409, `You're already in ${group.name}.`);
+    if (already) {
+      // In it through your household: joining yourself means you stay even if you leave the household.
+      await env.DB.prepare("UPDATE group_members SET direct = 1 WHERE group_id = ? AND member_id = ?").bind(group.id, me.id).run();
+      return { group: { id: group.id, name: group.name } };
+    }
     // Signing in by name picks the first match, so two people with the same name in one family would clash.
     const clash = await env.DB.prepare(
       "SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
     )
       .bind(group.id, me.name)
       .first();
-    if (clash) fail(409, `Someone named ${me.name} is already in ${group.name}. Change your name above (for example, add a last initial), then join.`);
-    await env.DB.prepare("INSERT INTO group_members (group_id, member_id, joined_at) VALUES (?, ?, ?)").bind(group.id, me.id, now()).run();
+    if (clash) fail(409, `Someone named ${me.name} is already in ${group.name}. Change your name in Settings (for example, add a last initial), then join.`);
+    await env.DB.prepare(JOIN_DIRECT).bind(group.id, me.id, now()).run();
     return { group: { id: group.id, name: group.name } };
   },
 
   // Start another family while signed in.
   async "POST family/start"(req, env) {
     const me = await auth(req, env);
-    const name = text((await body(req)).groupName, LIMITS.group, "Family name", true);
+    const name = text((await body(req)).groupName, LIMITS.group, "Circle name", true);
     const id = newId();
     const t = now();
     const code = await newUniqueJoinCode(env);
     await env.DB.batch([
       env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at) VALUES (?, ?, ?, ?)").bind(id, name, code, t),
-      env.DB.prepare("INSERT INTO group_members (group_id, member_id, joined_at) VALUES (?, ?, ?)").bind(id, me.id, t),
+      env.DB.prepare(JOIN_DIRECT).bind(id, me.id, t),
     ]);
     return { group: { id, name, code } };
   },
@@ -1403,12 +1533,98 @@ const handlers = {
     const me = await auth(req, env);
     const { groupId } = await body(req);
     const mine = await myGroupIds(env, me.id);
-    if (!mine.includes(groupId)) fail(404, "Family not found.");
-    if (mine.length < 2) fail(400, "You can't leave your only family.");
+    if (!mine.includes(groupId)) fail(404, "Circle not found.");
+    if (mine.length < 2) fail(400, "You can't leave your only circle.");
+    const viaHousehold = await env.DB.prepare(
+      "SELECT 1 FROM group_households gh JOIN members m ON m.household_id = gh.household_id WHERE gh.group_id = ? AND m.id = ?",
+    ).bind(groupId, me.id).first();
+    if (viaHousehold) fail(409, "Your whole household is in this circle. Take your household out of it in Settings, or leave your household first.");
     await env.DB.batch([
       env.DB.prepare("DELETE FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, me.id),
       env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(groupId, me.id),
     ]);
+    return { ok: true };
+  },
+
+  // ---------- households ----------
+  // Add someone you share a circle with to your household (starting one if you don't have one yet).
+  // They join every circle your household is in. Honor system, like the rest of sign-in.
+  async "POST household/add"(req, env) {
+    const me = await auth(req, env);
+    const { memberId } = await body(req);
+    if (!memberId || memberId === me.id) fail(400, "Pick someone to add.");
+    if (!(await sharesGroup(env, me.id, memberId))) fail(404, "Person not found.");
+    const them = await env.DB.prepare("SELECT name, household_id FROM members WHERE id = ?").bind(memberId).first();
+    if (!them) fail(404, "Person not found.");
+    let hh = await householdOf(env, me.id);
+    if (them.household_id && them.household_id === hh) fail(409, `${them.name} is already in your household.`);
+    if (them.household_id) fail(409, `${them.name} is already in another household. They can leave it in Settings first.`);
+    const t = now();
+    if (!hh) {
+      hh = newId();
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, NULL, ?)").bind(hh, t),
+        env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, me.id),
+      ]);
+    }
+    const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all();
+    const clash = await nameClash(env, results.map((r) => r.group_id), [memberId]);
+    if (clash) fail(409, `Someone named ${them.name} is already in ${clash}, which your household is in. One of them can add a last initial first.`);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, memberId),
+      env.DB.prepare(
+        "INSERT INTO group_members (group_id, member_id, joined_at, direct) SELECT group_id, ?, ?, 0 FROM group_households WHERE household_id = ? ON CONFLICT DO NOTHING",
+      ).bind(memberId, t, hh),
+    ]);
+    return { ok: true };
+  },
+
+  // Take someone out of your household, or yourself (leave it). They drop out of circles they were only in
+  // through the household.
+  async "POST household/remove"(req, env) {
+    const me = await auth(req, env);
+    const memberId = (await body(req)).memberId || me.id;
+    const hh = await householdOf(env, me.id);
+    if (!hh || (await householdOf(env, memberId)) !== hh) fail(404, "They aren't in your household.");
+    await leaveHousehold(env, memberId);
+    return { ok: true };
+  },
+
+  // Name your household. "" goes back to the automatic name from its people.
+  async "POST household/rename"(req, env) {
+    const me = await auth(req, env);
+    const hh = await householdOf(env, me.id);
+    if (!hh) fail(404, "You're not in a household.");
+    const name = text((await body(req)).name, LIMITS.household, "Household name");
+    await env.DB.prepare("UPDATE households SET name = ? WHERE id = ?").bind(name, hh).run();
+    return { ok: true };
+  },
+
+  // Put your whole household in one of your circles (on), or take it out (off). In: everyone in it, including
+  // people added later. Out: people who were only there through the household leave that circle.
+  async "POST household/circle"(req, env) {
+    const me = await auth(req, env);
+    const { groupId, on } = await body(req);
+    const hh = await householdOf(env, me.id);
+    if (!hh) fail(404, "You're not in a household.");
+    if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    const { results: ppl } = await env.DB.prepare("SELECT id FROM members WHERE household_id = ?").bind(hh).all();
+    const ids = ppl.map((p) => p.id);
+    const t = now();
+    if (on) {
+      const clash = await nameClash(env, [groupId], ids);
+      if (clash) fail(409, `Someone in your household has the same name as someone already in ${clash}. One of them can add a last initial first.`);
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(groupId, hh, t),
+        ...ids.map((id) => env.DB.prepare(
+          "INSERT INTO group_members (group_id, member_id, joined_at, direct) VALUES (?, ?, ?, 0) ON CONFLICT DO NOTHING",
+        ).bind(groupId, id, t)),
+      ]);
+    } else {
+      const rows = [env.DB.prepare("DELETE FROM group_households WHERE group_id = ? AND household_id = ?").bind(groupId, hh)];
+      for (const id of ids) rows.push(...(await dropViaHousehold(env, id, groupId)));
+      await env.DB.batch(rows);
+    }
     return { ok: true };
   },
 

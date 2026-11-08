@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wishlist</title>
-<meta name="description" content="Family wish lists: share what you'd like, mark what you're getting, keep private gift notes.">
+<meta name="description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep private gift notes.">
 <!-- Link previews. src/worker.js swaps the title and description for invite links (/join/CODE). -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Wishlist">
 <meta property="og:title" content="Wishlist">
-<meta property="og:description" content="Family wish lists: share what you'd like, mark what you're getting, keep gifts a surprise.">
+<meta property="og:description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.">
 <meta property="og:url" content="https://wishlist.alexisdavidson.org/">
 <meta property="og:image" content="https://wishlist.alexisdavidson.org/og-invite.png">
 <meta property="og:image:width" content="1200">
@@ -17,7 +17,7 @@
 <meta property="og:image:alt" content="You're invited to Wishlist: a gift box on a burgundy card">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Wishlist">
-<meta name="twitter:description" content="Family wish lists: share what you'd like, mark what you're getting, keep gifts a surprise.">
+<meta name="twitter:description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#4A0E22" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#2B0D18" media="(prefers-color-scheme: dark)">
@@ -310,6 +310,19 @@
   .chev { color: var(--faint); flex: none; transition: transform .2s ease; }
   .member:hover .chev { transform: translateX(3px); }
   .invite { display: flex; align-items: center; gap: 12px; }
+  /* Households: their people grouped under one name inside a circle, and the household card in Settings. */
+  .hh { background: var(--panel); border-radius: calc(var(--r) + 4px); padding: 10px; }
+  .hh-name { display: flex; align-items: center; gap: 7px; margin: 2px 6px 10px; font-size: 14px; font-weight: 800; color: var(--muted); }
+  .hh .member + .member { margin-top: 8px; }
+  .hh-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .hh-row:first-of-type { border-top: 0; }
+  .hh-row .avatar { width: 40px; height: 40px; font-size: 17px; }
+  .hh-row strong { flex: 1; min-width: 0; font-size: 17px; overflow-wrap: anywhere; }
+  .hh-row strong small { color: var(--muted); font-weight: 600; font-size: 14px; }
+  .pick-person { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--card); text-align: left; font-weight: 700; font-size: 17px; }
+  .pick-person + .pick-person { margin-top: 8px; }
+  .pick-person:disabled { opacity: .55; }
+  .pick-person small { display: block; color: var(--muted); font-weight: 600; font-size: 14px; }
   .code { font-size: 26px; font-weight: 800; letter-spacing: .14em; }
 
   .back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--brand); font-weight: 700; font-size: 16px;
@@ -505,7 +518,7 @@
   .gc-hero .gc-emoji { font-size: 34px; }
   .about { text-align: center; color: var(--faint); font-size: 13px; margin-top: 22px; }
 
-  /* Bottom tabs: My list, Family, [Add], Budget, Settings */
+  /* Bottom tabs: My list, Circles, [Add], Budget, Settings */
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: color-mix(in srgb, var(--card) 96%, transparent);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line);
     padding: 6px max(4px, env(safe-area-inset-left, 0px)) calc(env(safe-area-inset-bottom, 0px) + 8px); }
@@ -841,7 +854,7 @@
     </button>
     <button class="tab" type="button" data-tab="family">
       <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-      Family
+      Circles
     </button>
     <button class="tab add-tab" type="button" id="addTab">
       <span class="fab"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
@@ -1126,7 +1139,7 @@ function wireForm(form, submit) {
 
 // ---------- state + routing ----------
 // One-shot animation flags: the next render plays them once, then they're cleared.
-const state = { me: null, groups: [], today: null, tab: "mine", person: null, view: null, openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
+const state = { me: null, groups: [], households: {}, today: null, tab: "mine", person: null, view: null, openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
 
 const hashFor = (tab) => (tab === "notes" ? "budget" : tab);
 function setTab(tab, person = null) {
@@ -1158,7 +1171,35 @@ function everyone() {
 }
 const others = () => everyone().filter((m) => m.id !== state.me.id);
 const personName = (id) => everyone().find((m) => m.id === id)?.name || "Someone";
-const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a family";
+const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a circle";
+
+// ---------- households ----------
+// Three layers: people, optional households (people who live or gift together), and circles (the
+// groups you share lists with). A circle can hold whole households and single people.
+const HOME_I = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>';
+const householdLabel = (id) => state.households?.[id]?.label || "Household";
+// The automatic name, same as householdLabel() in src/wishlist.js: "Alexis & Sam", "Jen, Mike & Ella", "Jen, Mike & 3 more".
+function householdAuto(names) {
+  const f = names.map((n) => String(n || "").trim().split(/\s+/)[0]).filter(Boolean);
+  if (!f.length) return "Household";
+  if (f.length === 1) return `${f[0]}'s household`;
+  if (f.length <= 3) return `${f.slice(0, -1).join(", ")} & ${f.at(-1)}`;
+  return `${f.slice(0, 2).join(", ")} & ${f.length - 2} more`;
+}
+// People in a circle, with any household that has 2 or more of them shown as one block under its name.
+function peopleHtml(people, personBtn) {
+  const by = new Map();
+  for (const m of people) if (m.householdId) by.set(m.householdId, [...(by.get(m.householdId) || []), m]);
+  const done = new Set();
+  let i = 0;
+  return people.map((m) => {
+    if (done.has(m.id)) return "";
+    const hh = m.householdId && by.get(m.householdId);
+    if (!hh || hh.length < 2) { done.add(m.id); return personBtn(m, i++); }
+    hh.forEach((x) => done.add(x.id));
+    return `<div class="hh"><div class="hh-name">${HOME_I} ${esc(householdLabel(m.householdId))}</div>${hh.map((x) => personBtn(x, i++)).join("")}</div>`;
+  }).join("");
+}
 
 // ---------- occasions ----------
 // Marks and budgets belong to an occasion: Christmas for everyone, plus a person's birthday if they added
@@ -1201,6 +1242,7 @@ async function refreshMe() {
   const data = await load("me");
   state.me = data.me;
   state.groups = data.groups;
+  state.households = data.households || {};
   for (const g of data.groups) notePhotos(g.members);
   notePhotos([data.me]);
   state.today = data.today;
@@ -1304,7 +1346,7 @@ async function renderWelcome(step = "code", info = {}) {
       <p class="avs-cap">${whoIsHere(res.members)}</p>
       ${perks()}
       <button class="add big shine slide" style="animation-delay:1.65s" type="button" id="joinBtn">Join ${esc(res.group.name)}</button>
-      <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="otherCode">Different family? Enter a code</button></p>`;
+      <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="otherCode">Different circle? Enter a code</button></p>`;
     $("#joinBtn").onclick = () => renderWelcome("who", info);
     $("#otherCode").onclick = () => { invite = null; renderWelcome("code"); };
     return;
@@ -1314,17 +1356,17 @@ async function renderWelcome(step = "code", info = {}) {
   if (step === "badInvite" || step === "code") {
     const bad = step === "badInvite";
     setHero(bad ? envelope(true) + heroTitle("Hmm", "That invite didn't work")
-      : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Family wish lists", "Welcome to Wishlist")}`);
+      : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Wish lists for your people", "Welcome to Wishlist")}`);
     v.innerHTML = `
-      <p class="lead">${bad ? "The link may be old or cut off. Ask whoever sent it for the family code and type it here."
+      <p class="lead">${bad ? "The link may be old or cut off. Ask whoever sent it for the invite code and type it here."
         : "Make your own wish list, see what everyone else would love, and quietly mark what you're getting them."}</p>
       <form class="card" id="codeForm" autocomplete="off">
         <div class="err" hidden></div>
-        <label class="field"><span>Enter your family code</span>
+        <label class="field"><span>Enter your invite code</span>
           <input class="input code-in" name="code" maxlength="8" value="${esc(bad ? "" : invite?.code || "")}" placeholder="ABC234" autocapitalize="characters" required></label>
         <button class="btn primary wide" type="submit">Continue</button>
       </form>
-      <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="startBtn">Start a new family</button></p>`;
+      <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="startBtn">Start a new circle</button></p>`;
     wireForm($("#codeForm"), async ({ code }) => {
       const res = await api("lookup", { code });
       renderWelcome("who", { code, ...res });
@@ -1374,15 +1416,15 @@ async function renderWelcome(step = "code", info = {}) {
   // Your name, with your avatar updating as you type. The PIN comes later, in the welcome tour.
   if (step === "new" || step === "start") {
     const starting = step === "start";
-    setHero(backBtn + heroTitle(starting ? "You'll get a link to share" : `Join ${info.group.name}`, starting ? "Start a new family" : "Nice to meet you"));
+    setHero(backBtn + heroTitle(starting ? "You'll get a link to share" : `Join ${info.group.name}`, starting ? "Start a new circle" : "Nice to meet you"));
     v.innerHTML = `
       <form class="card slide" id="newForm" autocomplete="off">
         <div class="err" hidden></div>
         <div class="name-preview" id="namePrev">${avatar("?", "new", true)}</div>
-        ${starting ? "" : `<p class="hint" style="margin-top:0">Already in another family on Wishlist? Sign in there instead, then join this one from Settings, so you keep one list.</p>`}
-        ${starting ? `<label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>` : ""}
+        ${starting ? "" : `<p class="hint" style="margin-top:0">Already in another circle on Wishlist? Sign in there instead, then join this one from Settings, so you keep one list.</p>`}
+        ${starting ? `<label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>` : ""}
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
-        <button class="btn primary wide" type="submit">${starting ? "Create family" : `Join ${esc(info.group.name)}`}</button>
+        <button class="btn primary wide" type="submit">${starting ? "Create circle" : `Join ${esc(info.group.name)}`}</button>
       </form>`;
     const nameIn = $("#newForm").elements.name;
     let last = "?";
@@ -1442,7 +1484,7 @@ async function offerJoin(inv) {
   openSheet(`
     ${envelope()}
     <h3 style="text-align:center;margin:0 0 6px">Join ${esc(name)}?</h3>
-    <p style="text-align:center">${res.inviter ? `${esc(res.inviter)} invited you. ` : ""}You keep one list for all your families, and you can hide any wish from ${esc(name)} later.</p>
+    <p style="text-align:center">${res.inviter ? `${esc(res.inviter)} invited you. ` : ""}You keep one list for all your circles, and you can hide any wish from ${esc(name)} later.</p>
     ${avatarStack(res.members, true)}
     <p class="avs-cap">${whoIsHere(res.members)}</p>
     <div class="err" hidden></div>
@@ -1555,7 +1597,7 @@ function installHowTo(way) {
   const code = group()?.code;
   const ua = navigator.userAgent;
   const step = (html) => `<li><b></b><span>${html}</span></li>`;
-  const signIn = apple && code ? step(`Open Wishlist from your home screen and sign in once: family code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`) : "";
+  const signIn = apple && code ? step(`Open Wishlist from your home screen and sign in once: invite code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`) : "";
   let title = "Add Wishlist to your home screen", intro = "", steps = [];
   if (way === "ios") {
     intro = "Safari doesn't have an install button, but it's just a few taps:";
@@ -1581,7 +1623,7 @@ function installHowTo(way) {
     steps = [
       step(`Tap ${DOTS} or ${KEBAB} in a corner of this screen.`),
       step(`Choose <strong>Open in ${browser}</strong> (or <strong>Open in browser</strong>).`),
-      step(`Sign in there${code ? ` (family code <strong class="code-inline">${esc(code)}</strong>)` : ""}, then tap <strong>Get the Wishlist app</strong> on My list.`),
+      step(`Sign in there${code ? ` (invite code <strong class="code-inline">${esc(code)}</strong>)` : ""}, then tap <strong>Get the Wishlist app</strong> on My list.`),
     ];
   } else {
     intro = "Use your browser's menu:";
@@ -1631,7 +1673,7 @@ const addScene = () => `<div class="scene"><span class="blob"></span><div class=
     <div class="res">${tile("Cozy slippers", "slip")}<span><strong>Cozy slippers</strong><span class="price-tag">$32</span></span></div>
   </div></div>`;
 const surpriseScene = () => `<div class="scene"><span class="blob"></span><div class="pair">
-    <div class="mini-card"><small>Family sees</small>${tile("Slippers", "slip")}<span class="chk">${CHECK}</span><small style="color:var(--ok)">Getting it</small></div>
+    <div class="mini-card"><small>Others see</small>${tile("Slippers", "slip")}<span class="chk">${CHECK}</span><small style="color:var(--ok)">Getting it</small></div>
     <div class="mini-card"><small>You see</small>${tile("Slippers", "slip")}<span class="eye">${EYE_OFF}</span><small>No spoilers</small></div>
   </div></div>`;
 const privateScene = () => `<div class="scene"><span class="blob"></span><div class="note">
@@ -1666,7 +1708,7 @@ function openTour() {
       extra: iOS ? steps([`Tap Share ${SHARE_IOS} in Safari (on newer iPhones, it's in the ${DOTS} menu)`, `Choose <strong>Add to Home Screen</strong> ${ADD_HOME}`])
         : installPrompt ? '<button class="btn primary" type="button" id="installBtn" style="margin-top:18px">Add to home screen</button>'
         : steps(["Open your browser's menu (the three dots)", "Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>"]) },
-    w.started && group() && { id: "invite", scene: "", title: "Now invite your family", text: "Send them this link. It opens right to your family.",
+    w.started && group() && { id: "invite", scene: "", title: "Now invite your people", text: "Send them this link. It opens right to your circle.",
       extra: `<div class="tour-invite">${inviteCard(group())}</div>` },
   ].filter(Boolean);
 
@@ -1770,7 +1812,7 @@ const STARTER_IDEAS = [["📚", "A book", { placeholder: "A book you'd like to r
 function quickBirthday() {
   openSheet(`
     <h3>When's your birthday?</h3>
-    <p>Family can then plan and budget for it, not just Christmas. No year needed.</p>
+    <p>Everyone can then plan and budget for it, not just Christmas. No year needed.</p>
     <form id="bdayForm" autocomplete="off">
       <div class="err" hidden></div>
       <div class="bday" style="grid-template-columns:1.6fr 1fr">
@@ -1785,7 +1827,7 @@ function quickBirthday() {
       await api("profile", { birthday: `${pad(bmonth)}-${pad(bday)}` });
       closeSheet();
       party();
-      toast("Birthday saved. Family will see it coming.");
+      toast("Birthday saved. Everyone will see it coming.");
       state.stale = true;
       render();
     });
@@ -1823,7 +1865,7 @@ async function renderMine() {
   if (!n) writeStarter(true);
   let starter = "", celebrate = false;
   if (n && readStarter()) {
-    if (n < 3) starter = `<div class="starter slide"><strong>${n} of 3 on your wish list</strong><p>${n === 1 ? "Two more" : "One more"} and your family has plenty of ideas.</p>
+    if (n < 3) starter = `<div class="starter slide"><strong>${n} of 3 on your wish list</strong><p>${n === 1 ? "Two more" : "One more"} and everyone has plenty of ideas.</p>
       <div class="segs">${[0, 1, 2].map((k) => `<i class="${k < n ? "on" : ""}${k === n - 1 && state.flash ? " new" : ""}"></i>`).join("")}</div></div>`;
     else {
       writeStarter(false);
@@ -1840,14 +1882,14 @@ async function renderMine() {
   const liveSection = n ? `
     <p class="label">Wish list</p>
     ${starter}
-    <p class="count-line">${plural(n, "wish", "wishes")} your family can see</p>
+    <p class="count-line">${plural(n, "wish", "wishes")} your circles can see</p>
     <div class="stack">${live.map((i, k) => itemRow(i, k + drafts.length)).join("")}</div>
     ${showBdayNudge() ? `<div class="starter slide" id="bdayNudge" style="margin:18px 0 0"><strong>When's your birthday?</strong>
-      <p>Add it so family can plan for it too, not just Christmas.</p>
+      <p>Add it so everyone can plan for it too, not just Christmas.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="bdayLater">Not now</button><button class="btn primary" type="button" id="bdayAdd">Add birthday</button></div></div>` : ""}
-    <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : `
+    <p class="footnote">Your circles see this list. Surprises stay hidden from you.</p>` : `
     <p class="label">Wish list</p>
-    <p class="subtle">Nothing published yet. Tap Publish on a wish above when you want your family to see it.</p>`;
+    <p class="subtle">Nothing published yet. Tap Publish on a wish above when you want your circles to see it.</p>`;
   v.innerHTML = '<div id="installSlot"></div>' + (data.items.length ? draftSection + liveSection + myGiftCards(data.giftCards) : `
     <div class="empty">
       ${giftBox("Add your first wish")}
@@ -1855,7 +1897,7 @@ async function renderMine() {
       <p>Add a few things you'd like. A name is all you need. Each one starts in Just me, where only you can see it, until you publish it. Need a nudge? Tap one:</p>
       <div class="idea-chips">${STARTER_IDEAS.map(([e, l], k) => `<button class="chip" type="button" data-idea="${k}" style="animation-delay:${0.2 + k * 0.07}s">${e} ${esc(l)}</button>`).join("")}</div>
       <button class="add big shine" type="button" id="addFirst">${PLUS} Add a wish</button>
-      <p class="footnote">Family sees your published wishes. Surprises stay hidden from you.</p>
+      <p class="footnote">Your circles see your published wishes. Surprises stay hidden from you.</p>
     </div>
     ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`);
   paintInstallCard();
@@ -1906,7 +1948,7 @@ function confirmPublish(item) {
   if (!item) return;
   openSheet(`
     <h3>Publish to your wish list?</h3>
-    <p class="lead"><strong>${esc(item.title)}</strong> will show on your wish list for your family to see and buy.</p>
+    <p class="lead"><strong>${esc(item.title)}</strong> will show on your wish list for your circles to see and buy.</p>
     <p class="just-me-note">${LOCK}<span><strong>This can't be undone.</strong> Published wishes can't be moved back to Just me. You can still edit or remove it later.</span></p>
     <div class="actions">
       <button class="btn" type="button" id="pubCancel">Not yet</button>
@@ -2020,8 +2062,8 @@ function editItem(item, opts = {}) {
           <label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Size, color, where to buy">${esc(item.notes)}</textarea></label>
         </div>
       </details>
-      ${isNew ? `<label class="check"><span>Show my family now<small id="pubNowHint">${pubNow ? "Goes straight to your wish list." : "Off: saves to Just me, where only you can see it."}</small></span><input type="checkbox" name="pubNow" ${pubNow ? "checked" : ""}></label>` : ""}
-      ${draft ? "" : `<label class="check"><span>Top pick<small>Shows a gold star so family knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
+      ${isNew ? `<label class="check"><span>Show my circles now<small id="pubNowHint">${pubNow ? "Goes straight to your wish list." : "Off: saves to Just me, where only you can see it."}</small></span><input type="checkbox" name="pubNow" ${pubNow ? "checked" : ""}></label>` : ""}
+      ${draft ? "" : `<label class="check"><span>Top pick<small>Shows a gold star so everyone knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
       ${familySwitches(item.hiddenFrom)}`}
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeItem">Remove</button>'}
@@ -2273,7 +2315,7 @@ async function renderFamily() {
   const g = group();
   const people = others();
   const plan = new Map((t?.people || []).map((p) => [p.id, p]));
-  setHero(heroTitle(state.groups.map((x) => x.name).join(" · "), "Family"));
+  setHero(heroTitle(state.groups.map((x) => x.name).join(" · "), "Circles"));
   const v = $("#view");
   const personBtn = (m, i) => {
         const p = plan.get(m.id);
@@ -2291,7 +2333,7 @@ async function renderFamily() {
   const sections = state.groups.map((fam, n) => {
     const ppl = fam.members.filter((m) => m.id !== state.me.id);
     return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${esc(fam.name)}</span><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></div>
-      <div class="stack" style="margin-top:12px">${ppl.length ? ppl.map(personBtn).join("") : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
+      <div class="stack" style="margin-top:12px">${ppl.length ? peopleHtml(ppl, personBtn) : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
   }).join("");
   v.innerHTML = multi() ? `${sections}
     <div class="label">You</div>
@@ -2299,15 +2341,15 @@ async function renderFamily() {
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
     </div>` : `
     ${people.length ? `<div class="label" style="margin-top:0">Who you're shopping for</div><div class="stack" style="margin-top:12px">
-      ${people.map(personBtn).join("")}</div>` : `
-      <div class="empty">${giftBox("Invite your family")}<strong>Just you so far</strong><p>Send your family the invite below and their lists will show up here.</p></div>`}
+      ${peopleHtml(people, personBtn)}</div>` : `
+      <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Send the invite below and everyone's lists will show up here.</p></div>`}
     <div class="label">You</div>
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
     </div>
     <div class="label">Invite someone</div>
     <div style="margin-top:12px">${g ? inviteCard(g) : ""}</div>
-    <p class="footnote">In another family too? Join it from Settings and keep one list for both.</p>`;
+    <p class="footnote">In another circle too, like friends or your partner's family? Join it from Settings and keep one list for both.</p>`;
   v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
   $("#meRow").onclick = () => setTab("mine");
   if (g && !multi()) wireInviteCard(v, g);
@@ -2345,7 +2387,7 @@ function inviteCard(g) {
   const canSend = !!navigator.share;
   return `<div class="ticket" data-ticket>
     <div class="ticket-top">${DOODLE}<p>${esc(g.name)}</p>
-      <div class="code-big" role="img" aria-label="Family code ${esc([...g.code].join(" "))}">${[...g.code].map((c, i) => `<span style="animation-delay:${0.1 + i * 0.07}s">${esc(c)}</span>`).join("")}</div>
+      <div class="code-big" role="img" aria-label="Invite code ${esc([...g.code].join(" "))}">${[...g.code].map((c, i) => `<span style="animation-delay:${0.1 + i * 0.07}s">${esc(c)}</span>`).join("")}</div>
       <small>${esc(link.replace(/^https?:\/\//, "").replace(/\?.*$/, ""))}</small></div>
     <div class="ticket-mid"></div>
     <div class="ticket-body">
@@ -2376,8 +2418,8 @@ function wireInviteCard(root, g) {
   const copyBtn = $("[data-copy]", card);
   copyBtn.onclick = async () => {
     try {
-      await navigator.clipboard.writeText(`${inviteText(g)}\n\nJoin here: ${link}\nFamily code: ${g.code}`);
-    } catch { return toast(`Family code: ${g.code}`); }
+      await navigator.clipboard.writeText(`${inviteText(g)}\n\nJoin here: ${link}\nInvite code: ${g.code}`);
+    } catch { return toast(`Invite code: ${g.code}`); }
     buzz();
     copyBtn.innerHTML = `${CHECK} Copied!`;
     copyBtn.classList.add("copied");
@@ -2402,7 +2444,7 @@ function wireInviteCard(root, g) {
 }
 
 function openInvite(g) {
-  openSheet(`<h3>Invite to ${esc(g.name)}</h3><p>Send this link. It opens right to your family, no code typing needed.</p>${inviteCard(g)}`, (el) => wireInviteCard(el, g));
+  openSheet(`<h3>Invite to ${esc(g.name)}</h3><p>Send this link. It opens right to your circle, no code typing needed.</p>${inviteCard(g)}`, (el) => wireInviteCard(el, g));
 }
 
 // "Remind them" on someone's empty list.
@@ -2477,7 +2519,7 @@ async function renderPerson(id) {
     meter = `<div class="hero-meter"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
       <span><b>${money(next.spent_cents)}</b> of ${money(next.budget_cents)} for ${forWhat}</span></div>`;
   }
-  setHero(`<button class="back" type="button" id="backBtn">${BACK} Family</button>
+  setHero(`<button class="back" type="button" id="backBtn">${BACK} Circles</button>
     <div class="hero-row">${avatar(name, id, true)}
       <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}</div>
       <button class="hero-edit" type="button" id="editBtn" aria-label="Edit nickname and budget for ${esc(name)}">${PENCIL}<span>Edit</span></button></div>${meter}`);
@@ -2518,10 +2560,10 @@ async function renderPerson(id) {
         <div class="stack"><button class="add" type="button" id="nudge">${MSG} Send ${esc(name)} a reminder</button></div>
       </div>`}
     ${theirGiftCards(list.giftCards, name, id)}
-    ${sugg.length ? `<div class="label">Ideas from family</div><p class="subtle">Hidden from ${esc(name)}.</p>
+    ${sugg.length ? `<div class="label">Ideas from others</div><p class="subtle">Hidden from ${esc(name)}.</p>
       <div class="stack">${sugg.map((i, n) => personRow(i, "idea", n)).join("")}</div>` : ""}
     <div class="label">Your ideas for ${esc(name)}</div>
-    <p class="subtle">Just for you, unless you share one with the family.</p>
+    <p class="subtle">Just for you, unless you share one.</p>
     <div class="stack">
       ${mine.map(ideaRow).join("")}
       <button class="add soft" type="button" id="addIdea">${PLUS} Add your own idea for ${esc(name)}</button>
@@ -2715,7 +2757,7 @@ async function renderTracker() {
       <div class="still-need">${needGift.map((r) => `<button class="chip" type="button" data-need="${esc(r.p.id)}">${avatar(r.p.name, r.p.id, "sm")}${esc(r.p.name)}</button>`).join("")}</div>` : ""}
     ${shownRows.length ? `<div class="label" style="margin-top:18px">${view === "birthday" ? "Coming up" : "By person"}</div>
     <div class="stack" style="margin-top:12px">${shownRows.map((r, n) => personCard(r.p, r.o, view, n)).join("")}</div>`
-      : `<div class="empty" style="margin-top:18px"><strong>No birthdays yet</strong><p>When family add their birthday in Settings, you can plan and budget for it here.</p></div>`}
+      : `<div class="empty" style="margin-top:18px"><strong>No birthdays yet</strong><p>When people add their birthday in Settings, you can plan and budget for it here.</p></div>`}
     ${view === "birthday" && noBday.length ? `<div class="label">No birthday added yet</div>
       <p class="subtle">They can add it in Settings.</p>
       <div class="stack">${noBday.map((r) => `<button class="member" type="button" data-open="${esc(r.p.id)}">${avatar(r.p.name, r.p.id)}<span class="who"><strong>${esc(r.p.name)}</strong><small>${esc(r.p.name)}'s list</small></span>${CHEV}</button>`).join("")}</div>` : ""}
@@ -2723,7 +2765,7 @@ async function renderTracker() {
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
       ${shownRows.length ? `<button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>` : ""}
-    </div>` : `<div class="empty">${giftBox("Invite your family")}<strong>No one to plan for yet</strong><p>Once family members join, you can set budgets and track gifts for each of them here.</p></div>`;
+    </div>` : `<div class="empty">${giftBox("Invite your people")}<strong>No one to plan for yet</strong><p>Once people join, you can set budgets and track gifts for each of them here.</p></div>`;
   $("#viewSeg") && wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderTracker(); });
   $("#addPurchase")?.addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
   $("#addIdea")?.addEventListener("click", () => addThing(null));
@@ -2802,7 +2844,7 @@ function editBudget(p, o) {
 
 function ideaRow(i) {
   const bought = !!i.claim;
-  const status = !bought ? (i.shared ? "Shared with family" : "Just for you")
+  const status = !bought ? (i.shared ? "Shared with others" : "Just for you")
     : i.claim.mine ? `You're getting this${occTag(i.subject_id, i.claim.occasion) || " one"}` : `${i.claim.buyerName} is getting this${occTag(i.subject_id, i.claim.occasion)}`;
   return `<div class="row${bought ? (i.claim.mine ? " mine" : " taken") : ""}" role="button" tabindex="0" data-idea="${esc(i.id)}" aria-label="Edit idea ${esc(i.title)}">
     <div class="row-top">${tile(i, "idea")}
@@ -2842,7 +2884,7 @@ function editIdea(idea, subjectId, opts = {}) {
       ${linkField(idea.url)}
       <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}"></label>
       <label class="field"><span>Note</span><textarea class="input" name="note" maxlength="1000">${esc(idea.note)}</textarea></label>
-      <label class="check"><span>Let family see this idea<small id="shareHint"></small></span><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}></label>
+      <label class="check"><span>Let others see this idea<small id="shareHint"></small></span><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}></label>
       ${boughtByOther ? `<p class="hint">${esc(idea.claim.buyerName)} is getting this.</p>` : `
       <label class="check"${purchase ? " hidden" : ""}><span>I'm getting this</span><input type="checkbox" name="bought" ${idea.claim?.mine || purchase ? "checked" : ""}></label>
       <div id="occField"></div>
@@ -2922,7 +2964,7 @@ function myGiftCards(cards = []) {
   const list = cards.filter((c) => GC[c.brand]);
   let k = 0;
   return `<div class="label">Gift cards</div>
-    <p class="subtle">${list.length ? "Always on your list, never used up. Family can give as many as they like." : "Pick stores you'd love a gift card to. Just tap, no details needed."}</p>
+    <p class="subtle">${list.length ? "Always on your list, never used up. People can give as many as they like." : "Pick stores you'd love a gift card to. Just tap, no details needed."}</p>
     <div class="gc-grid">${list.map((c, n) => {
       const pop = state.gcNew?.has(c.brand);
       return `<button class="gc-item ${pop ? "gc-pop" : "slide"}" type="button" data-gc-edit style="${pop ? `--d:${k++ * 0.08}s` : `animation-delay:${n * 0.04}s`}"
@@ -3177,7 +3219,7 @@ function knowCard(p) {
 }
 
 // ---------- settings ----------
-// Its own tab. Your profile first, then look and feel, PIN, families, the app, sign out.
+// Its own tab. Your profile first, then look and feel, PIN, circles, household, the app, sign out.
 const MOTION_KEY = "wishlist-motion";
 const SUN_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 const MOON_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
@@ -3243,7 +3285,7 @@ async function renderSettings() {
         </div>
         <input type="file" accept="image/*" id="photoFile" hidden>
       </div>
-      <p class="sub" style="margin:10px 0 0">Your family sees your profile on your list.</p>
+      <p class="sub" style="margin:10px 0 0">Your circles see your profile on your list.</p>
       <hr class="set-div">
       <form id="profileForm" autocomplete="off">
         <div class="err" hidden></div>
@@ -3264,7 +3306,7 @@ async function renderSettings() {
         </div>
         <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
         <div class="fun-h">✨ Just for fun</div>
-        <p class="sub" style="margin:0 0 12px">Small things that help family pick something you'll love.</p>
+        <p class="sub" style="margin:0 0 12px">Small things that help people pick something you'll love.</p>
         <span class="flabel">Gift style <em>(up to 3)</em></span>
         <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
         <span class="flabel">Favorite colors <em>(up to 3)</em></span>
@@ -3314,7 +3356,7 @@ async function renderSettings() {
       </form>
     </div>
 
-    <div class="label" id="famSec">${multi() ? "Your families" : "Your family"}</div>
+    <div class="label" id="famSec">${multi() ? "Your circles" : "Your circle"}</div>
     <div class="set-card">
       ${state.groups.map((g) => `<div class="fam">
           <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}</small></span>
@@ -3322,11 +3364,11 @@ async function renderSettings() {
           ${multi() ? `<button class="btn small quiet danger" type="button" data-leave="${esc(g.id)}">Leave</button>` : ""}
         </div>`).join("")}
       <p class="sub" style="margin-top:8px">${multi()
-        ? "Every family sees the same list. To hide a wish from one family, open it and turn that family off."
-        : "In more than one family, like yours and your partner's? Join the other one here and keep one list for both."}</p>
+        ? "Every circle sees the same list. To hide a wish from one circle, open it and turn that circle off."
+        : "Also do gifts with friends, coworkers or your partner's family? Join their circle here and keep one list for all of them."}</p>
       <form id="joinForm" autocomplete="off">
         <div class="err" hidden></div>
-        <label class="field"><span>Join another family</span>
+        <label class="field"><span>Join another circle</span>
           <input class="input code-in" name="code" maxlength="8" placeholder="ABC234" autocapitalize="characters" required></label>
         <div class="actions">
           <button class="btn" type="button" id="startFam">Start a new one</button>
@@ -3334,6 +3376,9 @@ async function renderSettings() {
         </div>
       </form>
     </div>
+
+    <div class="label" id="hhSec">Your household</div>
+    <div class="set-card">${householdCard()}</div>
 
     <div class="label">The app</div>
     <div class="set-card">
@@ -3378,21 +3423,22 @@ async function renderSettings() {
   $("#installSettings", v)?.addEventListener("click", () => startInstall());
   v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
     const name = groupName(b.dataset.leave);
-    if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other families.`)) return;
+    if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.`)) return;
     try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
   }));
   wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
   $("#startFam", v).onclick = () => openSheet(`
-    <h3>Start a new family</h3>
+    <h3>Start a new circle</h3>
     <p>You'll get a code to share. Your list comes with you.</p>
     <form id="startForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>
-      <button class="btn primary wide" type="submit">Create family</button>
+      <label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>
+      <button class="btn primary wide" type="submit">Create circle</button>
     </form>`, (el2) => wireForm($("#startForm", el2), async ({ groupName: n }) => {
       const { group: g } = await api("family/start", { groupName: n });
       reload(`Started ${g.name}. Code: ${g.code}`);
     }));
+  wireHousehold(v, reload);
   const file = $("#photoFile", v);
   $("#pickPhoto", v).onclick = () => file.click();
   file.onchange = async () => {
@@ -3466,6 +3512,73 @@ async function renderSettings() {
     state.tab = "mine";
     history.replaceState(null, "", location.pathname);
     render();
+  };
+}
+
+// Settings > Your household. Optional: people who live or gift together. Turning a circle on puts the
+// whole household in it, including people added later.
+function householdCard() {
+  const hh = state.me.household;
+  if (!hh) return `<p class="sub">Optional. Group the people you live or gift with, like you and your partner or you and the kids. Then add your whole household to a circle in one tap, and anyone you add later comes along.</p>
+    <button class="btn wide" type="button" id="hhAdd">${PLUS} Add someone to your household</button>`;
+  const auto = householdAuto(hh.members.map((m) => m.name));
+  return `<h4>${HOME_I} ${esc(hh.label)}</h4>
+    <div style="margin-top:6px">${hh.members.map((m) => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}</strong>
+      ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}</div>`).join("")}</div>
+    <button class="btn wide" type="button" id="hhAdd" style="margin-top:8px">${PLUS} Add someone</button>
+    <hr class="set-div">
+    <form id="hhNameForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Household name <em style="font-weight:600;color:var(--muted)">(optional)</em></span>
+        <input class="input" name="name" maxlength="40" value="${esc(hh.name || "")}" placeholder="${esc(auto)}"></label>
+      <p class="hint" style="margin-top:-10px">Leave it empty to use your first names.</p>
+      <button class="btn wide" type="submit">Save name</button>
+    </form>
+    <hr class="set-div">
+    <h4>Bring the whole household</h4>
+    <p class="sub">On: everyone in your household is in that circle, even people you add later. Off: only people who joined it themselves.</p>
+    ${state.groups.map((g, i) => swRow(`hhc${i}`, g.name, "", hh.circles.includes(g.id)).replace('type="button"', `type="button" data-hh-circle="${esc(g.id)}"`)).join("")}
+    <hr class="set-div">
+    <button class="btn wide quiet danger" type="button" id="hhLeave">Leave household</button>`;
+}
+
+function wireHousehold(v, reload) {
+  const hh = state.me.household;
+  $("#hhAdd", v)?.addEventListener("click", () => {
+    const mine = new Set((hh?.members || []).map((m) => m.id));
+    const ppl = others().filter((m) => !mine.has(m.id));
+    const free = ppl.filter((m) => !m.householdId);
+    const taken = ppl.filter((m) => m.householdId);
+    openSheet(`<h3>Add to your household</h3>
+      <p>Pick someone you share a circle with. ${hh?.circles.length ? `They'll join ${hh.circles.map(groupName).join(", ")} with your household.` : "You can add your household to circles after."}</p>
+      <div class="err" hidden></div>
+      ${free.length ? free.map((m) => `<button class="pick-person" type="button" data-hh-in="${esc(m.id)}">${avatar(m.name, m.id)}<span>${esc(m.name)}</span></button>`).join("")
+        : `<p class="subtle">Nobody to add yet. Invite them to one of your circles first.</p>`}
+      ${taken.length ? `<p class="subtle" style="margin-top:16px">Already in a household</p>${taken.map((m) => `<button class="pick-person" type="button" disabled>${avatar(m.name, m.id)}<span>${esc(m.name)}<small>${esc(householdLabel(m.householdId))}</small></span></button>`).join("")}` : ""}`,
+    (el) => el.querySelectorAll("[data-hh-in]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await api("household/add", { memberId: b.dataset.hhIn }); buzz(); reload(`Added ${personName(b.dataset.hhIn)} to your household`); }
+      catch (e) { const err = $(".err", el); err.textContent = e.message; err.hidden = false; b.disabled = false; }
+    })));
+  });
+  if (!hh) return;
+  v.querySelectorAll("[data-hh-out]").forEach((b) => (b.onclick = async () => {
+    const name = hh.members.find((m) => m.id === b.dataset.hhOut)?.name || "them";
+    if (!window.confirm(`Take ${name} out of your household? They'll leave any circle they were only in through it.`)) return;
+    try { await api("household/remove", { memberId: b.dataset.hhOut }); reload(`${name} is out of your household`); } catch (e) { toast(e.message); }
+  }));
+  wireForm($("#hhNameForm", v), async ({ name }) => { await api("household/rename", { name }); reload("Household name saved"); });
+  v.querySelectorAll("[data-hh-circle]").forEach((b) => (b.onclick = async () => {
+    const on = b.getAttribute("aria-checked") !== "true";
+    const g = groupName(b.dataset.hhCircle);
+    if (!on && !window.confirm(`Take your household out of ${g}? Anyone who's only in ${g} through your household will leave it.`)) return;
+    b.disabled = true;
+    try { await api("household/circle", { groupId: b.dataset.hhCircle, on }); buzz(); reload(on ? `Your household is in ${g}` : `Your household is out of ${g}`); }
+    catch (e) { toast(e.message); b.disabled = false; }
+  }));
+  $("#hhLeave", v).onclick = async () => {
+    if (!window.confirm("Leave your household? You'll leave any circle you were only in through it. Your list stays the same.")) return;
+    try { await api("household/remove", { memberId: state.me.id }); reload("You left your household"); } catch (e) { toast(e.message); }
   };
 }
 
