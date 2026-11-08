@@ -714,6 +714,23 @@
   .steps-mini li b { width: 26px; height: 26px; border-radius: 50%; background: var(--soft); color: var(--soft-ink); display: grid; place-items: center; font-size: 14px; flex: none; }
   .tour-invite { width: 100%; margin-top: 18px; text-align: left; }
 
+  /* Install nudge on My list, and the how-to sheet */
+  .install-card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 14px 14px 10px; margin-bottom: 18px;
+    border: 1.5px solid color-mix(in srgb, var(--brand) 22%, var(--line)); }
+  .install-top { display: flex; gap: 12px; align-items: center; }
+  .install-icon { width: 48px; height: 48px; border-radius: 12px; flex: none; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  .install-top strong { display: block; font-size: 17px; }
+  .install-top span { display: block; color: var(--muted); font-size: 14px; line-height: 1.4; }
+  .install-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+  .install-steps { counter-reset: st; list-style: none; margin: 4px 0 16px; padding: 0; display: grid; gap: 10px; }
+  .install-steps li { counter-increment: st; display: flex; gap: 12px; align-items: flex-start; background: var(--card); border-radius: 14px; padding: 12px 14px;
+    box-shadow: var(--shadow); font-size: 16px; line-height: 1.45; color: var(--ink); }
+  .install-steps li b { width: 28px; height: 28px; border-radius: 50%; background: var(--soft); color: var(--soft-ink); display: grid; place-items: center;
+    font-size: 14px; flex: none; margin-top: -1px; }
+  .install-steps li b::before { content: counter(st); }
+  .ico-in { display: inline-block; vertical-align: -3px; color: #0A84FF; margin: 0 1px; }
+  .code-inline { letter-spacing: .08em; white-space: nowrap; }
+
   /* Getting started on My list: add 3 wishes. */
   .starter { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
   .starter strong { display: block; font-size: 17px; }
@@ -1417,7 +1434,147 @@ async function offerJoin(inv) {
 // Shown once per person after they join (the server remembers), and from Settings any time.
 const tourEl = $("#tour");
 let installPrompt = null;
-addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; });
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; paintInstallCard(); });
+addEventListener("appinstalled", () => {
+  installPrompt = null;
+  saveInstall({ ...readInstall(), done: true });
+  $("#installCard")?.remove();
+  toast("Wishlist is on your home screen");
+});
+
+// ---------- install: nudge people to put Wishlist on their home screen ----------
+// A card at the top of My list, only when installing is actually possible from where you are:
+// - "prompt": Chrome, Edge and Samsung Internet hand us their own install prompt (it never fires once installed).
+// - "ios": Safari on iPhone and iPad has no prompt, so we show the taps. "ios-other": Chrome, Edge, Firefox on iOS.
+// - "inapp": opened inside Facebook, Instagram, Gmail and so on, which can't install. We say how to open a real browser.
+// "Not now" snoozes it for 7 days, then 30, then stops. Settings > The app always has it.
+// iPhone home screen apps keep their own storage, so we can't see from Safari that it's installed:
+// the how-to sheet ends with "I've added it", which turns the card off for good.
+const INSTALL_KEY = "wishlist-install";
+function readInstall() { try { return JSON.parse(localStorage.getItem(INSTALL_KEY)) || {}; } catch { return {}; } }
+function saveInstall(v) { try { localStorage.setItem(INSTALL_KEY, JSON.stringify(v)); } catch {} }
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isAppleMobile = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+function installWay() {
+  const ua = navigator.userAgent;
+  if (isStandalone()) return null;
+  if (/FBAN|FBAV|FB_IAB|Instagram|Snapchat|Pinterest|LinkedInApp|musical_ly|TikTok|Line\/|GSA\/|; wv\)/i.test(ua)) return "inapp";
+  if (installPrompt) return "prompt";
+  if (isAppleMobile()) return /CriOS|EdgiOS|FxiOS/.test(ua) ? "ios-other" : "ios";
+  return null;
+}
+function installDue() {
+  const st = readInstall();
+  return !!installWay() && !st.done && !st.off && Date.now() > (st.until || 0) && !!state.me?.onboarded && !state.toured;
+}
+
+const SHARE_IOS = '<svg class="ico-in" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+const ADD_HOME = '<svg class="ico-in" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-label="Add to Home Screen"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+const DOTS = '<svg class="ico-in" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="More"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+const KEBAB = '<svg class="ico-in" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="Menu"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+
+function paintInstallCard() {
+  const slot = $("#installSlot");
+  if (!slot) return;
+  if (!installDue()) { slot.innerHTML = ""; return; }
+  const way = installWay();
+  const sub = way === "prompt" ? "Open it in one tap, full screen, like any other app."
+    : way === "inapp" ? `This page is open inside another app. Open it in ${isAppleMobile() ? "Safari" : "Chrome"} to add it to your home screen.`
+    : "Put it on your home screen so it opens in one tap. It takes a few seconds.";
+  slot.innerHTML = `<div class="install-card slide" id="installCard">
+    <div class="install-top"><img class="install-icon" src="/icons/icon-192.png" alt="">
+      <div><strong>Get the Wishlist app</strong><span>${esc(sub)}</span></div></div>
+    <div class="install-actions">
+      <button class="btn quiet small" type="button" id="installLater">Not now</button>
+      <button class="btn primary small" type="button" id="installGo">${way === "prompt" ? "Install" : "Show me how"}</button>
+    </div></div>`;
+  $("#installGo", slot).onclick = () => startInstall();
+  $("#installLater", slot).onclick = () => {
+    const st = readInstall(), snoozes = (st.snoozes || 0) + 1;
+    saveInstall({ ...st, snoozes, until: Date.now() + (snoozes === 1 ? 7 : 30) * 864e5, off: snoozes >= 3 });
+    slot.innerHTML = "";
+    toast(snoozes >= 3 ? "Okay, I'll stop asking. It's in Settings anytime." : "No problem. It's also in Settings.");
+  };
+}
+
+async function startInstall() {
+  const way = installWay();
+  if (way === "prompt") {
+    try {
+      installPrompt.prompt();
+      const r = await installPrompt.userChoice;
+      installPrompt = null;
+      if (r.outcome === "accepted") { saveInstall({ ...readInstall(), done: true }); $("#installCard")?.remove(); party(); }
+      else paintInstallCard();
+    } catch {}
+    return;
+  }
+  installHowTo(way);
+}
+
+// Step-by-step taps for browsers with no install prompt, with the same icons the phone shows.
+function installHowTo(way) {
+  const apple = isAppleMobile();
+  const code = group()?.code;
+  const ua = navigator.userAgent;
+  const step = (html) => `<li><b></b><span>${html}</span></li>`;
+  const signIn = apple && code ? step(`Open Wishlist from your home screen and sign in once: family code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`) : "";
+  let title = "Add Wishlist to your home screen", intro = "", steps = [];
+  if (way === "ios") {
+    intro = "Safari doesn't have an install button, but it's just a few taps:";
+    steps = [
+      step(`Tap the Share button ${SHARE_IOS} at the bottom of Safari. On newer iPhones, tap ${DOTS} first, then Share.`),
+      step(`Scroll down and tap <strong>Add to Home Screen</strong> ${ADD_HOME}. If you don't see it, tap <strong>More</strong> or <strong>Edit Actions</strong>.`),
+      step("Tap <strong>Add</strong> in the top corner."),
+      signIn,
+    ];
+  } else if (way === "ios-other") {
+    const firefox = /FxiOS/.test(ua);
+    intro = "A few taps and it's on your home screen:";
+    steps = [
+      step(firefox ? `Tap the menu at the bottom, then <strong>Share</strong> ${SHARE_IOS}.` : `Tap the Share button ${SHARE_IOS} next to the address bar at the top.`),
+      step(`Tap <strong>Add to Home Screen</strong> ${ADD_HOME}. If you don't see it, tap <strong>More</strong>.`),
+      step("Tap <strong>Add</strong>."),
+      signIn,
+    ];
+  } else if (way === "inapp") {
+    const browser = apple ? "Safari" : "Chrome";
+    title = `Open this in ${browser} first`;
+    intro = `You're viewing Wishlist inside another app, which can't add it to your home screen. ${browser} can.`;
+    steps = [
+      step(`Tap ${DOTS} or ${KEBAB} in a corner of this screen.`),
+      step(`Choose <strong>Open in ${browser}</strong> (or <strong>Open in browser</strong>).`),
+      step(`Sign in there${code ? ` (family code <strong class="code-inline">${esc(code)}</strong>)` : ""}, then tap <strong>Get the Wishlist app</strong> on My list.`),
+    ];
+  } else {
+    intro = "Use your browser's menu:";
+    steps = [
+      step(`Tap ${KEBAB} or the menu button.`),
+      step("Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>."),
+    ];
+  }
+  openSheet(`
+    <h3>${esc(title)}</h3>
+    <p>${esc(intro)}</p>
+    <ol class="install-steps">${steps.join("")}</ol>
+    ${way === "inapp" ? `<p>Or copy the link and paste it into ${apple ? "Safari" : "Chrome"}.</p>` : ""}
+    <div class="actions">
+      ${way === "inapp" ? `<button class="btn" type="button" id="installCopy">${COPY} Copy link</button>` : `<button class="btn" type="button" id="installClose">Later</button>`}
+      ${way === "inapp" ? `<button class="btn primary" type="button" id="installClose">Got it</button>` : `<button class="btn primary" type="button" id="installDone">${CHECK} I've added it</button>`}
+    </div>`, (el) => {
+      $("#installClose", el).onclick = closeSheet;
+      $("#installDone", el)?.addEventListener("click", () => {
+        saveInstall({ ...readInstall(), done: true });
+        closeSheet();
+        $("#installCard")?.remove();
+        party();
+        toast("Nice! Open Wishlist from your home screen.");
+      });
+      $("#installCopy", el)?.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(location.origin + "/"); toast("Link copied"); } catch { toast(location.origin); }
+      });
+    });
+}
 const LOCK_BIG = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path class="shackle" d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const GIFT_W = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg>';
 
@@ -1456,8 +1613,8 @@ function openTour() {
   state.toured = true;
   const w = state.welcome || {};
   const fam = w.joined || w.started || "";
-  const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const iOS = isAppleMobile();
+  const standalone = isStandalone();
   const steps = (list) => `<ol class="steps-mini">${list.map((t, i) => `<li class="slide" style="animation-delay:${0.3 + i * 0.1}s"><b>${i + 1}</b>${t}</li>`).join("")}</ol>`;
   const slides = [
     { id: "hi", scene: ringScene(), title: w.started ? `${fam} is ready!` : fam ? `Welcome to ${fam}!` : `Welcome, ${state.me.name}!`,
@@ -1469,7 +1626,7 @@ function openTour() {
       text: "Your notes are already hidden from everyone. A 4-digit PIN just stops someone else from signing in as you on another phone.",
       extra: '<div class="tour-pin"><input class="input pin-in" id="tourPin" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" aria-label="4-digit PIN" placeholder="····"></div>' },
     !standalone && { id: "install", scene: installScene(), title: "Keep it on your home screen", text: "Open Wishlist in one tap, like any other app.",
-      extra: iOS ? steps(["Tap the Share button in Safari", "Choose <strong>Add to Home Screen</strong>"])
+      extra: iOS ? steps([`Tap Share ${SHARE_IOS} in Safari (on newer iPhones, it's in the ${DOTS} menu)`, `Choose <strong>Add to Home Screen</strong> ${ADD_HOME}`])
         : installPrompt ? '<button class="btn primary" type="button" id="installBtn" style="margin-top:18px">Add to home screen</button>'
         : steps(["Open your browser's menu (the three dots)", "Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>"]) },
     w.started && group() && { id: "invite", scene: "", title: "Now invite your family", text: "Send them this link. It opens right to your family.",
@@ -1624,7 +1781,7 @@ async function renderMine() {
     <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : `
     <p class="label">Wish list</p>
     <p class="subtle">Nothing published yet. Tap Publish on a wish above when you want your family to see it.</p>`;
-  v.innerHTML = data.items.length ? draftSection + liveSection + myGiftCards(data.giftCards) : `
+  v.innerHTML = '<div id="installSlot"></div>' + (data.items.length ? draftSection + liveSection + myGiftCards(data.giftCards) : `
     <div class="empty">
       ${giftBox("Add your first wish")}
       <strong>Let's start your list</strong>
@@ -1633,7 +1790,8 @@ async function renderMine() {
       <button class="add big shine" type="button" id="addFirst">${PLUS} Add a wish</button>
       <p class="footnote">Family sees your published wishes. Surprises stay hidden from you.</p>
     </div>
-    ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`;
+    ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`);
+  paintInstallCard();
   $("#addFirst")?.addEventListener("click", () => addThing());
   $("#bdayAdd")?.addEventListener("click", () => setTab("settings"));
   $("#bdayLater")?.addEventListener("click", () => { try { localStorage.setItem(BDAY_NUDGE_KEY, state.me.id); } catch {} $("#bdayNudge")?.remove(); });
@@ -2945,7 +3103,7 @@ function setMotion(on) {
 }
 
 async function renderSettings() {
-  const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const iOS = isAppleMobile();
   const root = document.documentElement;
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const prof = state.me.profile || { sizes: {} };
@@ -3047,7 +3205,8 @@ async function renderSettings() {
     <div class="label">The app</div>
     <div class="set-card">
       ${standalone ? "" : `<h4>Add to home screen</h4>
-      <p class="sub">${iOS ? "In Safari, tap Share, then Add to Home Screen." : "In Chrome, open the menu, then Add to Home screen or Install app."}</p>`}
+      <p class="sub">Open Wishlist in one tap, full screen, like any other app.</p>
+      <button class="btn primary wide" type="button" id="installSettings" style="margin-bottom:10px">${iOS ? "Show me how" : installPrompt ? "Install" : "Show me how"}</button>`}
       <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
     </div>
 
@@ -3078,6 +3237,7 @@ async function renderSettings() {
   const reload = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
   v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
   $("#replayTour", v).onclick = () => { state.welcome = null; openTour(); };
+  $("#installSettings", v)?.addEventListener("click", () => startInstall());
   v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
     const name = groupName(b.dataset.leave);
     if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other families.`)) return;
