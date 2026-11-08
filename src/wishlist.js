@@ -72,10 +72,19 @@ function text(value, max, field, required = false) {
   return s || null;
 }
 
+// Share buttons in store apps paste text plus a link ("Check out X! https://..."). Keep just the link.
+// Must match splitShared() in public/index.html.
+function sharedUrl(s) {
+  if (/^https?:\/\/\S+$/i.test(s)) return s;
+  const m = s.match(/https?:\/\/[^\s<>"']+/i) || s.match(/(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s<>"']*/i);
+  return m ? m[0].replace(/[).,!?;:'"\]]+$/, "") : s;
+}
+
 function link(value) {
   const s = text(value, LIMITS.url, "Link");
   if (!s) return null;
-  const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  const found = sharedUrl(s);
+  const withScheme = /^https?:\/\//i.test(found) ? found : `https://${found}`;
   try {
     const u = new URL(withScheme);
     if (u.protocol !== "http:" && u.protocol !== "https:") throw 0;
