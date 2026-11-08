@@ -150,6 +150,15 @@
     background: var(--soft); color: var(--soft-ink); font-family: var(--serif); font-size: 15px; font-weight: 600; transform: rotate(-3deg); transform-origin: 10px 50%; }
   .price-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--card); }
   .anyprice { font-size: 14px; color: var(--muted); }
+  .hid-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--panel);
+    border-radius: 999px; padding: 3px 10px; margin-top: 6px; width: fit-content; }
+  .fam { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .fam:first-of-type { border-top: 0; padding-top: 0; }
+  .fam .who { flex: 1; min-width: 0; }
+  .fam strong { display: block; color: var(--ink); font-size: 17px; overflow-wrap: anywhere; }
+  .fam small { color: var(--muted); font-size: 14px; }
+  .fam .code-sm { font-weight: 800; letter-spacing: .1em; color: var(--ink); }
+  .fam-label { justify-content: space-between; }
   .star-btn { position: relative; min-height: 44px; border: 0; border-radius: 999px; padding: 0 13px; background: var(--panel); color: var(--muted);
     font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
   .star-btn svg { transform: rotate(-6deg); }
@@ -561,8 +570,16 @@ $("#addTab").onclick = () => editItem();
 $("#settingsTab").onclick = () => openSettings();
 
 const group = () => state.groups[0] || null;
-const others = () => (group()?.members || []).filter((m) => m.id !== state.me.id);
-const personName = (id) => (group()?.members || []).find((m) => m.id === id)?.name || "Someone";
+// You can be in several families. People are listed once even if they share more than one with you.
+const multi = () => state.groups.length > 1;
+function everyone() {
+  const seen = new Map();
+  for (const g of state.groups) for (const m of g.members) if (!seen.has(m.id)) seen.set(m.id, m);
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+const others = () => everyone().filter((m) => m.id !== state.me.id);
+const personName = (id) => everyone().find((m) => m.id === id)?.name || "Someone";
+const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a family";
 
 async function refreshMe() {
   const data = await load("me");
@@ -657,6 +674,7 @@ function renderWelcome(step = "code", info = {}) {
     v.innerHTML = `
       <form class="card" id="newForm" autocomplete="off">
         <div class="err" hidden></div>
+        ${starting ? "" : `<p class="hint">Already in another family on Wishlist? Sign in there instead, then join this one from Settings, so you keep one list.</p>`}
         ${starting ? `<label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>` : ""}
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
         <label class="field"><span>PIN <em>(optional)</em></span><input class="input pin-in" name="pin" inputmode="numeric" pattern="\\d{4}" maxlength="4"></label>
@@ -728,6 +746,7 @@ function itemRow(i, n = 0) {
         <span class="row-title">${esc(i.title)}</span>
         ${i.notes ? `<span class="row-notes">${esc(i.notes)}</span>` : ""}
         ${i.url ? `<span class="from">from <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a></span>` : ""}
+        ${hiddenTag(i)}
         <div class="row-foot">
           ${i.price_cents != null ? `<span class="price-tag">${money(i.price_cents)}</span>` : '<span class="anyprice">Any price</span>'}
           <span class="spacer"></span>
@@ -737,6 +756,22 @@ function itemRow(i, n = 0) {
     </div>
   </div>`;
 }
+
+// Only shown when you're in more than one family.
+function hiddenTag(i) {
+  const ids = (i.hiddenFrom || []).filter((id) => state.groups.some((g) => g.id === id));
+  if (!multi() || !ids.length) return "";
+  const text = ids.length === state.groups.length ? "Hidden from everyone" : `Hidden from ${ids.map(groupName).join(", ")}`;
+  return `<span class="hid-tag">${LOCK} ${esc(text)}</span>`;
+}
+
+// One switch per family: on = that family can see this wish. Everything else is the same for every family.
+function familySwitches(hiddenFrom = []) {
+  if (!multi()) return "";
+  return `<p style="font-weight:700;color:var(--ink);margin:4px 0 8px">Who can see this</p>
+    ${state.groups.map((g) => `<label class="check"><span>${esc(g.name)}</span><input type="checkbox" data-fam="${esc(g.id)}" ${hiddenFrom.includes(g.id) ? "" : "checked"}></label>`).join("")}`;
+}
+const hiddenFromForm = (form) => [...form.querySelectorAll("[data-fam]")].filter((x) => !x.checked).map((x) => x.dataset.fam);
 
 // Top pick is the old "must have": one tap on the card, saved right away.
 async function toggleTopPick(item, btn) {
@@ -775,6 +810,7 @@ function editItem(item) {
         </div>
       </details>
       <label class="check"><span>Top pick<small>Shows a gold star so family knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
+      ${familySwitches(item.hiddenFrom)}
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeItem">Remove</button>'}
         <button class="btn primary" type="submit">${isNew ? "Save wish" : "Save"}</button>
@@ -787,7 +823,9 @@ function editItem(item) {
       if (isNew) setTimeout(() => form.elements.title.focus(), 300);
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const { id } = await api("item/save", { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, priority: d.must ? "must" : null });
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, priority: d.must ? "must" : null };
+        if (multi()) payload.hiddenFrom = hiddenFromForm(form);
+        const { id } = await api("item/save", payload);
         closeSheet();
         if (isNew) toast("Saved to your list", () => api("item/remove", { id }).then(() => { state.me = null; render(); }, (e) => toast(e.message)));
         else toast("Saved");
@@ -920,11 +958,9 @@ async function renderFamily() {
   const people = others();
   const t = await loadTracker();
   const plan = new Map((t?.people || []).map((p) => [p.id, p]));
-  setHero(heroTitle(g?.name || "", "Family"));
+  setHero(heroTitle(state.groups.map((x) => x.name).join(" · "), "Family"));
   const v = $("#view");
-  v.innerHTML = `
-    ${people.length ? `<div class="label" style="margin-top:0">Who you're shopping for</div><div class="stack" style="margin-top:12px">
-      ${people.map((m, i) => {
+  const personBtn = (m, i) => {
         const p = plan.get(m.id);
         const getting = p?.purchases.length || 0;
         const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
@@ -933,7 +969,20 @@ async function renderFamily() {
           ${avatar(m.name, m.id, true)}
           <span class="who"><strong>${esc(m.name)}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${budgetMini(p)}</span>${CHEV}
         </button>`;
-      }).join("")}</div>` : `
+  };
+  // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
+  const sections = state.groups.map((fam, n) => {
+    const ppl = fam.members.filter((m) => m.id !== state.me.id);
+    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${esc(fam.name)}</span><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></div>
+      <div class="stack" style="margin-top:12px">${ppl.length ? ppl.map(personBtn).join("") : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the code.</p>`}</div>`;
+  }).join("");
+  v.innerHTML = multi() ? `${sections}
+    <div class="label">You</div>
+    <div class="stack" style="margin-top:12px">
+      <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
+    </div>` : `
+    ${people.length ? `<div class="label" style="margin-top:0">Who you're shopping for</div><div class="stack" style="margin-top:12px">
+      ${people.map(personBtn).join("")}</div>` : `
       <div class="empty">${giftBox("Invite your family")}<strong>Just you so far</strong><p>Invite your family with the code below and their lists will show up here.</p></div>`}
     <div class="label">You</div>
     <div class="stack" style="margin-top:12px">
@@ -943,10 +992,12 @@ async function renderFamily() {
     <div class="card invite" style="margin-top:12px">
       <div style="flex:1"><div class="code">${esc(g?.code || "")}</div><small style="color:var(--muted)">Family code</small></div>
       <button class="btn primary" type="button" id="shareBtn">Send invite</button>
-    </div>`;
+    </div>
+    <p class="footnote">In another family too? Join it from Settings and keep one list for both.</p>`;
   v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
   $("#meRow").onclick = () => setTab("mine");
-  $("#shareBtn").onclick = () => shareInvite(g);
+  $("#shareBtn")?.addEventListener("click", () => shareInvite(g));
+  v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => shareInvite(state.groups.find((x) => x.id === b.dataset.share))));
   wireGiftBox(v, () => shareInvite(g));
 }
 
@@ -1382,8 +1433,7 @@ function setTextSize(v) {
   if (v === "md") delete root.dataset.text; else root.dataset.text = v;
 }
 
-function openSettings() {
-  const g = group();
+function openSettings(joinCode = "") {
   const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const root = document.documentElement;
   openSheet(`
@@ -1411,7 +1461,26 @@ function openSettings() {
         </div>
       </form>
     </div>
-    ${g ? `<div class="sheet-sec"><h4>Family</h4><p>${esc(g.name)}: code <strong style="color:var(--ink);letter-spacing:.08em">${esc(g.code)}</strong></p></div>` : ""}
+    <div class="sheet-sec" id="famSec">
+      <h4>${multi() ? "Your families" : "Your family"}</h4>
+      ${state.groups.map((g) => `<div class="fam">
+          <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}</small></span>
+          <button class="btn small" type="button" data-share="${esc(g.id)}">Invite</button>
+          ${multi() ? `<button class="btn small quiet danger" type="button" data-leave="${esc(g.id)}">Leave</button>` : ""}
+        </div>`).join("")}
+      <p style="margin-top:8px">${multi()
+        ? "Every family sees the same list. To hide a wish from one family, open it and turn that family off."
+        : "In more than one family, like yours and your partner's? Join the other one here and keep one list for both."}</p>
+      <form id="joinForm" autocomplete="off">
+        <div class="err" hidden></div>
+        <label class="field"><span>Join another family</span>
+          <input class="input code-in" name="code" maxlength="8" value="${esc(joinCode)}" placeholder="ABC234" autocapitalize="characters" required></label>
+        <div class="actions">
+          <button class="btn" type="button" id="startFam">Start a new one</button>
+          <button class="btn primary" type="submit">Join</button>
+        </div>
+      </form>
+    </div>
     <div class="sheet-sec">
       <h4>Add to home screen</h4>
       <p>${iOS ? "In Safari, tap Share, then Add to Home Screen." : "In Chrome, open the menu, then Add to Home screen or Install app."}</p>
@@ -1419,6 +1488,26 @@ function openSettings() {
     <div class="sheet-sec">
       <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
     </div>`, (el) => {
+      const reload = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
+      el.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => shareInvite(state.groups.find((g) => g.id === b.dataset.share))));
+      el.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
+        const name = groupName(b.dataset.leave);
+        if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other families.`)) return;
+        try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
+      }));
+      wireForm($("#joinForm", el), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
+      $("#startFam", el).onclick = () => openSheet(`
+        <h3>Start a new family</h3>
+        <p>You'll get a code to share. Your list comes with you.</p>
+        <form id="startForm" autocomplete="off">
+          <div class="err" hidden></div>
+          <label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>
+          <button class="btn primary wide" type="submit">Create family</button>
+        </form>`, (el2) => wireForm($("#startForm", el2), async ({ groupName: n }) => {
+          const { group: g } = await api("family/start", { groupName: n });
+          reload(`Started ${g.name}. Code: ${g.code}`);
+        }));
+      if (joinCode) setTimeout(() => $("#famSec", el)?.scrollIntoView({ block: "start" }), 350);
       wireSeg($("#textSeg", el), setTextSize);
       wireSeg($("#themeSeg", el), setTheme);
       wireForm($("#nameForm", el), async ({ name }) => { await api("profile", { name }); closeSheet(); toast("Name saved"); state.me = null; render(); });
@@ -1446,7 +1535,10 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("visibilitychange", () => { if (!document.hidden && getToken() && !sheet.open) { state.me = null; render(); } });
 
 readHash();
-render();
+// An invite link opened while signed in: offer to join that family from Settings once you're loaded.
+const inviteCode = getToken() ? new URLSearchParams(location.search).get("code") : null;
+if (inviteCode) history.replaceState(null, "", location.pathname + location.hash);
+render().then(() => { if (inviteCode && state.me) openSettings(inviteCode); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
 </body>
