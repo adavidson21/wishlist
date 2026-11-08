@@ -28,7 +28,9 @@ public/xlsx.js        Builds the Budget tab's Excel export in the browser
 4. `npm run migrate` (applies any migrations not yet applied to the `wishlist` D1 database)
 5. `npm run deploy`. The custom domain in `wrangler.jsonc` attaches itself.
 
-**After that:** connect the repo in Cloudflare (Workers > wishlist > Settings > Build, root directory `/`, deploy command `npx wrangler deploy`) to deploy on every push to `main`, or run `npm run deploy` by hand.
+**After that:** connect the repo in Cloudflare (Workers > wishlist > Settings > Build, root directory `/`) to deploy on every push to `main`, or run `npm run migrate && npm run deploy` by hand.
+- Deploy command: `npm run migrate && npm run deploy`, so new migrations are applied before the new code goes live and merging is all it takes.
+- Build token: needs Account > D1 > Write (Edit) for the migrate step. The token Workers Builds makes by default doesn't have it.
 
 **Local:** copy `.dev.vars.example` to `.dev.vars`, then `npx wrangler d1 migrations apply wishlist --local` and `npm run dev`.
 
@@ -37,7 +39,7 @@ public/xlsx.js        Builds the Budget tab's Excel export in the browser
 ## How it works
 
 - **Sign-in** is the honor system: a family code, then pick your name (or add yourself). A 4-digit PIN is optional and protects your private notes. Each device keeps a token in localStorage.
-- **Privacy rules** live in `src/wishlist.js`: the list owner never gets purchased marks, private ideas only go to their author, and you only see lists of people in your family.
+- **Privacy rules** live in `src/wishlist.js`: the list owner never gets purchased marks, private ideas only go to their author, and you only see lists of people in a family you share.
 - **Seasons:** purchased marks are per calendar year (New York time), so they reset each Christmas while wishes carry over. Removing an item someone already bought keeps it for the buyer, flagged "removed".
 - **Share link:** `/?code=ABC234` prefills the family code (the Family tab's Share button sends it).
 - **Ideas and suggestions:** an idea about someone is private to its author. "Share as a suggestion" shows it to everyone in the family except the person it's for, who never gets it from the API.
@@ -45,13 +47,14 @@ public/xlsx.js        Builds the Budget tab's Excel export in the browser
 - **Photo search:** `/api/identify` sends a shrunk photo to Gemini (`GEMINI_MODEL` in `wrangler.jsonc`) for up to 4 matches. Photos are not stored.
 - **Nicknames:** on someone's list, Rename lets you call them what you call them ("Grandma" instead of "Jane Doe"). Only you see it: the API swaps names for the viewer's nicknames everywhere (family, lists, "is getting this", budget, Excel), and the real name still shows in small text. Table `nicknames` (`migrations/0003_nicknames.sql`).
 - **Budget:** your private budget per person, what you're getting them, and your open ideas, per season. "Add a purchase" records a gift that isn't on anyone's list (saved as an idea marked bought). "Download as Excel" builds the .xlsx in the browser. The URL hash is `#budget` (the old `#notes` still works).
+- **More than one family:** in Settings, join another family by code, start a new one, invite, or leave one (not your last). You stay one person with one list. Each wish has a "Who can see this" switch per family; a wish hidden from a family is never shown through that family (`item_hidden`, migration 0004), though anyone who shares another family with you where it isn't hidden still sees it. The Family tab shows a section per family. Joining is blocked if that family already has someone with your name. Opening an invite link while signed in opens Settings with the code filled in.
 - **Tabs:** My list, Family, a raised center Add a wish button (adds to your list from any screen), Budget, Settings.
 - **Settings:** text size (Default, Large, Extra large) and appearance (Automatic, Light, Dark) are saved on the device.
 - **Look and motion:** cream background, a wine header band, burgundy actions, gold for top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for everything else. Animations mark real moments (adding a wish, starring a top pick, "I'll get this" confetti, budget numbers counting) and all turn off with the device's Reduce Motion setting.
 
 ## Schema changes
 
-Add a new numbered file in `migrations/`, then `npm run migrate` after merging.
+Add a new numbered file in `migrations/`. The deploy command applies it on merge (or run `npm run migrate` by hand before deploying). The new code must not go live before its migration.
 
 ## History
 

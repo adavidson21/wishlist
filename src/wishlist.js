@@ -12,6 +12,8 @@
 //   - You only see lists of people who share a group with you.
 //   - Nicknames ("Grandma" for "Jane Doe") are private to whoever set them. Every name in a response is
 //     already swapped for the viewer's nickname; fullName is sent alongside where the UI needs it.
+//   - A person can be in several families. An item hidden from a family (item_hidden) is never shown through
+//     that family: you see it only if you share some other family with the owner where it isn't hidden.
 import { json, callGemini } from "./gemini.js";
 
 const BASE = "/api/";
@@ -139,6 +141,26 @@ async function sharesGroup(env, a, b) {
     .bind(a, b)
     .first();
   return !!row;
+}
+
+// SQL condition: item `i` is visible to the viewer (bound once as ?) through at least one shared family
+// that the owner hasn't hidden it from.
+const ITEM_VISIBLE = `EXISTS (
+  SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
+   WHERE x.member_id = ? AND y.member_id = i.owner_id
+     AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = x.group_id))`;
+
+async function myGroupIds(env, memberId) {
+  const { results } = await env.DB.prepare("SELECT group_id FROM group_members WHERE member_id = ?").bind(memberId).all();
+  return results.map((r) => r.group_id);
+}
+
+async function newUniqueJoinCode(env) {
+  for (let i = 0; i < 5; i++) {
+    const c = newJoinCode();
+    if (!(await env.DB.prepare("SELECT 1 FROM groups WHERE join_code = ?").bind(c).first())) return c;
+  }
+  fail(500, "Couldn't make a family code. Try again.");
 }
 
 async function groupByCode(env, code) {
@@ -434,12 +456,7 @@ const handlers = {
     const groupId = newId();
     const memberId = newId();
     const t = now();
-    let code;
-    for (let i = 0; i < 5 && !code; i++) {
-      const c = newJoinCode();
-      if (!(await env.DB.prepare("SELECT 1 FROM groups WHERE join_code = ?").bind(c).first())) code = c;
-    }
-    if (!code) fail(500, "Couldn't make a family code. Try again.");
+    const code = await newUniqueJoinCode(env);
     await env.DB.batch([
       env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at) VALUES (?, ?, ?, ?)").bind(groupId, groupName, code, t),
       env.DB.prepare("INSERT INTO members (id, name, pin_hash, created_at) VALUES (?, ?, ?, ?)").bind(
@@ -463,7 +480,8 @@ const handlers = {
       .all();
     const { results: people } = await env.DB.prepare(
       `SELECT gm.group_id, m.id, m.name,
-              (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL) AS item_count
+              (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
         WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?)
         ORDER BY m.name COLLATE NOCASE`,
@@ -502,7 +520,19 @@ const handlers = {
       )
         .bind(me.id)
         .all();
-      return { member, own, items: results.map(itemOut) };
+      const { results: hidden } = await env.DB.prepare(
+        "SELECT h.item_id, h.group_id FROM item_hidden h JOIN items i ON i.id = h.item_id WHERE i.owner_id = ?",
+      )
+        .bind(me.id)
+        .all();
+      return {
+        member,
+        own,
+        items: results.map((r) => ({
+          ...itemOut(r),
+          hiddenFrom: hidden.filter((h) => h.item_id === r.id).map((h) => h.group_id),
+        })),
+      };
     }
 
     const { results } = await env.DB.prepare(
@@ -511,9 +541,10 @@ const handlers = {
          LEFT JOIN claims c ON c.item_id = i.id AND c.season = ?
          LEFT JOIN members b ON b.id = c.buyer_id
         WHERE i.owner_id = ? AND (i.removed_at IS NULL OR c.item_id IS NOT NULL)
+          AND (${ITEM_VISIBLE} OR c.buyer_id = ?)
         ORDER BY (c.item_id IS NOT NULL), (i.priority = 'must') DESC, i.created_at`,
     )
-      .bind(season(), memberId)
+      .bind(season(), memberId, me.id, me.id)
       .all();
     // Suggestions shared by others, plus your own ideas (shared or not) for this person.
     const { results: ideas } = await env.DB.prepare(
@@ -552,6 +583,16 @@ const handlers = {
       b.priority === "must" ? "must" : null,
     ];
     const t = now();
+    // hiddenFrom: family ids to hide this item from (absent = leave as is). Only your own families count.
+    const hideRows = (id) => async () => {
+      if (!Array.isArray(b.hiddenFrom)) return [];
+      const mine = new Set(await myGroupIds(env, me.id));
+      const ids = [...new Set(b.hiddenFrom.map(String))].filter((g) => mine.has(g));
+      return [
+        env.DB.prepare("DELETE FROM item_hidden WHERE item_id = ?").bind(id),
+        ...ids.map((g) => env.DB.prepare("INSERT INTO item_hidden (item_id, group_id) VALUES (?, ?)").bind(id, g)),
+      ];
+    };
     if (b.id) {
       const res = await env.DB.prepare(
         "UPDATE items SET title = ?, url = ?, price_cents = ?, notes = ?, priority = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND removed_at IS NULL",
@@ -559,14 +600,17 @@ const handlers = {
         .bind(...fields, t, b.id, me.id)
         .run();
       if (!res.meta.changes) fail(404, "Item not found.");
+      const rows = await hideRows(b.id)();
+      if (rows.length) await env.DB.batch(rows);
       return { id: b.id };
     }
     const id = newId();
-    await env.DB.prepare(
-      "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-      .bind(id, me.id, ...fields, t, t)
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(id, me.id, ...fields, t, t),
+      ...(await hideRows(id)()),
+    ]);
     return { id };
   },
 
@@ -584,6 +628,7 @@ const handlers = {
     } else {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM claims WHERE item_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM item_hidden WHERE item_id = ?").bind(id),
         env.DB.prepare("DELETE FROM items WHERE id = ?").bind(id),
       ]);
     }
@@ -596,11 +641,15 @@ const handlers = {
     const me = await auth(req, env);
     const { itemId, on, price } = await body(req);
     const paid = cents(price);
-    const item = await env.DB.prepare("SELECT id, owner_id, removed_at FROM items WHERE id = ?").bind(itemId).first();
-    if (!item || !(await sharesGroup(env, me.id, item.owner_id))) fail(404, "Item not found.");
+    const item = await env.DB.prepare(`SELECT i.id, i.owner_id, i.removed_at, ${ITEM_VISIBLE} AS visible FROM items i WHERE i.id = ?`)
+      .bind(me.id, itemId)
+      .first();
+    if (!item) fail(404, "Item not found.");
     if (item.owner_id === me.id) fail(400, "You can't mark your own items.");
     const s = season();
     const existing = await env.DB.prepare("SELECT buyer_id FROM claims WHERE item_id = ? AND season = ?").bind(itemId, s).first();
+    // Hidden from all your shared families: only the person who already bought it can still change their mark.
+    if (!item.visible && existing?.buyer_id !== me.id) fail(404, "Item not found.");
     if (on) {
       if (existing && existing.buyer_id !== me.id) fail(409, "Someone already marked this as purchased.");
       if (existing) {
@@ -615,7 +664,12 @@ const handlers = {
       if (existing.buyer_id !== me.id) fail(403, "Only the person who marked it can undo that.");
       await env.DB.prepare("DELETE FROM claims WHERE item_id = ? AND season = ?").bind(itemId, s).run();
       // An item the owner already removed disappears once nobody has bought it.
-      if (item.removed_at) await env.DB.prepare("DELETE FROM items WHERE id = ?").bind(itemId).run();
+      if (item.removed_at) {
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM item_hidden WHERE item_id = ?").bind(itemId),
+          env.DB.prepare("DELETE FROM items WHERE id = ?").bind(itemId),
+        ]);
+      }
     }
     return { ok: true };
   },
@@ -807,6 +861,50 @@ const handlers = {
         .bind(me.id, b.subjectId, nickname, now())
         .run();
     }
+    return { ok: true };
+  },
+
+  // Join another family while signed in, so the same you (and the same list) is in both.
+  async "POST family/join"(req, env) {
+    const me = await auth(req, env);
+    const group = await groupByCode(env, (await body(req)).code);
+    if ((await myGroupIds(env, me.id)).includes(group.id)) fail(409, `You're already in ${group.name}.`);
+    // Signing in by name picks the first match, so two people with the same name in one family would clash.
+    const clash = await env.DB.prepare(
+      "SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
+    )
+      .bind(group.id, me.name)
+      .first();
+    if (clash) fail(409, `Someone named ${me.name} is already in ${group.name}. Change your name above (for example, add a last initial), then join.`);
+    await env.DB.prepare("INSERT INTO group_members (group_id, member_id, joined_at) VALUES (?, ?, ?)").bind(group.id, me.id, now()).run();
+    return { group: { id: group.id, name: group.name } };
+  },
+
+  // Start another family while signed in.
+  async "POST family/start"(req, env) {
+    const me = await auth(req, env);
+    const name = text((await body(req)).groupName, LIMITS.group, "Family name", true);
+    const id = newId();
+    const t = now();
+    const code = await newUniqueJoinCode(env);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at) VALUES (?, ?, ?, ?)").bind(id, name, code, t),
+      env.DB.prepare("INSERT INTO group_members (group_id, member_id, joined_at) VALUES (?, ?, ?)").bind(id, me.id, t),
+    ]);
+    return { group: { id, name, code } };
+  },
+
+  // Leave one of your families (not your last one). Your list stays; that family just stops seeing it.
+  async "POST family/leave"(req, env) {
+    const me = await auth(req, env);
+    const { groupId } = await body(req);
+    const mine = await myGroupIds(env, me.id);
+    if (!mine.includes(groupId)) fail(404, "Family not found.");
+    if (mine.length < 2) fail(400, "You can't leave your only family.");
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, me.id),
+      env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(groupId, me.id),
+    ]);
     return { ok: true };
   },
 
