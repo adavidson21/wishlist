@@ -32,7 +32,8 @@
 <meta name="apple-mobile-web-app-title" content="Wishlist">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="/theme.js"></script>
-<script>try { var ts = localStorage.getItem("wishlist-text"); if (ts) document.documentElement.dataset.text = ts; } catch (e) {}</script>
+<script>try { var ts = localStorage.getItem("wishlist-text"); if (ts) document.documentElement.dataset.text = ts;
+  if (localStorage.getItem("wishlist-motion") === "off") document.documentElement.dataset.motion = "off"; } catch (e) {}</script>
 <style>
   /* Warm and a little handmade: cream paper, a wine header band, burgundy for actions, gold for
      top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for the rest.
@@ -66,7 +67,8 @@
     --t0: #3A2129; --t0-ink: #F0B5C4; --t1: #1E3029; --t1-ink: #8FD0B4; --t2: #3A2F1C; --t2-ink: #F1D08A; --t3: #252A3D; --t3-ink: #B4BDF0;
     --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
 
-  /* Text size setting (Settings > Text size). */
+  /* Text size setting (Settings > Text size): Small, Normal, Large, Extra large. */
+  :root[data-text="sm"] :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: .9; }
   :root[data-text="lg"] :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: 1.12; }
   :root[data-text="xl"] :is(main, .hero, dialog.sheet, .toast) { zoom: 1.25; }
   :root[data-text="xl"] nav.tabs { zoom: 1.12; }
@@ -330,6 +332,44 @@
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--panel); border-radius: 14px; padding: 4px; margin-bottom: 8px; }
   .seg button { min-height: 44px; border: 0; border-radius: 10px; background: none; font-weight: 700; font-size: 15px; color: var(--muted); }
   .seg button[aria-checked="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+  /* Settings page */
+  .set-card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 18px; margin-top: 12px; }
+  .set-card h4 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+  .set-card > p, .set-card .sub { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .set-card + .label { margin-top: 26px; }
+  .set-div { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .mode { border: 2px solid var(--line); background: var(--card); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 10px; text-align: left;
+    transition: border-color .2s, transform .2s var(--spring); }
+  .mode:active { transform: scale(.97); }
+  .mode[aria-checked="true"] { border-color: var(--brand); background: var(--soft); }
+  .mode .pv { height: 74px; border-radius: 10px; padding: 9px; display: flex; flex-direction: column; gap: 6px; border: 1px solid rgba(0,0,0,.08); }
+  .mode .pv i { display: block; height: 8px; border-radius: 4px; }
+  .mode .pv i:first-child { width: 55%; height: 10px; }
+  .mode .pv.light { background: #FAF6F1; } .mode .pv.light i { background: #EADFD4; } .mode .pv.light i:first-child { background: #7A1B36; }
+  .mode .pv.dark { background: #1A1517; } .mode .pv.dark i { background: #3A3034; } .mode .pv.dark i:first-child { background: #E59AAE; }
+  .mode .nm { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; }
+  .mode .tick { margin-left: auto; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; color: var(--brand-ink); }
+  .mode[aria-checked="true"] .tick { background: var(--brand); border-color: var(--brand); }
+  .mode[aria-checked="false"] .tick svg { visibility: hidden; }
+  .sw-row { width: 100%; border: 0; background: none; padding: 6px 0; min-height: 56px; display: flex; align-items: center; gap: 14px; text-align: left; }
+  .sw-row .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .sw-row strong { font-size: 16px; }
+  .sw-row small { color: var(--muted); font-size: 14px; }
+  .switch { flex: none; position: relative; width: 52px; height: 32px; border-radius: 16px; background: var(--line); transition: background-color .2s; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .25s var(--spring); }
+  .sw-row[aria-checked="true"] .switch { background: var(--brand); }
+  .sw-row[aria-checked="true"] .switch::after { transform: translateX(20px); }
+  .sw-row:focus-visible, .mode:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 12px; }
+  .modes + .sw-row { margin-top: 8px; }
+  .seg.four { grid-template-columns: repeat(4, 1fr); }
+  .seg.four button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-height: 60px; font-size: 13px; line-height: 1.2; }
+  .seg.four button b { font-family: var(--serif); font-weight: 600; color: inherit; line-height: 1.1; }
+  .ts-preview { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-top: 10px; color: var(--ink); font-size: 16px; }
+  .ts-preview small { display: block; color: var(--muted); font-size: 13px; }
+  .about { text-align: center; color: var(--faint); font-size: 13px; margin-top: 22px; }
 
   /* Bottom tabs: My list, Family, [Add a wish], Budget, Settings */
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: color-mix(in srgb, var(--card) 96%, transparent);
@@ -620,6 +660,7 @@
   @keyframes shackle { 0% { transform: translateY(-5px); } 100% { transform: none; } }
   @keyframes appIn { 0% { opacity: 0; transform: translateY(-90px) scale(1.6) rotate(-20deg); } 60% { opacity: 1; transform: translateY(4px) scale(.95) rotate(4deg); } 100% { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; } }
+  :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after, :root[data-motion="off"] ::backdrop { animation: none !important; transition: none !important; }
 </style>
 </head>
 <body>
@@ -647,7 +688,7 @@
       <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><path d="M16 11h.01"/></svg></span>
       Budget
     </button>
-    <button class="tab" type="button" id="settingsTab">
+    <button class="tab" type="button" data-tab="settings">
       <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
       Settings
     </button>
@@ -672,7 +713,7 @@ const money = (c) => (c == null ? "" : (c / 100).toLocaleString("en-US", { style
 const priceIn = (c) => (c == null ? "" : String(c / 100));
 const initial = (n) => (n || "?").trim().charAt(0).toUpperCase();
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reduceMotion = () => document.documentElement.dataset.motion === "off" || matchMedia("(prefers-reduced-motion: reduce)").matches;
 const hash = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
 const AV_COLORS = ["#7A1B36", "#2F6B4F", "#33407A", "#6A3667", "#A0651A", "#A23B6D", "#4F7A2B", "#2C7A86"];
 function avatar(name, id, big) {
@@ -932,11 +973,10 @@ function readHash() {
   const h = location.hash.slice(1);
   if (h.startsWith("person/")) { if (state.person !== h.slice(7)) state.view = null; state.tab = "family"; state.person = h.slice(7); }
   else if (h === "budget" || h === "notes") { state.tab = "notes"; state.person = null; }
-  else if (["mine", "family"].includes(h)) { state.tab = h; state.person = null; }
+  else if (["mine", "family", "settings"].includes(h)) { state.tab = h; state.person = null; }
 }
 document.querySelectorAll(".tab[data-tab]").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
 $("#addTab").onclick = () => editItem();
-$("#settingsTab").onclick = () => openSettings();
 
 const group = () => state.groups[0] || null;
 // You can be in several families. People are listed once even if they share more than one with you.
@@ -970,6 +1010,7 @@ async function render() {
     if (state.person) await renderPerson(state.person);
     else if (state.tab === "family") await renderFamily();
     else if (state.tab === "notes") await renderTracker();
+    else if (state.tab === "settings") await renderSettings();
     else await renderMine();
     if (!state.me.onboarded && !state.toured) openTour();
   } catch (e) {
@@ -2306,8 +2347,15 @@ async function exportExcel(t) {
 }
 
 // ---------- settings ----------
-function seg(name, options, current) {
-  return `<div class="seg" role="radiogroup" aria-label="${esc(name)}">${options.map(([v, l]) =>
+// Its own tab. Look and feel first (what most people come here for), then you, families, the app, sign out.
+const MOTION_KEY = "wishlist-motion";
+const SUN_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+const TICK_I = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
+const TEXT_SIZES = [["sm", "Small", 14], ["md", "Normal", 17], ["lg", "Large", 20], ["xl", "Extra large", 23]];
+
+function seg(name, options, current, cls = "") {
+  return `<div class="seg ${cls}" role="radiogroup" aria-label="${esc(name)}">${options.map(([v, l]) =>
     `<button type="button" role="radio" data-v="${v}" aria-checked="${v === current}">${l}</button>`).join("")}</div>`;
 }
 function wireSeg(el, onPick) {
@@ -2316,6 +2364,11 @@ function wireSeg(el, onPick) {
     onPick(b.dataset.v);
   }));
 }
+const swRow = (id, title, sub, on) => `<button class="sw-row" type="button" role="switch" id="${id}" aria-checked="${on}">
+  <span class="txt"><strong>${esc(title)}</strong>${sub ? `<small>${esc(sub)}</small>` : ""}</span><span class="switch" aria-hidden="true"></span></button>`;
+
+const themeAuto = () => !document.documentElement.dataset.theme;
+const isDark = () => (themeAuto() ? matchMedia("(prefers-color-scheme: dark)").matches : document.documentElement.dataset.theme === "dark");
 function setTheme(v) {
   const root = document.documentElement;
   try { v === "auto" ? localStorage.removeItem("theme") : localStorage.setItem("theme", v); } catch {}
@@ -2326,26 +2379,48 @@ function setTextSize(v) {
   try { v === "md" ? localStorage.removeItem(TEXT_KEY) : localStorage.setItem(TEXT_KEY, v); } catch {}
   if (v === "md") delete root.dataset.text; else root.dataset.text = v;
 }
+function setMotion(on) {
+  const root = document.documentElement;
+  try { on ? localStorage.removeItem(MOTION_KEY) : localStorage.setItem(MOTION_KEY, "off"); } catch {}
+  if (on) delete root.dataset.motion; else root.dataset.motion = "off";
+}
 
-function openSettings(joinCode = "") {
+async function renderSettings() {
   const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const root = document.documentElement;
-  openSheet(`
-    <h3>Settings</h3>
-    <h4 style="margin:0 0 8px;font-size:17px">Text size</h4>
-    <div id="textSeg">${seg("Text size", [["md", "Default"], ["lg", "Large"], ["xl", "Extra large"]], root.dataset.text || "md")}</div>
-    <h4 style="margin:18px 0 8px;font-size:17px">Appearance</h4>
-    <div id="themeSeg">${seg("Appearance", [["auto", "Automatic"], ["light", "Light"], ["dark", "Dark"]], root.dataset.theme || "auto")}</div>
-    <div class="sheet-sec">
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  setHero(heroTitle(state.me.name, "Settings"));
+  const v = $("#view");
+  v.innerHTML = `
+    <div class="label" style="margin-top:0">Look and feel</div>
+    <div class="set-card">
+      <h4>Light or dark</h4>
+      <div class="modes" role="radiogroup" aria-label="Light or dark" id="modes">
+        ${[["light", "Light", SUN_I], ["dark", "Dark", MOON_I]].map(([m, l, ic]) => `
+          <button class="mode" type="button" role="radio" data-mode="${m}" aria-checked="false">
+            <span class="pv ${m}" aria-hidden="true"><i></i><i></i><i style="width:75%"></i></span>
+            <span class="nm">${ic} ${l}<span class="tick">${TICK_I}</span></span>
+          </button>`).join("")}
+      </div>
+      ${swRow("autoTheme", "Match my phone", "Switches with your phone's light and dark setting", themeAuto())}
+      <hr class="set-div">
+      <h4>Text size</h4>
+      <div id="textSeg">${seg("Text size", TEXT_SIZES.map(([k, l, px]) => [k, `<b style="font-size:${px}px">Aa</b>${l}`]), root.dataset.text || "md", "four")}</div>
+      <div class="ts-preview"><small>Preview</small>Cozy socks, size medium. Any color but orange!</div>
+      <hr class="set-div">
+      ${swRow("motionSw", "Animations", "Little hops and wiggles around the app", root.dataset.motion !== "off")}
+    </div>
+
+    <div class="label">You</div>
+    <div class="set-card">
       <form id="nameForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
         <button class="btn wide" type="submit">Save name</button>
       </form>
-    </div>
-    <div class="sheet-sec">
+      <hr class="set-div">
       <h4>PIN</h4>
-      <p>${state.me.hasPin ? "Your name is PIN protected." : "No PIN yet. Add one so nobody else can sign in as you and see your notes."}</p>
+      <p class="sub">${state.me.hasPin ? "Your name is PIN protected." : "No PIN yet. Add one so nobody else can sign in as you and see your notes."}</p>
       <form id="pinForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>${state.me.hasPin ? "New PIN" : "PIN"}</span><input class="input pin-in" name="pin" inputmode="numeric" pattern="\\d{4}" maxlength="4" required></label>
@@ -2355,72 +2430,93 @@ function openSettings(joinCode = "") {
         </div>
       </form>
     </div>
-    <div class="sheet-sec" id="famSec">
-      <h4>${multi() ? "Your families" : "Your family"}</h4>
+
+    <div class="label" id="famSec">${multi() ? "Your families" : "Your family"}</div>
+    <div class="set-card">
       ${state.groups.map((g) => `<div class="fam">
           <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}</small></span>
           <button class="btn small" type="button" data-share="${esc(g.id)}">Invite</button>
           ${multi() ? `<button class="btn small quiet danger" type="button" data-leave="${esc(g.id)}">Leave</button>` : ""}
         </div>`).join("")}
-      <p style="margin-top:8px">${multi()
+      <p class="sub" style="margin-top:8px">${multi()
         ? "Every family sees the same list. To hide a wish from one family, open it and turn that family off."
         : "In more than one family, like yours and your partner's? Join the other one here and keep one list for both."}</p>
       <form id="joinForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>Join another family</span>
-          <input class="input code-in" name="code" maxlength="8" value="${esc(joinCode)}" placeholder="ABC234" autocapitalize="characters" required></label>
+          <input class="input code-in" name="code" maxlength="8" placeholder="ABC234" autocapitalize="characters" required></label>
         <div class="actions">
           <button class="btn" type="button" id="startFam">Start a new one</button>
           <button class="btn primary" type="submit">Join</button>
         </div>
       </form>
     </div>
-    <div class="sheet-sec">
-      <h4>Add to home screen</h4>
-      <p>${iOS ? "In Safari, tap Share, then Add to Home Screen." : "In Chrome, open the menu, then Add to Home screen or Install app."}</p>
+
+    <div class="label">The app</div>
+    <div class="set-card">
+      ${standalone ? "" : `<h4>Add to home screen</h4>
+      <p class="sub">${iOS ? "In Safari, tap Share, then Add to Home Screen." : "In Chrome, open the menu, then Add to Home screen or Install app."}</p>`}
       <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
     </div>
-    <div class="sheet-sec">
+
+    <div class="set-card" style="margin-top:26px">
       <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
-    </div>`, (el) => {
-      const reload = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
-      el.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
-      $("#replayTour", el).onclick = () => { closeSheet(); state.welcome = null; openTour(); };
-      el.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
-        const name = groupName(b.dataset.leave);
-        if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other families.`)) return;
-        try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
-      }));
-      wireForm($("#joinForm", el), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
-      $("#startFam", el).onclick = () => openSheet(`
-        <h3>Start a new family</h3>
-        <p>You'll get a code to share. Your list comes with you.</p>
-        <form id="startForm" autocomplete="off">
-          <div class="err" hidden></div>
-          <label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>
-          <button class="btn primary wide" type="submit">Create family</button>
-        </form>`, (el2) => wireForm($("#startForm", el2), async ({ groupName: n }) => {
-          const { group: g } = await api("family/start", { groupName: n });
-          reload(`Started ${g.name}. Code: ${g.code}`);
-        }));
-      if (joinCode) setTimeout(() => $("#famSec", el)?.scrollIntoView({ block: "start" }), 350);
-      wireSeg($("#textSeg", el), setTextSize);
-      wireSeg($("#themeSeg", el), setTheme);
-      wireForm($("#nameForm", el), async ({ name }) => { await api("profile", { name }); closeSheet(); toast("Name saved"); state.me = null; render(); });
-      wireForm($("#pinForm", el), async ({ pin }) => { await api("profile", { pin }); closeSheet(); toast("PIN saved"); state.me = null; render(); });
-      $("#removePin", el)?.addEventListener("click", async () => {
-        try { await api("profile", { pin: "" }); closeSheet(); toast("PIN removed"); state.me = null; render(); } catch (e) { toast(e.message); }
-      });
-      $("#signOut", el).onclick = async () => {
-        try { await api("signout", {}); } catch {}
-        setToken(null);
-        try { localStorage.removeItem(CACHE_KEY); } catch {}
-        state.me = null;
-        closeSheet();
-        history.replaceState(null, "", location.pathname);
-        render();
-      };
-    });
+    </div>
+    <p class="about">Wishlist · made with love for the family</p>`;
+
+  // Light or dark: the two tiles always show what you're seeing now. Picking one turns "Match my phone" off.
+  const paintTheme = () => {
+    const dark = isDark();
+    v.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-checked", String((b.dataset.mode === "dark") === dark)));
+    $("#autoTheme", v).setAttribute("aria-checked", String(themeAuto()));
+  };
+  paintTheme();
+  v.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { setTheme(b.dataset.mode); paintTheme(); buzz(); }));
+  $("#autoTheme", v).onclick = () => { setTheme(themeAuto() ? (isDark() ? "dark" : "light") : "auto"); paintTheme(); buzz(); };
+  const mq = matchMedia("(prefers-color-scheme: dark)");
+  mq.onchange = () => { if (state.tab === "settings" && $("#modes")) paintTheme(); };
+
+  wireSeg($("#textSeg", v), setTextSize);
+  $("#motionSw", v).onclick = (e) => {
+    const on = e.currentTarget.getAttribute("aria-checked") !== "true";
+    setMotion(on);
+    e.currentTarget.setAttribute("aria-checked", String(on));
+  };
+
+  const reload = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
+  v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
+  $("#replayTour", v).onclick = () => { state.welcome = null; openTour(); };
+  v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
+    const name = groupName(b.dataset.leave);
+    if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other families.`)) return;
+    try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
+  }));
+  wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
+  $("#startFam", v).onclick = () => openSheet(`
+    <h3>Start a new family</h3>
+    <p>You'll get a code to share. Your list comes with you.</p>
+    <form id="startForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>
+      <button class="btn primary wide" type="submit">Create family</button>
+    </form>`, (el2) => wireForm($("#startForm", el2), async ({ groupName: n }) => {
+      const { group: g } = await api("family/start", { groupName: n });
+      reload(`Started ${g.name}. Code: ${g.code}`);
+    }));
+  wireForm($("#nameForm", v), async ({ name }) => { await api("profile", { name }); reload("Name saved"); });
+  wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
+  $("#removePin", v)?.addEventListener("click", async () => {
+    try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { toast(e.message); }
+  });
+  $("#signOut", v).onclick = async () => {
+    try { await api("signout", {}); } catch {}
+    setToken(null);
+    try { localStorage.removeItem(CACHE_KEY); } catch {}
+    state.me = null;
+    state.tab = "mine";
+    history.replaceState(null, "", location.pathname);
+    render();
+  };
 }
 
 // Keyboard: Enter/Space on role=button rows.
