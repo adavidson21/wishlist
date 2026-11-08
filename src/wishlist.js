@@ -1194,7 +1194,7 @@ const handlers = {
       await env.DB.prepare("UPDATE members SET sizes = ? WHERE id = ?").bind(Object.keys(sizes).length ? JSON.stringify(sizes) : null, me.id).run();
     }
     if (b.avoid !== undefined) {
-      await env.DB.prepare("UPDATE members SET avoid = ? WHERE id = ?").bind(text(b.avoid, LIMITS.avoid, "Please no"), me.id).run();
+      await env.DB.prepare("UPDATE members SET avoid = ? WHERE id = ?").bind(text(b.avoid, LIMITS.avoid, "Dislikes and allergies"), me.id).run();
     }
     if (b.pin !== undefined) {
       const pin = pinValue(b.pin);
