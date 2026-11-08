@@ -95,6 +95,22 @@ function link(value) {
   }
 }
 
+// A product image URL: https only (pages are https), otherwise dropped rather than rejected.
+function imageLink(value) {
+  if (typeof value !== "string" || !value || value.length > LIMITS.url) return null;
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+// SET clause pieces for image columns on save: a fresh image from autofill wins; otherwise keep the
+// image while the link is unchanged, and clear it when the link changes so it's looked up again.
+const IMAGE_SET = `image_url = CASE WHEN ?1 IS NOT NULL THEN ?1 WHEN url IS ?2 THEN image_url ELSE NULL END,
+  image_checked_at = CASE WHEN ?1 IS NOT NULL THEN ?3 WHEN url IS ?2 THEN image_checked_at ELSE NULL END`;
+
 function cents(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(String(value).replace(/[$,\s]/g, ""));
@@ -189,6 +205,8 @@ const itemOut = (r) => ({
   notes: r.notes,
   priority: r.priority,
   created_at: r.created_at,
+  image_url: r.image_url || null,
+  image_checked: !!r.image_checked_at,
 });
 
 // Expects the idea row joined with its claim (buyer_id, buyer_name, paid_cents) and author_name.
@@ -203,6 +221,8 @@ const ideaOut = (r, meId) => ({
   price_cents: r.price_cents,
   note: r.note,
   shared: !!r.shared,
+  image_url: r.image_url || null,
+  image_checked: !!r.image_checked_at,
   updated_at: r.updated_at,
   claim: r.buyer_id
     ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === meId, price_cents: r.paid_cents }
@@ -292,7 +312,9 @@ function jsonLdProduct(html) {
         const offers = [].concat(node.offers || []);
         const offer = offers[0] || {};
         const price = toPrice(offer.price ?? offer.lowPrice ?? offer.priceSpecification?.price ?? [].concat(offer.offers || [])[0]?.price);
-        return { title: node.name ? decode(node.name) : null, price };
+        const img = [].concat(node.image || [])[0];
+        const image = typeof img === "string" ? img : img?.url || img?.contentUrl || null;
+        return { title: node.name ? decode(node.name) : null, price, image };
       }
       if (node["@graph"]) queue.push(node["@graph"]);
     }
@@ -352,7 +374,7 @@ async function previewLink(env, rawUrl) {
   const url = new URL(link(rawUrl) || fail(400, "Paste a link first."));
   const { html, finalUrl } = await readPage(url);
 
-  let title = null, price = null, siteName = null;
+  let title = null, price = null, siteName = null, image = null;
   if (html) {
     siteName = meta(html, "og:site_name");
     const ld = jsonLdProduct(html);
@@ -363,12 +385,20 @@ async function previewLink(env, rawUrl) {
     price = ld.price
       ?? toPrice(meta(html, "product:price:amount", "og:price:amount", "price", "twitter:data1"))
       ?? toPrice(html.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]); // Amazon
+    image = ld.image
+      || meta(html, "og:image:secure_url", "og:image", "twitter:image", "twitter:image:src", "image")
+      || decode(html.match(/id=["']landingImage["'][^>]*data-old-hires=["']([^"']+)["']/i)?.[1]) // Amazon
+      || decode(html.match(/id=["']landingImage["'][^>]*src=["']([^"']+)["']/i)?.[1]);
     // Captcha and bot-check pages have useless titles.
     if (BOT_PAGE.test(title || "")) title = null;
   }
 
   title = cleanTitle(title, finalUrl.hostname, siteName) || titleFromPath(finalUrl) || titleFromPath(url);
-  return { url: finalUrl.toString(), title, price, site: finalUrl.hostname.replace(/^www\./, ""), found: !!html };
+  let imageUrl = null;
+  if (image && title) {
+    try { imageUrl = imageLink(new URL(image, finalUrl).toString()); } catch {}
+  }
+  return { url: finalUrl.toString(), title, price, image: imageUrl, site: finalUrl.hostname.replace(/^www\./, ""), found: !!html };
 }
 
 // ---------- photo to suggestions ----------
@@ -693,6 +723,7 @@ const handlers = {
       b.priority === "must" ? "must" : null,
     ];
     const t = now();
+    const image = fields[1] ? imageLink(b.image) : null;
     // hiddenFrom: family ids to hide this item from (absent = leave as is). Only your own families count.
     const hideRows = (id) => async () => {
       if (!Array.isArray(b.hiddenFrom)) return [];
@@ -705,9 +736,10 @@ const handlers = {
     };
     if (b.id) {
       const res = await env.DB.prepare(
-        "UPDATE items SET title = ?, url = ?, price_cents = ?, notes = ?, priority = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND removed_at IS NULL",
+        `UPDATE items SET ${IMAGE_SET}, title = ?4, url = ?2, price_cents = ?5, notes = ?6, priority = ?7, updated_at = ?3
+          WHERE id = ?8 AND owner_id = ?9 AND removed_at IS NULL`,
       )
-        .bind(...fields, t, b.id, me.id)
+        .bind(image, fields[1], t, fields[0], fields[2], fields[3], fields[4], b.id, me.id)
         .run();
       if (!res.meta.changes) fail(404, "Item not found.");
       const rows = await hideRows(b.id)();
@@ -717,8 +749,8 @@ const handlers = {
     const id = newId();
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(id, me.id, ...fields, t, t),
+        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(id, me.id, ...fields, t, t, image, image ? t : null),
       ...(await hideRows(id)()),
     ]);
     return { id };
@@ -808,21 +840,23 @@ const handlers = {
       b.shared ? 1 : 0,
     ];
     const t = now();
+    const image = fields[1] ? imageLink(b.image) : null;
     let id = b.id;
     if (id) {
       const res = await env.DB.prepare(
-        "UPDATE private_ideas SET title = ?, url = ?, price_cents = ?, note = ?, shared = ?, updated_at = ? WHERE id = ? AND author_id = ?",
+        `UPDATE private_ideas SET ${IMAGE_SET}, title = ?4, url = ?2, price_cents = ?5, note = ?6, shared = ?7, updated_at = ?3
+          WHERE id = ?8 AND author_id = ?9`,
       )
-        .bind(...fields, t, id, me.id)
+        .bind(image, fields[1], t, fields[0], fields[2], fields[3], fields[4], id, me.id)
         .run();
       if (!res.meta.changes) fail(404, "Idea not found.");
     } else {
       if (!b.subjectId || b.subjectId === me.id || !(await sharesGroup(env, me.id, b.subjectId))) fail(400, "Pick who this idea is for.");
       id = newId();
       await env.DB.prepare(
-        "INSERT INTO private_ideas (id, author_id, subject_id, title, url, price_cents, note, shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO private_ideas (id, author_id, subject_id, title, url, price_cents, note, shared, created_at, updated_at, image_url, image_checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-        .bind(id, me.id, b.subjectId, ...fields, t, t)
+        .bind(id, me.id, b.subjectId, ...fields, t, t, image, image ? t : null)
         .run();
     }
     // "I bought this" on your own idea is the same as marking it purchased.
@@ -866,6 +900,31 @@ const handlers = {
         .run();
     }
     return { ok: true };
+  },
+
+  // Product photo for an item or idea saved before photos existed (or whose link changed). Anyone who
+  // can see it may ask; the lookup runs once per link, and the result is shared with everyone.
+  async "POST image"(req, env) {
+    const me = await auth(req, env);
+    const { kind, id } = await body(req);
+    let row;
+    if (kind === "item") {
+      row = await env.DB.prepare(
+        `SELECT i.id, i.url, i.image_url, i.image_checked_at FROM items i
+           LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
+          WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+      ).bind(me.id, id, me.id, me.id).first();
+    } else if (kind === "idea") {
+      const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(season(), id).first();
+      if (idea && (await canSeeIdea(env, me.id, idea))) row = idea;
+    }
+    if (!row) fail(404, "Not found.");
+    if (!row.url || row.image_checked_at) return { image: row.image_url || null };
+    const preview = await previewLink(env, row.url).catch(() => ({}));
+    const image = preview.image || null;
+    const table = kind === "item" ? "items" : "private_ideas";
+    await env.DB.prepare(`UPDATE ${table} SET image_url = ?, image_checked_at = ? WHERE id = ? AND url IS ?`).bind(image, now(), row.id, row.url).run();
+    return { image };
   },
 
   // Autofill: read a product link and return its name and price (nothing is saved).
