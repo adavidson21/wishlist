@@ -865,6 +865,170 @@
   .party { position: fixed; width: 0; height: 0; z-index: 40; pointer-events: none; }
   .party .bit { width: 10px; height: 6px; animation: burst 1.2s cubic-bezier(.15, .7, .4, 1) both; }
 
+  /* Desktop (1024px and up): the bottom tabs become a sidebar, content spreads into a grid, cards lift on hover.
+     Phones and tablets keep the layout above untouched. */
+  .nav-brand, .nav-me, .tab-ind, .add-long, .kbd { display: none; }
+  .person-side > :last-child { margin-bottom: 16px; }
+  @media (min-width: 1024px) {
+    :root { --side: 264px; }
+    body:has(#tabs:not([hidden])) { padding-left: var(--side); }
+
+    /* Sidebar */
+    nav.tabs { top: 0; right: auto; width: var(--side); border-top: 0; border-right: 1px solid var(--line); background: var(--card);
+      backdrop-filter: none; -webkit-backdrop-filter: none; padding: 26px 16px 18px; display: flex; flex-direction: column; overflow-y: auto; }
+    nav.tabs:not([hidden]) { animation: sideIn .6s cubic-bezier(.2, .9, .3, 1) both; }
+    .nav-brand { display: flex; align-items: center; gap: 12px; padding: 0 10px 26px; color: var(--ink); text-decoration: none;
+      font-family: var(--serif); font-size: 25px; font-weight: 600; letter-spacing: -.01em; }
+    .nav-brand img { width: 40px; height: 40px; border-radius: 12px; box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 30%, transparent);
+      transition: transform .5s var(--spring); }
+    .nav-brand:hover img { transform: rotate(-10deg) scale(1.08); }
+    .nav-brand:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; border-radius: 12px; }
+    nav.tabs .inner { position: relative; max-width: none; margin: 0; display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+    .tab { position: relative; z-index: 1; flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 50px; padding: 0 12px;
+      font-size: 16px; font-weight: 600; border-radius: 14px; transition: color .2s ease, background-color .2s ease, transform .25s var(--spring); }
+    .tab .ico { width: 30px; height: 30px; border-radius: 10px; }
+    .tab[aria-current="page"] .ico { background: none; }
+    .tab[data-tab]:hover { color: var(--ink); background: color-mix(in srgb, var(--panel) 70%, transparent); }
+    .tab[data-tab][aria-current="page"]:hover { background: none; }
+    .tab[data-tab]:hover .ico svg { animation: hop .5s ease both; }
+    .tab-ind { display: block; position: absolute; left: 0; right: 0; top: 0; height: 50px; border-radius: 14px; background: var(--soft); opacity: 0; z-index: 0;
+      transition: transform .5s var(--spring), height .3s ease, opacity .2s ease; }
+    .tab-ind::before { content: ""; position: absolute; left: -16px; top: 50%; width: 5px; height: 24px; margin-top: -12px; border-radius: 0 4px 4px 0; background: var(--brand); }
+    /* The add button leads the sidebar as a big pill. */
+    .tab.add-tab { order: -1; margin-bottom: 18px; justify-content: center; gap: 10px; min-height: 56px; border-radius: 18px; overflow: hidden;
+      background: var(--brand); color: var(--brand-ink); font-size: 17px; font-weight: 800;
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--brand) 32%, transparent); }
+    .add-tab .fab { width: 24px; height: 24px; margin: 0; border: 0; background: none; box-shadow: none; color: inherit; transition: transform .45s var(--spring); }
+    .add-tab .fab svg { width: 22px; height: 22px; }
+    .add-tab .add-long { display: inline; }
+    .add-tab .kbd { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 6px; font: 800 12px var(--sans);
+      background: color-mix(in srgb, var(--brand-ink) 20%, transparent); margin-left: 2px; }
+    .add-tab::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; transform: skewX(-20deg); pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent); }
+    .add-tab:hover { transform: translateY(-2px); box-shadow: 0 12px 26px color-mix(in srgb, var(--brand) 40%, transparent); }
+    .add-tab:hover .fab { transform: rotate(90deg) scale(1.1); }
+    .add-tab:hover::after { animation: shine 1s ease; }
+    .add-tab:active { transform: scale(.97); }
+    .nav-me { display: flex; align-items: center; gap: 12px; margin-top: auto; width: 100%; border: 0; border-radius: 16px; padding: 10px 10px 10px 12px;
+      background: var(--panel); text-align: left; transition: transform .25s var(--spring), background-color .2s ease; }
+    .nav-me[hidden] { display: none; }
+    .nav-me .avatar { width: 40px; height: 40px; font-size: 17px; }
+    .nav-me .who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+    .nav-me strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nav-me small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nav-me:hover { background: var(--soft); }
+    .nav-me:hover .chev { transform: translateX(3px); }
+    .nav-me:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+
+    /* Header band: wider, bigger type, a slow drift of snow */
+    .hero { padding: 40px 48px 38px; }
+    body:has(#tabs:not([hidden])) .hero { padding-top: 46px; }
+    .hero-in { max-width: 1120px; }
+    .hero h1 { font-size: 46px; }
+    .hero.tall h1 { font-size: 44px; }
+    .kicker { font-size: 16px; }
+    .big-num { font-size: 76px; }
+    .hero-meter { max-width: 620px; }
+    .hero-row .avatar.big { width: 68px; height: 68px; font-size: 30px; }
+    .doodle { width: 380px; height: 280px; right: 5%; top: -16px; opacity: .2; }
+    .hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .55;
+      background-image: radial-gradient(circle, rgba(255, 255, 255, .5) 1.6px, transparent 2.2px), radial-gradient(circle, rgba(255, 255, 255, .3) 1px, transparent 1.6px),
+        radial-gradient(circle, color-mix(in srgb, var(--gold) 80%, transparent) 1.4px, transparent 2px);
+      background-size: 180px 160px, 120px 110px, 260px 220px; background-position: 0 0, 40px 60px, 90px 30px; animation: snow 48s linear infinite; }
+    .hero.enter .hero-in > * { animation: slide .5s cubic-bezier(.2, .8, .3, 1) both; }
+    .hero.enter .hero-in > :nth-child(2) { animation-delay: .05s; } .hero.enter .hero-in > :nth-child(3) { animation-delay: .1s; }
+    .hero.enter .hero-in > :nth-child(4) { animation-delay: .15s; } .hero.enter .hero-in > :nth-child(5) { animation-delay: .2s; }
+    .hero.enter .squiggle path { stroke-dasharray: 200; animation: draw .9s ease .25s both; }
+
+    /* Content: wide, with cards in a grid */
+    body:has(#tabs:not([hidden])) main { max-width: 1216px; padding: 34px 48px 80px; }
+    body:not(:has(#tabs:not([hidden]))) main { max-width: 600px; padding-top: 32px; }
+    #view.enter { animation: viewIn .45s cubic-bezier(.2, .8, .3, 1) both; }
+    .label { font-size: 19px; }
+    #view .stack { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px; }
+    #view .stack > * + * { margin-top: 0; }
+    #view .stack > :is(.add, .btn.wide, .hh, .nomatch, .footnote) { grid-column: 1 / -1; }
+    #view .stack:has(> .member, > .hh) { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+    .hh { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    .hh-name { grid-column: 1 / -1; margin-bottom: 2px; }
+    .hh .member + .member { margin-top: 0; }
+    .just-me-note, .count-line, .subtle { max-width: 720px; }
+    .add.soft { max-width: 520px; justify-self: start; }
+    .gc-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px 16px; }
+    .ticket, .install-card, .starter:not(.done) { max-width: 560px; }
+    .starter.done { max-width: 560px; }
+    .empty { padding-top: 40px; }
+    .footnote { text-align: left; }
+    .toolbar .chips { flex-wrap: wrap; overflow: visible; margin: 0 0 10px; padding: 0; }
+
+    /* Someone's list: their info and filters on the left, wishes on the right */
+    .person-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 32px; align-items: start; }
+    .person-side > :last-child { margin-bottom: 0; }
+    .person-side .stats { gap: 8px; }
+    .person-side .stat span { font-size: 12.5px; line-height: 1.3; }
+    .person-side .chips { gap: 6px; }
+    .person-side .chip { min-height: 38px; padding: 0 12px; font-size: 14px; gap: 6px; }
+    .person-side .chip-n { min-width: 20px; height: 20px; font-size: 12px; }
+    .person-side .stat { padding: 12px 10px 10px; }
+    .person-side .toolbar-row { flex-direction: column; align-items: stretch; gap: 6px; }
+    .person-side .sort select { width: 100%; }
+    .person-side .toolbar-row .spacer { display: none; }
+    #view .person-main .stack { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+    .person-main > .label:first-child, .person-main > .stack:first-child { margin-top: 0; }
+
+    /* Budget: the switch and actions on the left, people on the right */
+    .budget-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; column-gap: 32px; align-items: start; }
+    .budget-layout > #viewSeg, .budget-layout > .b-need, .budget-layout > .b-actions { grid-column: 1; }
+    .budget-layout > .b-need .label { margin-top: 10px !important; }
+    .budget-layout > .b-main { grid-column: 2; grid-row: 1 / -1; }
+    .budget-layout > .b-main > .label:first-child { margin-top: 0 !important; }
+    #view .budget-layout > .b-actions { grid-template-columns: 1fr; gap: 10px; margin-top: 22px !important; }
+    #view .b-main .stack { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+
+    /* Settings: two columns of cards */
+    body[data-view="settings"] #view { columns: 2 380px; column-gap: 28px; }
+    body[data-view="settings"] #view > .set-card { break-inside: avoid; }
+    body[data-view="settings"] #view > .label { break-after: avoid; }
+    body[data-view="settings"] #view > .about { column-span: all; }
+    body[data-view="profile"] #view { max-width: 760px; }
+
+    /* Sheets open as a centered card with a little spring */
+    dialog.sheet { max-width: 620px; }
+    dialog.sheet[open] { animation: sheetPop .45s cubic-bezier(.2, 1.2, .4, 1) both; }
+    dialog.sheet::backdrop { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+    .sheet-in { padding: 18px 28px 26px; }
+    .grab { display: none; }
+
+    body:has(#tabs:not([hidden])) .toast { left: calc(50% + var(--side) / 2); bottom: 32px; }
+  }
+
+  /* Hover only where there's a mouse: cards lift, photos tilt, avatars wave. */
+  @media (min-width: 1024px) and (hover: hover) {
+    .row, .member, .pcard, .stat, .know, .set-card { transition: transform .3s var(--spring), box-shadow .3s ease, background-color .35s ease; }
+    .row[role="button"]:hover, .wish:hover, .member:hover, .pcard:hover { transform: translateY(-4px);
+      box-shadow: 0 2px 4px rgba(74, 14, 34, .06), 0 18px 36px rgba(74, 14, 34, .13); }
+    .wish.is-top:hover { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--gold) 70%, transparent), 0 18px 36px rgba(74, 14, 34, .13); }
+    .row.mine:hover, .row.taken:hover, .row.draft:hover { box-shadow: 0 14px 28px rgba(74, 14, 34, .1); }
+    .tile { transition: transform .4s var(--spring); }
+    .row:hover .tile { transform: rotate(-4deg) scale(1.06); }
+    .member:hover .avatar { animation: wiggle .55s ease both; }
+    .stat:hover { transform: translateY(-2px); }
+    .chip:not([aria-pressed="true"]):hover, .btn:not(.primary):not(.quiet):hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); }
+    .btn:hover, .chip:hover, .publish-btn:hover, .star-btn:hover { transform: translateY(-1px); }
+    .btn.primary:hover, .add:not(.soft):hover { box-shadow: 0 10px 22px color-mix(in srgb, var(--brand) 30%, transparent); }
+    .add:not(.soft) { transition: transform .25s var(--spring), box-shadow .25s ease; }
+    .add:not(.soft):hover { transform: translateY(-2px); }
+    .add.soft:hover { border-color: var(--brand); background: var(--soft); }
+    .star-btn:hover svg { animation: pop .5s ease both; }
+    .hero-edit:hover, .hero .back:hover { background: rgba(255, 255, 255, .08); border-radius: 999px; }
+    .giftbox:hover svg { animation-duration: 1.2s; }
+  }
+  @keyframes snow { to { background-position: 180px 640px, 160px 500px, 350px 910px; } }
+  @keyframes sideIn { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+  @keyframes viewIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes sheetPop { 0% { opacity: 0; transform: translateY(26px) scale(.94); } 100% { opacity: 1; transform: none; } }
+  @keyframes draw { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
+
   /* Motion. Every animation marks a real moment; all of it turns off with Reduce Motion. */
   .slide { animation: slide .45s cubic-bezier(.2, .8, .3, 1) both; }
   .drop { animation: drop .6s cubic-bezier(.2, .8, .3, 1) both; }
@@ -914,7 +1078,9 @@
 </main>
 
 <nav class="tabs" id="tabs" aria-label="Main" hidden>
+  <a class="nav-brand" href="/" aria-label="Wishlist home"><img src="/icons/icon.svg" alt="" width="40" height="40"><span>Wishlist</span></a>
   <div class="inner">
+    <span class="tab-ind" id="tabInd" aria-hidden="true"></span>
     <button class="tab" type="button" data-tab="mine">
       <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg></span>
       My list
@@ -925,7 +1091,7 @@
     </button>
     <button class="tab add-tab" type="button" id="addTab">
       <span class="fab"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
-      Add
+      <span>Add<span class="add-long"> a wish</span></span><kbd class="kbd" aria-hidden="true">N</kbd>
     </button>
     <button class="tab" type="button" data-tab="notes">
       <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><path d="M16 11h.01"/></svg></span>
@@ -936,6 +1102,7 @@
       Profile
     </button>
   </div>
+  <button class="nav-me" type="button" id="navMe" hidden></button>
 </nav>
 
 <dialog class="tour" id="tour" aria-label="Welcome tour"></dialog>
@@ -1404,9 +1571,16 @@ async function render() {
   const lit = state.tab === "settings" ? "profile" : state.tab;
   document.querySelectorAll(".tab[data-tab]").forEach((b) => b.setAttribute("aria-current", !state.person && b.dataset.tab === lit ? "page" : "false"));
   if (state.person) $('.tab[data-tab="family"]').setAttribute("aria-current", "page");
+  placeTabInd();
+  // Which screen is showing (for the desktop layouts), and a soft entrance when it changes.
+  const viewKey = state.person ? "person" : state.tab;
+  document.body.dataset.view = viewKey;
+  const changed = (state.person || state.tab) !== lastViewKey;
+  lastViewKey = state.person || state.tab;
   try {
     // Stale: refetch, but keep the old copy in place meanwhile so a tap during the reload still knows who you are.
     if (!state.me || state.stale) { state.stale = false; await refreshMe(); }
+    fillNavMe();
     // Your own list always opens on My list, which is the only place "Just me" wishes show.
     if (state.person && state.person === state.me?.id) { state.person = null; state.tab = "mine"; }
     if (state.person) await renderPerson(state.person);
@@ -1417,6 +1591,7 @@ async function render() {
     else await renderMine();
     if (!state.me.onboarded && !state.toured) openTour();
     else openPendingShare();
+    if (changed) enter($("#view"), $("#hero"));
   } catch (e) {
     if (!getToken()) return;
     $("#view").innerHTML = `<div class="err">${esc(e.message)}</div><button class="btn" type="button" id="retry">Try again</button>`;
@@ -1426,6 +1601,43 @@ async function render() {
   fetchImages($("#view"));
   fetchLive($("#view"));
 }
+
+// ---------- desktop sidebar ----------
+// On wide screens the bottom tabs become a sidebar: a pill slides to the current tab, and your name sits at the bottom.
+let lastViewKey = null;
+function placeTabInd() {
+  const ind = $("#tabInd"), cur = $('.tab[data-tab][aria-current="page"]');
+  if (!ind) return;
+  if (!cur || !cur.offsetHeight) { ind.style.opacity = "0"; return; }
+  ind.style.opacity = "1";
+  ind.style.height = cur.offsetHeight + "px";
+  ind.style.transform = `translateY(${cur.offsetTop}px)`;
+}
+addEventListener("resize", placeTabInd);
+document.fonts?.ready.then(placeTabInd);
+function fillNavMe() {
+  const b = $("#navMe");
+  if (!b || !state.me) return;
+  b.hidden = false;
+  b.innerHTML = `${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>${esc(state.groups.map((g) => g.name).join(" · "))}</small></span>${CHEV}`;
+}
+$("#navMe").onclick = () => setTab("profile");
+$(".nav-brand").onclick = (e) => { e.preventDefault(); setTab("mine"); };
+// Replays the entrance animation (desktop only, see .enter in the CSS).
+function enter(...els) {
+  for (const el of els) {
+    el.classList.remove("enter"); void el.offsetWidth; el.classList.add("enter");
+    clearTimeout(el._enter); el._enter = setTimeout(() => el.classList.remove("enter"), 1200);
+  }
+}
+// N adds a wish from anywhere (when you're not typing and nothing is open).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "n" && e.key !== "N") return;
+  if (e.metaKey || e.ctrlKey || e.altKey || !getToken() || $("#tabs").hidden) return;
+  if (e.target.closest("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]")) return;
+  e.preventDefault();
+  $("#addTab").click();
+});
 
 // ---------- welcome / join ----------
 // Invite links: /join/CODE?from=memberId (older links: /?code=CODE). The path stays until you've joined,
@@ -2920,7 +3132,7 @@ async function renderPerson(id) {
     </div>`;
 
   const v = $("#view");
-  v.innerHTML = `
+  v.innerHTML = `<div class="person-layout"><div class="person-side">
     ${knowCard(list.member.profile)}
     ${all.length ? `<div class="stats">
       <div class="stat"><b>${all.length}</b><span>${all.length === 1 ? "wish" : "wishes"}</span></div>
@@ -2928,7 +3140,7 @@ async function renderPerson(id) {
       ${gettingN ? `<div class="stat ok"><b>${gettingN}</b><span>you're getting</span></div>`
         : `<div class="stat${topN ? " gold" : ""}"><b>${topN}</b><span>${topN === 1 ? "top pick" : "top picks"}</span></div>`}
     </div>` : ""}
-    ${toolbar}
+    ${toolbar}</div><div class="person-main">
     ${all.length ? `<div class="stack">${items.length ? items.map((i, n) => personRow(i, "item", n)).join("")
       : `<div class="nomatch"><strong>Nothing matches</strong><p>Try another category or price.</p><button class="btn small" type="button" id="clearFilters2">Show everything</button></div>`}</div>` : `
       <div class="empty">
@@ -2944,7 +3156,7 @@ async function renderPerson(id) {
     <div class="stack">
       ${mine.map(ideaRow).join("")}
       <button class="add soft" type="button" id="addIdea">${PLUS} Add your own idea for ${esc(name)}</button>
-    </div>`;
+    </div></div></div>`;
   $("#backBtn").onclick = () => setTab("family");
   $("#editBtn").onclick = () => editPerson(list.member, plan);
   $("#addIdea").onclick = () => addThing(id);
@@ -3178,20 +3390,22 @@ function renderPeopleTab(t, v) {
   state.lastLeft = shown;
 
   const segHtml = seg("Which budget", [["christmas", `Christmas ${xmasYear(t)}`], ["birthday", "Birthdays"]], view, "two");
-  v.innerHTML = `
+  v.innerHTML = `<div class="budget-layout">
     <div id="viewSeg">${segHtml}</div>
-    ${needGift.length && needGift.length < shownRows.length ? `<div class="label" style="margin-top:18px">Still need a gift for</div>
-      <div class="still-need">${needGift.map((r) => `<button class="chip" type="button" data-need="${esc(r.p.id)}">${avatar(r.p.name, r.p.id, "sm")}${esc(r.p.name)}</button>`).join("")}</div>` : ""}
+    ${needGift.length && needGift.length < shownRows.length ? `<div class="b-need"><div class="label" style="margin-top:18px">Still need a gift for</div>
+      <div class="still-need">${needGift.map((r) => `<button class="chip" type="button" data-need="${esc(r.p.id)}">${avatar(r.p.name, r.p.id, "sm")}${esc(r.p.name)}</button>`).join("")}</div></div>` : ""}
+    <div class="b-main">
     ${shownRows.length ? `<div class="label" style="margin-top:18px">${view === "birthday" ? "Coming up" : "By person"}</div>
     <div class="stack" style="margin-top:12px">${shownRows.map((r, n) => personCard(r.p, r.o, view, n)).join("")}</div>`
       : `<div class="empty" style="margin-top:18px"><strong>No birthdays yet</strong><p>They show up once people add them in Profile.</p></div>`}
     ${view === "birthday" && noBday.length ? `<div class="label">No birthday added yet${tip("They can add it in Profile.")}</div>
       <div class="stack">${noBday.map((r) => `<button class="member" type="button" data-open="${esc(r.p.id)}">${avatar(r.p.name, r.p.id)}<span class="who"><strong>${esc(r.p.name)}</strong><small>${esc(r.p.name)}'s list</small></span>${CHEV}</button>`).join("")}</div>` : ""}
-    <div class="stack" style="margin-top:18px">
+    </div>
+    <div class="stack b-actions" style="margin-top:18px">
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
       ${shownRows.length ? `<button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>` : ""}
-    </div>`;
+    </div></div>`;
   wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderPeopleTab(t, v); });
   $("#addPurchase").addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
   $("#addIdea").addEventListener("click", () => addThing(null));
