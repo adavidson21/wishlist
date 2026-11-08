@@ -27,9 +27,63 @@ const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
 
 const now = () => new Date().toISOString();
 
-// Purchased marks reset each Christmas: the season is the calendar year in New York.
-const season = () =>
-  Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric" }).format(new Date()));
+// ---------- occasions ----------
+// Purchased marks and budgets belong to an occasion: Christmas for everyone, plus each person's birthday
+// if they added one. An occasion is stored as its date, YYYYMMDD (the `season` columns), and counts
+// through that day in New York. So a mark is "active" while its season >= today, and things reset the
+// day after the occasion. A Christmas gift bought before someone's November birthday stays marked.
+function todayParts() {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "numeric", day: "numeric" })
+      .formatToParts(new Date()).map((x) => [x.type, x.value]),
+  );
+  return { y: +p.year, m: +p.month, d: +p.day };
+}
+const dateCode = (y, m, d) => y * 10000 + m * 100 + d;
+const today = () => { const t = todayParts(); return dateCode(t.y, t.m, t.d); };
+const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+const daysIn = (m, y = 2024) => [31, isLeap(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+// Feb 29 birthdays fall on Feb 28 in other years.
+const birthdayCode = (y, m, d) => dateCode(y, m, m === 2 && d === 29 && !isLeap(y) ? 28 : d);
+const isoOf = (code) => `${Math.floor(code / 10000)}-${String(Math.floor(code / 100) % 100).padStart(2, "0")}-${String(code % 100).padStart(2, "0")}`;
+
+// Upcoming occasions for a member row (birth_month, birth_day, birth_year), soonest first.
+// Each: { code, date, christmas, birthday, turning }. A Dec 25 birthday is one occasion that's both.
+function occasionsFor(m, now = today()) {
+  const y = Math.floor(now / 10000);
+  const xmas = dateCode(y, 12, 25) >= now ? dateCode(y, 12, 25) : dateCode(y + 1, 12, 25);
+  const list = [{ code: xmas, christmas: true, birthday: false, turning: null }];
+  if (m?.birth_month && m?.birth_day) {
+    let code = birthdayCode(y, m.birth_month, m.birth_day);
+    if (code < now) code = birthdayCode(y + 1, m.birth_month, m.birth_day);
+    const turning = m.birth_year ? Math.floor(code / 10000) - m.birth_year : null;
+    const same = list.find((o) => o.code === code);
+    if (same) Object.assign(same, { birthday: true, turning });
+    else list.push({ code, christmas: false, birthday: true, turning });
+  }
+  return list.sort((a, b) => a.code - b.code).map((o) => ({ ...o, date: isoOf(o.code) }));
+}
+const birthdayOut = (m) => (m?.birth_month && m?.birth_day ? { month: m.birth_month, day: m.birth_day, year: m.birth_year || null } : null);
+
+async function memberOccasions(env, memberId) {
+  const m = await env.DB.prepare("SELECT birth_month, birth_day, birth_year FROM members WHERE id = ?").bind(memberId).first();
+  return occasionsFor(m);
+}
+// The occasion to file a mark or budget under: the one asked for if it's one of the person's upcoming
+// occasions, else `fallback` (an existing mark's), else the soonest.
+async function pickOccasion(env, subjectId, wanted, fallback) {
+  const codes = (await memberOccasions(env, subjectId)).map((o) => o.code);
+  const w = Number(wanted);
+  if (wanted !== undefined && wanted !== null && wanted !== "") {
+    if (!codes.includes(w)) fail(400, "Pick Christmas or their birthday.");
+    return w;
+  }
+  return fallback ?? codes[0];
+}
+
+// SQL: join the active (soonest not yet passed) claim. Bind today once.
+const ACTIVE_CLAIM = (table, key, outer) =>
+  `c.season = (SELECT MIN(c2.season) FROM ${table} c2 WHERE c2.${key} = ${outer} AND c2.season >= ?)`;
 
 function randomString(len, alphabet) {
   const bytes = crypto.getRandomValues(new Uint8Array(len));
@@ -253,15 +307,15 @@ const ideaOut = (r, meId) => ({
   price_checked: !!r.price_checked_at,
   updated_at: r.updated_at,
   claim: r.buyer_id
-    ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === meId, price_cents: r.paid_cents }
+    ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === meId, price_cents: r.paid_cents, occasion: r.claim_season }
     : null,
 });
 
-// Ideas joined with author name and this season's claim.
-const IDEA_SELECT = `SELECT p.*, a.name AS author_name, c.buyer_id, b.name AS buyer_name, c.price_cents AS paid_cents
+// Ideas joined with author name and their active claim. Bind today first.
+const IDEA_SELECT = `SELECT p.*, a.name AS author_name, c.buyer_id, b.name AS buyer_name, c.price_cents AS paid_cents, c.season AS claim_season
    FROM private_ideas p
    JOIN members a ON a.id = p.author_id
-   LEFT JOIN idea_claims c ON c.idea_id = p.id AND c.season = ?
+   LEFT JOIN idea_claims c ON c.idea_id = p.id AND ${ACTIVE_CLAIM("idea_claims", "idea_id", "p.id")}
    LEFT JOIN members b ON b.id = c.buyer_id`;
 
 // Can `viewer` see this idea? Author always; others only if it's shared (or they already bought it),
@@ -273,19 +327,22 @@ async function canSeeIdea(env, viewerId, idea) {
   return (await sharesGroup(env, viewerId, idea.subject_id)) && (await sharesGroup(env, viewerId, idea.author_id));
 }
 
-async function setIdeaClaim(env, me, ideaId, on, price) {
-  const s = season();
+// occasion: which of the person's occasions it's for (absent = keep the current one, or the soonest).
+async function setIdeaClaim(env, me, ideaId, on, price, occasion) {
   const idea = await env.DB.prepare(
-    `SELECT p.*, c.buyer_id FROM private_ideas p LEFT JOIN idea_claims c ON c.idea_id = p.id AND c.season = ? WHERE p.id = ?`,
+    `SELECT p.*, c.buyer_id, c.season AS claim_season FROM private_ideas p
+       LEFT JOIN idea_claims c ON c.idea_id = p.id AND ${ACTIVE_CLAIM("idea_claims", "idea_id", "p.id")} WHERE p.id = ?`,
   )
-    .bind(s, ideaId)
+    .bind(today(), ideaId)
     .first();
   if (!idea || !(await canSeeIdea(env, me.id, idea))) fail(404, "Idea not found.");
   const paid = cents(price);
   if (on) {
     if (idea.buyer_id && idea.buyer_id !== me.id) fail(409, "Someone already marked this as purchased.");
+    const s = await pickOccasion(env, idea.subject_id, occasion, idea.claim_season ?? undefined);
     if (idea.buyer_id) {
-      await env.DB.prepare("UPDATE idea_claims SET price_cents = ? WHERE idea_id = ? AND season = ?").bind(paid, ideaId, s).run();
+      await env.DB.prepare("UPDATE idea_claims SET price_cents = ?, season = ? WHERE idea_id = ? AND season = ?")
+        .bind(paid, s, ideaId, idea.claim_season).run();
     } else {
       await env.DB.prepare("INSERT INTO idea_claims (idea_id, season, buyer_id, price_cents, created_at) VALUES (?, ?, ?, ?, ?)")
         .bind(ideaId, s, me.id, paid, now())
@@ -293,7 +350,7 @@ async function setIdeaClaim(env, me, ideaId, on, price) {
     }
   } else if (idea.buyer_id) {
     if (idea.buyer_id !== me.id) fail(403, "Only the person who marked it can undo that.");
-    await env.DB.prepare("DELETE FROM idea_claims WHERE idea_id = ? AND season = ?").bind(ideaId, s).run();
+    await env.DB.prepare("DELETE FROM idea_claims WHERE idea_id = ? AND season = ?").bind(ideaId, idea.claim_season).run();
   }
 }
 
@@ -651,7 +708,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name,
+      `SELECT gm.group_id, m.id, m.name, m.birth_month, m.birth_day, m.birth_year,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -661,10 +718,15 @@ const handlers = {
       .bind(me.id)
       .all();
     const nicks = await nicknamesFor(env, me.id);
-    const person = (p) => ({ id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count });
+    const t = today();
+    const person = (p) => ({
+      id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count,
+      birthday: birthdayOut(p), occasions: occasionsFor(p, t),
+    });
+    const self = await env.DB.prepare("SELECT birth_month, birth_day, birth_year FROM members WHERE id = ?").bind(me.id).first();
     return {
-      me: { id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded },
-      season: season(),
+      me: { id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded, birthday: birthdayOut(self) },
+      today: t,
       groups: groups.map((g) => ({
         id: g.id,
         name: g.name,
@@ -708,15 +770,15 @@ const handlers = {
     }
 
     const { results } = await env.DB.prepare(
-      `SELECT i.*, c.buyer_id, b.name AS buyer_name, c.price_cents AS paid_cents
+      `SELECT i.*, c.buyer_id, b.name AS buyer_name, c.price_cents AS paid_cents, c.season AS claim_season
          FROM items i
-         LEFT JOIN claims c ON c.item_id = i.id AND c.season = ?
+         LEFT JOIN claims c ON c.item_id = i.id AND ${ACTIVE_CLAIM("claims", "item_id", "i.id")}
          LEFT JOIN members b ON b.id = c.buyer_id
         WHERE i.owner_id = ? AND (i.removed_at IS NULL OR c.item_id IS NOT NULL)
           AND (${ITEM_VISIBLE} OR c.buyer_id = ?)
         ORDER BY (c.item_id IS NOT NULL), (i.priority = 'must') DESC, i.created_at`,
     )
-      .bind(season(), memberId, me.id, me.id)
+      .bind(today(), memberId, me.id, me.id)
       .all();
     // Suggestions shared by others, plus your own ideas (shared or not) for this person.
     const { results: ideas } = await env.DB.prepare(
@@ -724,7 +786,7 @@ const handlers = {
         WHERE p.subject_id = ? AND (p.author_id = ? OR p.shared = 1 OR c.buyer_id = ?)
         ORDER BY (c.buyer_id IS NOT NULL), p.created_at`,
     )
-      .bind(season(), memberId, me.id, me.id)
+      .bind(today(), memberId, me.id, me.id)
       .all();
     const visible = [];
     for (const r of ideas) if (await canSeeIdea(env, me.id, r)) visible.push(ideaOut(renameRow(r, nicks), me.id));
@@ -735,7 +797,7 @@ const handlers = {
         ...itemOut(r),
         removed: !!r.removed_at,
         claim: r.buyer_id
-          ? { buyerId: r.buyer_id, buyerName: nicks.get(r.buyer_id) || r.buyer_name, mine: r.buyer_id === me.id, price_cents: r.paid_cents }
+          ? { buyerId: r.buyer_id, buyerName: nicks.get(r.buyer_id) || r.buyer_name, mine: r.buyer_id === me.id, price_cents: r.paid_cents, occasion: r.claim_season }
           : null,
       })),
       suggestions: visible.filter((i) => !i.mine),
@@ -798,7 +860,7 @@ const handlers = {
       .bind(id, me.id)
       .first();
     if (!item) fail(404, "Item not found.");
-    const claimed = await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ? AND season = ?").bind(id, season()).first();
+    const claimed = await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ? AND season >= ?").bind(id, today()).first();
     if (claimed) {
       await env.DB.prepare("UPDATE items SET removed_at = ? WHERE id = ?").bind(now(), id).run();
     } else {
@@ -813,23 +875,26 @@ const handlers = {
 
   // Mark (on: true) or unmark someone else's item as purchased. Only the buyer can unmark.
   // price: what you paid (optional). Marking again with a new price updates it.
+  // occasion: which of the owner's occasions it's for (YYYYMMDD; absent = keep it, or the soonest).
   async "POST claim"(req, env) {
     const me = await auth(req, env);
-    const { itemId, on, price } = await body(req);
+    const { itemId, on, price, occasion } = await body(req);
     const paid = cents(price);
     const item = await env.DB.prepare(`SELECT i.id, i.owner_id, i.removed_at, ${ITEM_VISIBLE} AS visible FROM items i WHERE i.id = ?`)
       .bind(me.id, itemId)
       .first();
     if (!item) fail(404, "Item not found.");
     if (item.owner_id === me.id) fail(400, "You can't mark your own items.");
-    const s = season();
-    const existing = await env.DB.prepare("SELECT buyer_id FROM claims WHERE item_id = ? AND season = ?").bind(itemId, s).first();
+    const existing = await env.DB.prepare("SELECT buyer_id, season FROM claims WHERE item_id = ? AND season >= ? ORDER BY season LIMIT 1")
+      .bind(itemId, today()).first();
     // Hidden from all your shared families: only the person who already bought it can still change their mark.
     if (!item.visible && existing?.buyer_id !== me.id) fail(404, "Item not found.");
     if (on) {
       if (existing && existing.buyer_id !== me.id) fail(409, "Someone already marked this as purchased.");
+      const s = await pickOccasion(env, item.owner_id, occasion, existing?.season);
       if (existing) {
-        await env.DB.prepare("UPDATE claims SET price_cents = ? WHERE item_id = ? AND season = ?").bind(paid, itemId, s).run();
+        await env.DB.prepare("UPDATE claims SET price_cents = ?, season = ? WHERE item_id = ? AND season = ?")
+          .bind(paid, s, itemId, existing.season).run();
       } else {
         if (item.removed_at) fail(400, "This item was removed from the list.");
         await env.DB.prepare("INSERT INTO claims (item_id, season, buyer_id, price_cents, created_at) VALUES (?, ?, ?, ?, ?)")
@@ -838,7 +903,7 @@ const handlers = {
       }
     } else if (existing) {
       if (existing.buyer_id !== me.id) fail(403, "Only the person who marked it can undo that.");
-      await env.DB.prepare("DELETE FROM claims WHERE item_id = ? AND season = ?").bind(itemId, s).run();
+      await env.DB.prepare("DELETE FROM claims WHERE item_id = ? AND season = ?").bind(itemId, existing.season).run();
       // An item the owner already removed disappears once nobody has bought it.
       if (item.removed_at) {
         await env.DB.batch([
@@ -857,7 +922,7 @@ const handlers = {
     const { results } = await env.DB.prepare(
       `${IDEA_SELECT} WHERE p.author_id = ?${subject ? " AND p.subject_id = ?" : ""} ORDER BY (c.buyer_id IS NOT NULL), p.updated_at DESC`,
     )
-      .bind(season(), me.id, ...(subject ? [subject] : []))
+      .bind(today(), me.id, ...(subject ? [subject] : []))
       .all();
     const nicks = await nicknamesFor(env, me.id);
     return { ideas: results.map((r) => ideaOut(renameRow(r, nicks), me.id)) };
@@ -894,7 +959,7 @@ const handlers = {
         .run();
     }
     // "I bought this" on your own idea is the same as marking it purchased.
-    if (b.bought !== undefined) await setIdeaClaim(env, me, id, !!b.bought, b.paid);
+    if (b.bought !== undefined) await setIdeaClaim(env, me, id, !!b.bought, b.paid, b.occasion);
     return { id };
   },
 
@@ -913,24 +978,26 @@ const handlers = {
   // Mark (on: true) or unmark an idea or shared suggestion as purchased, with optional price paid.
   async "POST idea/claim"(req, env) {
     const me = await auth(req, env);
-    const { ideaId, on, price } = await body(req);
-    await setIdeaClaim(env, me, ideaId, !!on, price);
+    const { ideaId, on, price, occasion } = await body(req);
+    await setIdeaClaim(env, me, ideaId, !!on, price, occasion);
     return { ok: true };
   },
 
-  // Set (amount) or clear (empty amount) your budget for one person this season.
+  // Set (amount) or clear (empty amount) your budget for one person for one occasion
+  // (occasion: YYYYMMDD of their Christmas or birthday; absent = the soonest).
   async "POST budget"(req, env) {
     const me = await auth(req, env);
-    const { subjectId, amount } = await body(req);
+    const { subjectId, amount, occasion } = await body(req);
     if (!subjectId || subjectId === me.id || !(await sharesGroup(env, me.id, subjectId))) fail(400, "Pick who this budget is for.");
+    const s = await pickOccasion(env, subjectId, occasion);
     const value = cents(amount);
     if (value === null) {
-      await env.DB.prepare("DELETE FROM budgets WHERE author_id = ? AND subject_id = ? AND season = ?").bind(me.id, subjectId, season()).run();
+      await env.DB.prepare("DELETE FROM budgets WHERE author_id = ? AND subject_id = ? AND season = ?").bind(me.id, subjectId, s).run();
     } else {
       await env.DB.prepare(
         "INSERT INTO budgets (author_id, subject_id, season, amount_cents) VALUES (?, ?, ?, ?) ON CONFLICT (author_id, subject_id, season) DO UPDATE SET amount_cents = excluded.amount_cents",
       )
-        .bind(me.id, subjectId, season(), value)
+        .bind(me.id, subjectId, s, value)
         .run();
     }
     return { ok: true };
@@ -949,7 +1016,7 @@ const handlers = {
           WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
       ).bind(me.id, id, me.id, me.id).first();
     } else if (kind === "idea") {
-      const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(season(), id).first();
+      const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
       if (idea && (await canSeeIdea(env, me.id, idea))) row = idea;
     }
     if (!row) fail(404, "Not found.");
@@ -1008,36 +1075,37 @@ const handlers = {
     return { suggestions };
   },
 
-  // Your private planner for this season: per person budget, what you bought (list items and ideas)
-  // with what you paid, and your ideas. Only ever about other people, only ever for you.
+  // Your private planner: per person, their upcoming occasions (Christmas, and their birthday if they
+  // added one), each with your budget and what you bought for it (list items and ideas) with what you
+  // paid, plus your open ideas. Only ever about other people, only ever for you.
   async "GET tracker"(req, env) {
     const me = await auth(req, env);
-    const s = season();
+    const t = today();
     const [people, budgets, itemBuys, ideaBuys, ideas] = await Promise.all([
       env.DB.prepare(
-        `SELECT DISTINCT m.id, m.name FROM group_members gm JOIN members m ON m.id = gm.member_id
+        `SELECT DISTINCT m.id, m.name, m.birth_month, m.birth_day, m.birth_year FROM group_members gm JOIN members m ON m.id = gm.member_id
           WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ?
           ORDER BY m.name COLLATE NOCASE`,
       ).bind(me.id, me.id).all(),
-      env.DB.prepare("SELECT subject_id, amount_cents FROM budgets WHERE author_id = ? AND season = ?").bind(me.id, s).all(),
+      env.DB.prepare("SELECT subject_id, season, amount_cents FROM budgets WHERE author_id = ? AND season >= ?").bind(me.id, t).all(),
       env.DB.prepare(
-        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at
-           FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id = ? AND c.season = ? ORDER BY c.created_at`,
-      ).bind(me.id, s).all(),
+        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season
+           FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
+      ).bind(me.id, t).all(),
       env.DB.prepare(
-        `SELECT p.subject_id, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at,
+        `SELECT p.subject_id, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season,
                 p.author_id, a.name AS author_name
            FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id JOIN members a ON a.id = p.author_id
-          WHERE c.buyer_id = ? AND c.season = ? ORDER BY c.created_at`,
-      ).bind(me.id, s).all(),
-      env.DB.prepare(`${IDEA_SELECT} WHERE p.author_id = ? AND c.buyer_id IS NULL ORDER BY p.updated_at DESC`).bind(s, me.id).all(),
+          WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
+      ).bind(me.id, t).all(),
+      env.DB.prepare(`${IDEA_SELECT} WHERE p.author_id = ? AND c.buyer_id IS NULL ORDER BY p.updated_at DESC`).bind(t, me.id).all(),
     ]);
     const nicks = await nicknamesFor(env, me.id);
-    const budgetOf = new Map(budgets.results.map((b) => [b.subject_id, b.amount_cents]));
     const purchase = (kind) => (r) => ({
       kind,
       id: r.id,
       subject_id: r.subject_id,
+      occasion: r.season,
       title: r.title,
       url: r.url,
       list_cents: r.list_cents,
@@ -1048,16 +1116,32 @@ const handlers = {
     });
     const purchases = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea"))];
     return {
-      season: s,
+      today: t,
       people: people.results.map((p) => {
-        const bought = purchases.filter((x) => x.subject_id === p.id);
+        const occasions = occasionsFor(p, t);
+        const mine = (rows) => rows.filter((x) => x.subject_id === p.id);
+        // A mark or budget filed under an old birthday date (they changed it) still shows until that date passes.
+        for (const code of new Set([...mine(budgets.results).map((b) => b.season), ...mine(purchases).map((x) => x.occasion)])) {
+          if (!occasions.some((o) => o.code === code)) {
+            const xmas = code % 10000 === 1225;
+            occasions.push({ code, date: isoOf(code), christmas: xmas, birthday: !xmas, turning: null });
+          }
+        }
+        occasions.sort((a, b) => a.code - b.code);
         return {
           id: p.id,
           name: nicks.get(p.id) || p.name,
           fullName: p.name,
-          budget_cents: budgetOf.get(p.id) ?? null,
-          spent_cents: bought.reduce((sum, x) => sum + x.spent_cents, 0),
-          purchases: bought,
+          birthday: birthdayOut(p),
+          occasions: occasions.map((o) => {
+            const bought = mine(purchases).filter((x) => x.occasion === o.code);
+            return {
+              ...o,
+              budget_cents: mine(budgets.results).find((b) => b.season === o.code)?.amount_cents ?? null,
+              spent_cents: bought.reduce((sum, x) => sum + x.spent_cents, 0),
+              purchases: bought,
+            };
+          }),
           ideas: ideas.results.filter((r) => r.subject_id === p.id).map((r) => ideaOut(renameRow(r, nicks), me.id)),
         };
       }).sort(byName),
@@ -1126,10 +1210,44 @@ const handlers = {
     return { ok: true };
   },
 
-  // Change your name and/or PIN. pin: "1234" sets it, "" removes it, absent leaves it alone.
+  // Change your name, PIN and/or birthday. pin: "1234" sets it, "" removes it, absent leaves it alone.
+  // birthday: { month, day, year? } sets it (month and day required, year optional), null removes it.
   async "POST profile"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
+    if (b.birthday !== undefined) {
+      let bm = null, bd = null, by = null;
+      if (b.birthday) {
+        bm = Number(b.birthday.month);
+        bd = Number(b.birthday.day);
+        if (!Number.isInteger(bm) || bm < 1 || bm > 12) fail(400, "Pick the month of your birthday.");
+        if (!Number.isInteger(bd) || bd < 1 || bd > daysIn(bm)) fail(400, "Pick the day of your birthday.");
+        if (b.birthday.year !== undefined && b.birthday.year !== null && b.birthday.year !== "") {
+          by = Number(b.birthday.year);
+          const thisYear = Math.floor(today() / 10000);
+          if (!Number.isInteger(by) || by < 1900 || by > thisYear) fail(400, "That year doesn't look right.");
+          if (bm === 2 && bd === 29 && !isLeap(by)) fail(400, `${by} didn't have a February 29.`);
+        }
+      }
+      const before = await env.DB.prepare("SELECT birth_month, birth_day, birth_year FROM members WHERE id = ?").bind(me.id).first();
+      const oldBday = occasionsFor(before).find((o) => o.birthday && !o.christmas)?.code;
+      const after = { birth_month: bm, birth_day: bd, birth_year: by };
+      const next = occasionsFor(after);
+      const newCode = (next.find((o) => o.birthday) || next.find((o) => o.christmas)).code;
+      const rows = [env.DB.prepare("UPDATE members SET birth_month = ?, birth_day = ?, birth_year = ? WHERE id = ?").bind(bm, bd, by, me.id)];
+      // Budgets and marks others filed for your upcoming birthday follow it to the new date
+      // (or to Christmas if you removed it). You never see them; this just keeps their plans together.
+      if (oldBday && oldBday !== newCode) {
+        rows.push(
+          env.DB.prepare("UPDATE OR IGNORE budgets SET season = ? WHERE subject_id = ? AND season = ?").bind(newCode, me.id, oldBday),
+          // Someone who already had a budget for the new date keeps that one.
+          env.DB.prepare("DELETE FROM budgets WHERE subject_id = ? AND season = ?").bind(me.id, oldBday),
+          env.DB.prepare("UPDATE OR IGNORE claims SET season = ? WHERE season = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(newCode, oldBday, me.id),
+          env.DB.prepare("UPDATE OR IGNORE idea_claims SET season = ? WHERE season = ? AND idea_id IN (SELECT id FROM private_ideas WHERE subject_id = ?)").bind(newCode, oldBday, me.id),
+        );
+      }
+      await env.DB.batch(rows);
+    }
     if (b.name !== undefined) {
       const name = text(b.name, LIMITS.name, "Name", true);
       await env.DB.prepare("UPDATE members SET name = ? WHERE id = ?").bind(name, me.id).run();

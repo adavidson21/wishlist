@@ -330,6 +330,11 @@
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--panel); border-radius: 14px; padding: 4px; margin-bottom: 8px; }
   .seg button { min-height: 44px; border: 0; border-radius: 10px; background: none; font-weight: 700; font-size: 15px; color: var(--muted); }
   .seg button[aria-checked="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .seg.two { grid-template-columns: repeat(2, 1fr); }
+  /* Birthday picker (Settings) */
+  .bday-row { display: grid; grid-template-columns: 1.6fr 1fr 1.2fr; gap: 8px; }
+  .bday-row .field { margin-bottom: 0; }
+  .occ-when { color: var(--brand) !important; font-weight: 700; }
 
   /* Bottom tabs: My list, Family, [Add a wish], Budget, Settings */
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: color-mix(in srgb, var(--card) 96%, transparent);
@@ -915,7 +920,7 @@ function wireForm(form, submit) {
 
 // ---------- state + routing ----------
 // One-shot animation flags: the next render plays them once, then they're cleared.
-const state = { me: null, groups: [], season: null, tab: "mine", person: null, view: null, openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
+const state = { me: null, groups: [], today: null, tab: "mine", person: null, view: null, openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
 
 const hashFor = (tab) => (tab === "notes" ? "budget" : tab);
 function setTab(tab, person = null) {
@@ -950,11 +955,49 @@ const others = () => everyone().filter((m) => m.id !== state.me.id);
 const personName = (id) => everyone().find((m) => m.id === id)?.name || "Someone";
 const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a family";
 
+// ---------- occasions ----------
+// Marks and budgets belong to an occasion: Christmas for everyone, plus a person's birthday if they added
+// one. The server sends each person's upcoming occasions, soonest first: { code: YYYYMMDD, date, christmas,
+// birthday, turning }. Things reset the day after an occasion.
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const occParts = (o) => o.date.split("-").map(Number);
+const occDay = (o) => { const [, m, d] = occParts(o); return `${MONTHS[m - 1].slice(0, 3)} ${d}`; };
+const daysUntil = (o) => {
+  const t = state.today || 0, [y, m, d] = occParts(o);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(Math.floor(t / 10000), Math.floor(t / 100) % 100 - 1, t % 100)) / 86400000);
+};
+const inDays = (o) => { const n = daysUntil(o); return n <= 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`; };
+const occasionsOf = (id) => everyone().find((m) => m.id === id)?.occasions || [];
+// "Christmas", "birthday", or "birthday & Christmas", for "for ___" phrases.
+const occName = (o) => (o.christmas && o.birthday ? "birthday & Christmas" : o.christmas ? "Christmas" : "birthday");
+const occFor = (o, name) => (o.christmas && !o.birthday ? "Christmas" : `${name ? `${name}'s` : "their"} ${occName(o)}`);
+const occFind = (id, code) => occasionsOf(id).find((o) => o.code === code);
+// A short "for Christmas" / "for their birthday" tag, only when the person has more than one occasion.
+function occTag(personId, code) {
+  if (occasionsOf(personId).length < 2 || !code) return "";
+  const o = occFind(personId, code);
+  return o ? ` for ${o.christmas && !o.birthday ? "Christmas" : `their ${occName(o)}`}` : "";
+}
+// Two-button picker for which occasion a gift is for. Empty when the person has just one occasion.
+function occPicker(personId, current) {
+  const occ = occasionsOf(personId);
+  if (occ.length < 2) return "";
+  const pick = occ.some((o) => o.code === current) ? current : occ[0].code;
+  return `<div class="field"><span>It's for</span>
+    <div class="seg two" role="radiogroup" aria-label="Which occasion" data-occ>${occ.map((o) =>
+      `<button type="button" role="radio" data-v="${o.code}" aria-checked="${o.code === pick}">${o.christmas && !o.birthday ? "Christmas" : o.christmas ? "Birthday & Christmas" : "Birthday"} · ${occDay(o)}</button>`).join("")}</div></div>`;
+}
+function wireOccPicker(root) {
+  const el = root.querySelector("[data-occ]");
+  if (el) wireSeg(el, () => {});
+  return () => el?.querySelector('[aria-checked="true"]')?.dataset.v;
+}
+
 async function refreshMe() {
   const data = await load("me");
   state.me = data.me;
   state.groups = data.groups;
-  state.season = data.season;
+  state.today = data.today;
 }
 
 async function render() {
@@ -1358,6 +1401,9 @@ function finishTour() {
 
 // "Add 3 things" on My list, after the tour. Remembered on this device until you reach 3.
 const STARTER_KEY = "wishlist-starter";
+// A one-time "add your birthday" card on My list, until you add one or tap Not now.
+const BDAY_NUDGE_KEY = "wishlist-bday-nudge";
+const showBdayNudge = () => { if (state.me?.birthday) return false; try { return localStorage.getItem(BDAY_NUDGE_KEY) !== state.me.id; } catch { return false; } };
 function readStarter() { try { return localStorage.getItem(STARTER_KEY) === state.me?.id; } catch { return false; } }
 function writeStarter(on) { try { on ? localStorage.setItem(STARTER_KEY, state.me.id) : localStorage.removeItem(STARTER_KEY); } catch {} }
 const STARTER_IDEAS = [["📚", "A book", { placeholder: "A book you'd like to read" }], ["🧦", "Something cozy", { placeholder: "Warm slippers, size 8" }],
@@ -1402,6 +1448,9 @@ async function renderMine() {
     ${starter}
     <p class="count-line">${plural(n, "wish", "wishes")} on your list</p>
     <div class="stack">${data.items.map((i, k) => itemRow(i, k)).join("")}</div>
+    ${showBdayNudge() ? `<div class="starter slide" id="bdayNudge" style="margin:18px 0 0"><strong>When's your birthday?</strong>
+      <p>Add it so family can plan for it too, not just Christmas.</p>
+      <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="bdayLater">Not now</button><button class="btn primary" type="button" id="bdayAdd">Add birthday</button></div></div>` : ""}
     <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : `
     <div class="empty">
       ${giftBox("Add your first wish")}
@@ -1412,6 +1461,8 @@ async function renderMine() {
       <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>
     </div>`;
   $("#addFirst")?.addEventListener("click", () => editItem());
+  $("#bdayAdd")?.addEventListener("click", () => editBirthday());
+  $("#bdayLater")?.addEventListener("click", () => { try { localStorage.setItem(BDAY_NUDGE_KEY, state.me.id); } catch {} $("#bdayNudge")?.remove(); });
   v.querySelectorAll("[data-idea]").forEach((b) => (b.onclick = () => editItem(null, STARTER_IDEAS[b.dataset.idea][2])));
   if (celebrate) setTimeout(() => { const r = $(".starter", v)?.getBoundingClientRect(); if (r) party(r.left + r.width / 2, r.top + r.height / 2, 30); }, 250);
   wireGiftBox(v, () => editItem());
@@ -1707,12 +1758,14 @@ async function renderFamily() {
   const v = $("#view");
   const personBtn = (m, i) => {
         const p = plan.get(m.id);
-        const getting = p?.purchases.length || 0;
+        const getting = p ? p.occasions.reduce((n, o) => n + o.purchases.length, 0) : 0;
         const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
         const real = m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : "";
+        const bday = (m.occasions || []).find((o) => o.birthday);
+        const soon = bday && daysUntil(bday) <= 30 ? `<small class="occ-when">Birthday ${inDays(bday)}${bday.turning ? `, turning ${bday.turning}` : ""}</small>` : "";
         return `<button class="member slide" style="animation-delay:${i * 0.06}s" type="button" data-id="${esc(m.id)}">
           ${avatar(m.name, m.id, true)}
-          <span class="who"><strong>${esc(m.name)}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${budgetMini(p)}</span>${CHEV}
+          <span class="who"><strong>${esc(m.name)}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${soon}${budgetMini(p)}</span>${CHEV}
         </button>`;
   };
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
@@ -1748,12 +1801,15 @@ async function renderFamily() {
   });
 }
 
+// Budget bar for someone's next occasion (if you set a budget for it).
 function budgetMini(p) {
-  if (!p || p.budget_cents == null) return "";
-  const over = p.spent_cents > p.budget_cents;
-  const pct = p.budget_cents ? Math.min(100, Math.round((p.spent_cents / p.budget_cents) * 100)) : 100;
+  const o = p?.occasions[0];
+  if (!o || o.budget_cents == null) return "";
+  const over = o.spent_cents > o.budget_cents;
+  const pct = o.budget_cents ? Math.min(100, Math.round((o.spent_cents / o.budget_cents) * 100)) : 100;
+  const tag = p.occasions.length > 1 ? `, ${occName(o)}` : "";
   return `<span class="mini${over ? " over" : ""}"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
-    <span>${over ? `${money(p.spent_cents - p.budget_cents)} over` : `${money(p.spent_cents)} of ${money(p.budget_cents)}`}</span></span>`;
+    <span>${over ? `${money(o.spent_cents - o.budget_cents)} over` : `${money(o.spent_cents)} of ${money(o.budget_cents)}`}${tag}</span></span>`;
 }
 
 // ---------- invites ----------
@@ -1891,18 +1947,23 @@ async function renderPerson(id) {
     .slice().sort(sorter);
   const filtering = view.cat !== "all" || view.price !== "all" || view.open;
 
+  // Budget for their next occasion (Christmas or their birthday, whichever comes first).
   let meter = "";
-  if (plan?.budget_cents != null) {
-    const over = plan.spent_cents > plan.budget_cents;
-    const pct = plan.budget_cents ? Math.min(100, Math.round((plan.spent_cents / plan.budget_cents) * 100)) : 100;
+  const next = plan?.occasions[0];
+  const forWhat = next ? (next.christmas && !next.birthday ? `${esc(name)} this Christmas` : `${esc(name)}'s ${occName(next)}`) : "";
+  if (next?.budget_cents != null) {
+    const over = next.spent_cents > next.budget_cents;
+    const pct = next.budget_cents ? Math.min(100, Math.round((next.spent_cents / next.budget_cents) * 100)) : 100;
     meter = `<div class="hero-meter"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
-      <span><b>${money(plan.spent_cents)}</b> of ${money(plan.budget_cents)} for ${esc(name)}</span></div>`;
-  } else if (plan) {
-    meter = `<button class="hero-btn" type="button" id="setBudget">${PLUS} Set a budget for ${esc(name)}</button>`;
+      <span><b>${money(next.spent_cents)}</b> of ${money(next.budget_cents)} for ${forWhat}</span></div>`;
+  } else if (next) {
+    meter = `<button class="hero-btn" type="button" id="setBudget">${PLUS} Set a budget for ${forWhat}</button>`;
   }
+  const bday = occasionsOf(id).find((o) => o.birthday);
+  const bdayLine = bday ? `<span class="realname">Birthday ${occDay(bday)}${daysUntil(bday) <= 60 ? `, ${inDays(bday)}` : ""}${bday.turning ? ` · turning ${bday.turning}` : ""}</span>` : "";
   setHero(`<button class="back" type="button" id="backBtn">${BACK} Family</button>
     <div class="hero-row">${avatar(name, id, true)}
-      <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}</div>
+      <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}${bdayLine}</div>
       <button class="hero-link" type="button" id="renameBtn">Rename</button></div>${meter}`);
 
   const chip = (group, k, label, count, icon = "") =>
@@ -1951,7 +2012,7 @@ async function renderPerson(id) {
   $("#renameBtn").onclick = () => editNickname(list.member);
   $("#addIdea").onclick = () => editIdea(null, id);
   $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
-  $("#setBudget")?.addEventListener("click", () => editBudget(plan));
+  $("#setBudget")?.addEventListener("click", () => editBudget(plan, next));
   wireGiftBox(v, () => editIdea(null, id));
   const redo = () => render();
   v.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { view.cat = b.dataset.cat; redo(); }));
@@ -1965,7 +2026,7 @@ async function renderPerson(id) {
   const byKind = { item: all, idea: sugg };
   v.querySelectorAll("[data-mark]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.mark.split(":");
-    markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name);
+    markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name, id);
   }));
 }
 
@@ -2001,11 +2062,11 @@ function personRow(i, kind, n = 0) {
   const visit = i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">View at ${esc(host(i.url))} ${OUT}</a>` : "";
   if (i.claim?.mine) {
     cls = " mine";
-    foot = `<span class="mine-line"><span class="chk${fresh ? " new" : ""}">${CHECK}</span>You're getting this one</span><span class="spacer"></span>
+    foot = `<span class="mine-line"><span class="chk${fresh ? " new" : ""}">${CHECK}</span>You're getting this${occTag(state.person, i.claim.occasion) || " one"}</span><span class="spacer"></span>
       <button class="btn small quiet" type="button" data-mark="${key}">Edit</button>`;
   } else if (i.claim) {
     cls = " taken";
-    foot = `<span class="taken-line">${esc(i.claim.buyerName)} is getting this</span>`;
+    foot = `<span class="taken-line">${esc(i.claim.buyerName)} is getting this${occTag(state.person, i.claim.occasion)}</span>`;
   } else {
     foot = `${visit}<span class="spacer"></span>
       <button class="btn small primary" type="button" data-mark="${key}">${GIFT_SM} I'll get this</button>`;
@@ -2040,8 +2101,9 @@ function personRow(i, kind, n = 0) {
 }
 
 // "I'll get this" (or edit what you paid / take it back) for a list item or a shared idea.
-function markPurchased(kind, x, name) {
+function markPurchased(kind, x, name, personId) {
   const path = kind === "item" ? "claim" : "idea/claim";
+  const occ = occasionsOf(personId);
   const key = kind === "item" ? "itemId" : "ideaId";
   const editing = !!x.claim?.mine;
   const paid = editing ? x.claim.price_cents ?? x.price_cents : x.price_cents;
@@ -2053,13 +2115,15 @@ function markPurchased(kind, x, name) {
       <div class="err" hidden></div>
       <label class="field"><span>Price you paid <em>(optional)</em></span>
         <div class="input money-in"><span>$</span><input name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="0" aria-label="Price you paid"></div></label>
-      <p class="hint">This goes toward your budget for ${esc(who)}.</p>
+      ${occPicker(personId, x.claim?.occasion)}
+      <p class="hint">${occ.length > 1 ? "This goes toward your budget for the one you pick." : `This goes toward your budget for ${esc(who)}.`}</p>
       ${editing ? `<div class="actions"><button class="btn danger" type="button" id="unmark">Not getting it</button><button class="btn primary" type="submit">Save</button></div>`
         : `<button class="btn primary wide" type="submit">Yes, I'm getting it</button><button class="btn quiet wide" type="button" id="cancelMark" style="margin-top:6px">Cancel</button>`}
     </form>`, (el) => {
       $("#cancelMark", el)?.addEventListener("click", closeSheet);
+      const occasion = wireOccPicker(el);
       wireForm($("#markForm", el), async ({ price }) => {
-        await api(path, { [key]: x.id, on: true, price });
+        await api(path, { [key]: x.id, on: true, price, occasion: occasion() });
         closeSheet();
         if (editing) { toast("Saved"); return render(); }
         buzz();
@@ -2077,19 +2141,33 @@ function markPurchased(kind, x, name) {
 }
 
 // ---------- budget: per person budgets, spending, ideas (private) ----------
+// Two views: Christmas (everyone) and Birthdays (people who added one, soonest first).
+const BUDGET_VIEW_KEY = "wishlist-budget-view";
+function budgetView() { try { return localStorage.getItem(BUDGET_VIEW_KEY) === "birthday" ? "birthday" : "christmas"; } catch { return "christmas"; } }
+function setBudgetView(v) { try { v === "birthday" ? localStorage.setItem(BUDGET_VIEW_KEY, v) : localStorage.removeItem(BUDGET_VIEW_KEY); } catch {} }
+// The occasion a person's card shows in a view (null: no birthday yet).
+const viewOcc = (p, view) => p.occasions.find((o) => (view === "birthday" ? o.birthday : o.christmas)) || null;
+const xmasYear = (t) => { const o = t.people[0] && viewOcc(t.people[0], "christmas"); return o ? occParts(o)[0] : ""; };
+
 async function renderTracker() {
   const t = await load("tracker");
   state.tracker = t;
-  const totalBudget = t.people.reduce((n, p) => n + (p.budget_cents || 0), 0);
-  const totalSpent = t.people.reduce((n, p) => n + p.spent_cents, 0);
+  const view = budgetView();
+  const rows = t.people.map((p) => ({ p, o: viewOcc(p, view) }));
+  const shownRows = rows.filter((r) => r.o);
+  if (view === "birthday") shownRows.sort((a, b) => a.o.code - b.o.code);
+  const noBday = rows.filter((r) => !r.o);
+  const totalBudget = shownRows.reduce((n, r) => n + (r.o.budget_cents || 0), 0);
+  const totalSpent = shownRows.reduce((n, r) => n + r.o.spent_cents, 0);
   const left = totalBudget - totalSpent;
   const hasBudget = totalBudget > 0;
   const shown = hasBudget ? Math.abs(left) : totalSpent;
   const pct = hasBudget ? Math.min(100, Math.round((totalSpent / totalBudget) * 100)) : 0;
+  const what = view === "birthday" ? "upcoming birthdays" : `Christmas ${xmasYear(t)}`;
   setHero(`
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1>Budget</h1><span class="lockline">${LOCK} just for you</span></div>
     <div class="hero-stat">
-      <p class="kicker">${hasBudget ? (left < 0 ? "Over budget by" : "Left to spend") : `Spent so far in ${esc(t.season)}`}</p>
+      <p class="kicker">${hasBudget ? (left < 0 ? `Over budget for ${esc(what)} by` : `Left to spend for ${esc(what)}`) : `Spent so far for ${esc(what)}`}</p>
       <span class="big-num" id="bigNum">${money(shown)}</span>
       <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : "Set a budget for anyone below to see what's left."}</p>
       ${hasBudget ? `<div class="hero-meter" style="margin-top:12px"><span class="bar"><i style="width:${pct}%"></i></span></div>` : ""}
@@ -2099,52 +2177,62 @@ async function renderTracker() {
   state.lastLeft = shown;
 
   const v = $("#view");
+  const segHtml = seg("Which budget", [["christmas", `Christmas ${xmasYear(t)}`], ["birthday", "Birthdays"]], view).replace('class="seg"', 'class="seg two"');
   v.innerHTML = t.people.length ? `
-    <div class="label" style="margin-top:0">By person</div>
-    <div class="stack" style="margin-top:12px">${t.people.map(personCard).join("")}</div>
+    <div id="viewSeg">${segHtml}</div>
+    ${shownRows.length ? `<div class="label" style="margin-top:18px">${view === "birthday" ? "Coming up" : "By person"}</div>
+    <div class="stack" style="margin-top:12px">${shownRows.map((r, n) => personCard(r.p, r.o, view, n)).join("")}</div>`
+      : `<div class="empty" style="margin-top:18px"><strong>No birthdays yet</strong><p>When family add their birthday in Settings, you can plan and budget for it here.</p></div>`}
+    ${view === "birthday" && noBday.length ? `<div class="label">No birthday added yet</div>
+      <p class="subtle">They can add it in Settings.</p>
+      <div class="stack">${noBday.map((r) => `<button class="member" type="button" data-open="${esc(r.p.id)}">${avatar(r.p.name, r.p.id)}<span class="who"><strong>${esc(r.p.name)}</strong><small>${esc(r.p.name)}'s list</small></span>${CHEV}</button>`).join("")}</div>` : ""}
     <div class="stack" style="margin-top:18px">
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
-      <button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>
+      ${shownRows.length ? `<button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>` : ""}
     </div>` : `<div class="empty">${giftBox("Invite your family")}<strong>No one to plan for yet</strong><p>Once family members join, you can set budgets and track gifts for each of them here.</p></div>`;
-  $("#addPurchase")?.addEventListener("click", () => editIdea(null, null, { purchase: true }));
+  $("#viewSeg") && wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderTracker(); });
+  $("#addPurchase")?.addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
   $("#addIdea")?.addEventListener("click", () => editIdea(null, null));
-  $("#exportBtn")?.addEventListener("click", () => exportExcel(t));
+  $("#exportBtn")?.addEventListener("click", () => exportExcel(t, view));
+  v.querySelectorAll(".stack > [data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
   wireGiftBox(v, () => setTab("family"));
-  v.querySelectorAll(".pcard").forEach((c) => wireTrackerCard(c, t));
+  v.querySelectorAll(".pcard").forEach((c) => wireTrackerCard(c, t, view));
 }
 
-function wireTrackerCard(card, t) {
+function wireTrackerCard(card, t, view) {
   if (!card) return;
+  const p = t.people.find((x) => x.id === card.dataset.person);
+  const o = viewOcc(p, view);
   card.querySelector("[data-toggle]").onclick = () => {
     const id = card.dataset.person;
     if (state.openPeople.has(id)) state.openPeople.delete(id); else state.openPeople.add(id);
-    const p = t.people.find((x) => x.id === id);
-    card.outerHTML = personCard(p, 0, true);
-    wireTrackerCard($(`.pcard[data-person="${CSS.escape(id)}"]`), t);
+    card.outerHTML = personCard(p, o, view, 0, true);
+    wireTrackerCard($(`.pcard[data-person="${CSS.escape(id)}"]`), t, view);
   };
-  card.querySelector("[data-budget]")?.addEventListener("click", () => editBudget(t.people.find((p) => p.id === card.dataset.person)));
+  card.querySelector("[data-budget]")?.addEventListener("click", () => editBudget(p, o));
   card.querySelector("[data-for]")?.addEventListener("click", () => editIdea(null, card.dataset.person));
   card.querySelector("[data-open]")?.addEventListener("click", () => setTab("family", card.dataset.person));
-  wireIdeaRows(card, t.people.flatMap((p) => p.ideas));
+  wireIdeaRows(card, t.people.flatMap((x) => x.ideas));
 }
 
-function personCard(p, n = 0, still = false) {
-  const budget = p.budget_cents;
+function personCard(p, o, view, n = 0, still = false) {
+  const budget = o.budget_cents;
   const isOpen = state.openPeople.has(p.id);
-  const over = budget != null && p.spent_cents > budget;
-  const pct = budget ? Math.min(100, Math.round((p.spent_cents / budget) * 100)) : 100;
+  const over = budget != null && o.spent_cents > budget;
+  const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
   const pill = budget == null ? '<span class="pill none">No budget</span>'
-    : over ? `<span class="pill over">${money(p.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - p.spent_cents)} left</span>`;
+    : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
+  const when = view === "birthday" ? `<small class="occ-when">${occDay(o)}, ${inDays(o)}${o.turning ? ` · turning ${o.turning}` : ""}</small>` : "";
   return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-person="${esc(p.id)}">
     <button class="pcard-head" type="button" data-toggle="${esc(p.id)}" aria-expanded="${isOpen}">
       <span class="pcard-top">${avatar(p.name, p.id)}
-        <span class="pcard-who"><strong>${esc(p.name)}</strong><small>${money(p.spent_cents)}${budget != null ? ` of ${money(budget)}` : " spent"}</small></span>
+        <span class="pcard-who"><strong>${esc(p.name)}</strong>${when}<small>${money(o.spent_cents)}${budget != null ? ` of ${money(budget)}` : " spent"}</small></span>
         ${pill}${CHEV_D}</span>
       ${budget != null ? `<span class="meter${over ? " over" : ""}"><i style="width:${over ? 100 : pct}%${still ? ";animation:none" : ""}"></i></span>` : ""}
     </button>
     ${isOpen ? `<div class="pcard-body">
-      ${p.purchases.length ? `<ul class="buys">${p.purchases.map((x) => `<li><span>${esc(x.title)}<small>${esc(x.from)}</small></span><b>${money(x.spent_cents)}</b></li>`).join("")}</ul>`
+      ${o.purchases.length ? `<ul class="buys">${o.purchases.map((x) => `<li><span>${esc(x.title)}<small>${esc(x.from)}</small></span><b>${money(x.spent_cents)}</b></li>`).join("")}</ul>`
         : '<p class="subtle">Nothing bought yet.</p>'}
       ${p.ideas.length ? `<div class="stack">${p.ideas.map(ideaRow).join("")}</div>` : ""}
       <div class="pcard-actions">
@@ -2156,22 +2244,24 @@ function personCard(p, n = 0, still = false) {
   </div>`;
 }
 
-function editBudget(p) {
+// p: a tracker person, o: the occasion the budget is for.
+function editBudget(p, o) {
+  const forWhat = o.christmas && !o.birthday ? `Christmas ${occParts(o)[0]}` : `${p.name}'s ${occName(o)} (${occDay(o)})`;
   openSheet(`
     <h3>Budget for ${esc(p.name)}</h3>
     <form id="budgetForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>How much for ${state.tracker?.season || "this year"}?</span>
-        <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(p.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
-      <p class="hint">${LOCK} Just for you.</p>
+      <label class="field"><span>How much for ${esc(forWhat)}?</span>
+        <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(o.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
+      <p class="hint">${LOCK} Just for you. It starts fresh after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.</p>
       <div class="actions">
-        ${p.budget_cents != null ? '<button class="btn danger" type="button" id="clearBudget">Clear</button>' : ""}
+        ${o.budget_cents != null ? '<button class="btn danger" type="button" id="clearBudget">Clear</button>' : ""}
         <button class="btn primary" type="submit">Save</button>
       </div>
     </form>`, (el) => {
-      wireForm($("#budgetForm", el), async ({ amount }) => { await api("budget", { subjectId: p.id, amount }); closeSheet(); toast("Budget saved"); render(); });
+      wireForm($("#budgetForm", el), async ({ amount }) => { await api("budget", { subjectId: p.id, amount, occasion: o.code }); closeSheet(); toast("Budget saved"); render(); });
       $("#clearBudget", el)?.addEventListener("click", async () => {
-        try { await api("budget", { subjectId: p.id, amount: "" }); closeSheet(); toast("Budget cleared"); render(); } catch (e) { toast(e.message); }
+        try { await api("budget", { subjectId: p.id, amount: "", occasion: o.code }); closeSheet(); toast("Budget cleared"); render(); } catch (e) { toast(e.message); }
       });
     });
 }
@@ -2179,7 +2269,7 @@ function editBudget(p) {
 function ideaRow(i) {
   const bought = !!i.claim;
   const status = !bought ? (i.shared ? "Shared with family" : "Just for you")
-    : i.claim.mine ? "You're getting this one" : `${i.claim.buyerName} is getting this`;
+    : i.claim.mine ? `You're getting this${occTag(i.subject_id, i.claim.occasion) || " one"}` : `${i.claim.buyerName} is getting this${occTag(i.subject_id, i.claim.occasion)}`;
   return `<div class="row${bought ? (i.claim.mine ? " mine" : " taken") : ""}" role="button" tabindex="0" data-idea="${esc(i.id)}" aria-label="Edit idea ${esc(i.title)}">
     <div class="row-top">${tile(i, "idea")}
       <div class="row-main">
@@ -2218,6 +2308,7 @@ function editIdea(idea, subjectId, opts = {}) {
       <label class="check"><span>Let family see this idea<small id="shareHint"></small></span><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}></label>
       ${boughtByOther ? `<p class="hint">${esc(idea.claim.buyerName)} is getting this.</p>` : `
       <label class="check"${purchase ? " hidden" : ""}><span>I'm getting this</span><input type="checkbox" name="bought" ${idea.claim?.mine || purchase ? "checked" : ""}></label>
+      <div id="occField"></div>
       <label class="field" id="paidField"><span>Price you paid <em>(optional)</em></span><input class="input" name="paid" inputmode="decimal" value="${esc(priceIn(idea.claim?.price_cents ?? idea.price_cents))}"></label>`}
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeIdea">Delete</button>'}
@@ -2227,7 +2318,22 @@ function editIdea(idea, subjectId, opts = {}) {
       const form = $("#ideaForm", el);
       form.noValidate = true;
       wireAutofill(form);
+      // Which occasion it's for: shown when you're getting it and the person has a birthday too.
+      let occSubject = null, occasion = () => undefined;
+      const syncOcc = () => {
+        const box = $("#occField", el);
+        if (!box) return;
+        const who = form.subjectId?.value || idea.subject_id;
+        box.hidden = !form.bought?.checked;
+        if (who === occSubject) return;
+        occSubject = who;
+        const occ = occasionsOf(who);
+        const want = idea.claim?.occasion ?? (opts.view === "birthday" ? occ.find((o) => o.birthday)?.code : occ.find((o) => o.christmas)?.code);
+        box.innerHTML = who ? occPicker(who, want) : "";
+        occasion = wireOccPicker(box);
+      };
       const sync = () => {
+        syncOcc();
         const shared = form.shared.checked;
         $("#shareHint", el).textContent = shared
           ? `Everyone except ${personName(form.subjectId?.value || idea.subject_id)} can see it and get it.`
@@ -2241,7 +2347,7 @@ function editIdea(idea, subjectId, opts = {}) {
       sync();
       wireForm(form, async (d) => {
         const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, note: d.note, shared: d.shared, image: imageFor(form) };
-        if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; }
+        if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; if (d.bought) payload.occasion = occasion(); }
         await api("idea/save", payload);
         closeSheet();
         toast(purchase ? "Purchase added" : "Saved");
@@ -2268,29 +2374,32 @@ function loadXlsx() {
   });
 }
 
-async function exportExcel(t) {
+// Exports the view you're looking at (Christmas or Birthdays).
+async function exportExcel(t, view) {
   try {
     await loadXlsx();
     const dollars = (c) => (c == null ? null : c / 100);
     const day = (iso) => (iso ? iso.slice(0, 10) : null);
-    const summary = t.people.map((p) => [p.name, dollars(p.budget_cents), dollars(p.spent_cents), p.budget_cents == null ? null : dollars(p.budget_cents - p.spent_cents), p.purchases.length, p.ideas.length]);
-    const tb = t.people.reduce((n, p) => n + (p.budget_cents || 0), 0), ts = t.people.reduce((n, p) => n + p.spent_cents, 0);
-    summary.push(["Total", dollars(tb), dollars(ts), dollars(tb - ts), t.people.reduce((n, p) => n + p.purchases.length, 0), t.people.reduce((n, p) => n + p.ideas.length, 0)]);
+    const rows = t.people.map((p) => ({ p, o: viewOcc(p, view) })).filter((r) => r.o);
+    if (view === "birthday") rows.sort((a, b) => a.o.code - b.o.code);
+    const summary = rows.map(({ p, o }) => [p.name, o.date, dollars(o.budget_cents), dollars(o.spent_cents), o.budget_cents == null ? null : dollars(o.budget_cents - o.spent_cents), o.purchases.length, p.ideas.length]);
+    const tb = rows.reduce((n, r) => n + (r.o.budget_cents || 0), 0), ts = rows.reduce((n, r) => n + r.o.spent_cents, 0);
+    summary.push(["Total", null, dollars(tb), dollars(ts), dollars(tb - ts), rows.reduce((n, r) => n + r.o.purchases.length, 0), rows.reduce((n, r) => n + r.p.ideas.length, 0)]);
     const blob = window.buildXlsx([
       { name: "Summary", boldLast: true, columns: [
-          { header: "Person", width: 20 }, { header: "Budget", money: true }, { header: "Spent", money: true },
+          { header: "Person", width: 20 }, { header: view === "birthday" ? "Birthday" : "Date", width: 12 }, { header: "Budget", money: true }, { header: "Spent", money: true },
           { header: "Left", money: true }, { header: "Gifts bought", width: 13 }, { header: "Open ideas", width: 12 }],
         rows: summary },
       { name: "Purchases", columns: [
           { header: "Person", width: 18 }, { header: "Gift", width: 36 }, { header: "From", width: 22 }, { header: "Paid", money: true },
           { header: "Listed price", money: true }, { header: "Date", width: 12 }, { header: "Link", width: 40 }],
-        rows: t.people.flatMap((p) => p.purchases.map((x) => [p.name, x.title, x.from, dollars(x.spent_cents), dollars(x.list_cents), day(x.date), x.url])) },
+        rows: rows.flatMap(({ p, o }) => o.purchases.map((x) => [p.name, x.title, x.from, dollars(x.spent_cents), dollars(x.list_cents), day(x.date), x.url])) },
       { name: "Ideas", columns: [
           { header: "Person", width: 18 }, { header: "Idea", width: 36 }, { header: "Price", money: true }, { header: "Shared", width: 10 },
           { header: "Note", width: 40 }, { header: "Link", width: 40 }],
-        rows: t.people.flatMap((p) => p.ideas.map((i) => [p.name, i.title, dollars(i.price_cents), i.shared ? "Yes" : "No", i.note, i.url])) },
+        rows: rows.flatMap(({ p }) => p.ideas.map((i) => [p.name, i.title, dollars(i.price_cents), i.shared ? "Yes" : "No", i.note, i.url])) },
     ]);
-    const filename = `Wishlist budget ${t.season}.xlsx`;
+    const filename = view === "birthday" ? `Wishlist birthdays ${state.today ? String(state.today).slice(0, 4) : ""}.xlsx`.replace(" .", ".") : `Wishlist budget Christmas ${xmasYear(t)}.xlsx`;
     const file = new File([blob], filename, { type: blob.type });
     // Phones: the share sheet lets you save to Files or send it. Computers: a normal download.
     if (navigator.canShare?.({ files: [file] }) && matchMedia("(pointer: coarse)").matches) {
@@ -2303,6 +2412,47 @@ async function exportExcel(t) {
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   } catch (e) { toast(e.message); }
+}
+
+// ---------- birthday ----------
+const birthdayText = (b) => `${MONTHS[b.month - 1]} ${b.day}${b.year ? `, ${b.year}` : ""}`;
+function editBirthday() {
+  const b = state.me.birthday || {};
+  const days = (m) => (m ? [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1] : 31);
+  const dayOpts = (m, cur) => `<option value="">Day</option>` + Array.from({ length: days(m) }, (_, k) => k + 1).map((d) => `<option value="${d}"${d === cur ? " selected" : ""}>${d}</option>`).join("");
+  openSheet(`
+    <h3>When's your birthday?</h3>
+    <p>Your family can plan gifts for it, and anything they budget for it starts fresh the day after.</p>
+    <form id="bdayForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <div class="bday-row">
+        <label class="field"><span>Month</span><select class="input" name="month" required>
+          <option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${k + 1 === b.month ? " selected" : ""}>${m}</option>`).join("")}</select></label>
+        <label class="field"><span>Day</span><select class="input" name="day" required>${dayOpts(b.month, b.day)}</select></label>
+        <label class="field"><span>Year</span><input class="input" name="year" inputmode="numeric" maxlength="4" pattern="\\d{4}" placeholder="1990" value="${esc(b.year || "")}"></label>
+      </div>
+      <p class="hint" style="margin-top:8px">Year is up to you. With it, family will know when a big one is coming up.</p>
+      <div class="actions">
+        ${state.me.birthday ? '<button class="btn danger" type="button" id="clearBday">Remove</button>' : ""}
+        <button class="btn primary" type="submit">Save birthday</button>
+      </div>
+    </form>`, (el) => {
+      const form = $("#bdayForm", el);
+      form.month.addEventListener("change", () => {
+        const keep = Number(form.day.value);
+        form.day.innerHTML = dayOpts(Number(form.month.value), keep <= days(Number(form.month.value)) ? keep : null);
+      });
+      const done = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
+      wireForm(form, async ({ month, day, year }) => {
+        if (!month || !day) throw new Error("Pick a month and day.");
+        await api("profile", { birthday: { month: Number(month), day: Number(day), year: year.trim() } });
+        try { localStorage.removeItem(BDAY_NUDGE_KEY); } catch {}
+        done("Birthday saved");
+      });
+      $("#clearBday", el)?.addEventListener("click", async () => {
+        try { await api("profile", { birthday: null }); done("Birthday removed"); } catch (e) { toast(e.message); }
+      });
+    });
 }
 
 // ---------- settings ----------
@@ -2342,6 +2492,11 @@ function openSettings(joinCode = "") {
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
         <button class="btn wide" type="submit">Save name</button>
       </form>
+    </div>
+    <div class="sheet-sec">
+      <h4>Birthday</h4>
+      <p>${state.me.birthday ? `${esc(birthdayText(state.me.birthday))}. Family can plan for it, and budgets for it start fresh the day after.` : "Add your birthday so family can plan for it too, not just Christmas."}</p>
+      <button class="btn wide" type="button" id="bdayBtn">${state.me.birthday ? "Change birthday" : "Add your birthday"}</button>
     </div>
     <div class="sheet-sec">
       <h4>PIN</h4>
@@ -2386,6 +2541,7 @@ function openSettings(joinCode = "") {
       const reload = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
       el.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
       $("#replayTour", el).onclick = () => { closeSheet(); state.welcome = null; openTour(); };
+      $("#bdayBtn", el).onclick = () => editBirthday();
       el.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
         const name = groupName(b.dataset.leave);
         if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other families.`)) return;
