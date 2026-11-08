@@ -10,10 +10,12 @@
 //     everyone in the family except the person it's for. The person it's for never gets it in any response.
 //   - Budgets and the spending tracker are only returned to their author.
 //   - You only see lists of people who share a group with you.
+//   - Nicknames ("Grandma" for "Jane Doe") are private to whoever set them. Every name in a response is
+//     already swapped for the viewer's nickname; fullName is sent alongside where the UI needs it.
 import { json, callGemini } from "./gemini.js";
 
 const BASE = "/api/";
-const LIMITS = { name: 40, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { nickname: 40, name: 40, group: 60, title: 200, url: 2000, notes: 1000 };
 
 // ---------- helpers ----------
 
@@ -37,6 +39,19 @@ async function hashPin(memberId, pin) {
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+// Your nicknames for other people: Map of member id -> nickname.
+async function nicknamesFor(env, meId) {
+  const { results } = await env.DB.prepare("SELECT subject_id, nickname FROM nicknames WHERE author_id = ?").bind(meId).all();
+  return new Map(results.map((r) => [r.subject_id, r.nickname]));
+}
+// Swaps the author and buyer names on an idea or claim row for the viewer's nicknames.
+const renameRow = (r, nicks) => ({
+  ...r,
+  author_name: nicks.get(r.author_id) || r.author_name,
+  buyer_name: nicks.get(r.buyer_id) || r.buyer_name,
+});
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -455,6 +470,8 @@ const handlers = {
     )
       .bind(me.id)
       .all();
+    const nicks = await nicknamesFor(env, me.id);
+    const person = (p) => ({ id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count });
     return {
       me: { id: me.id, name: me.name, hasPin: me.hasPin },
       season: season(),
@@ -462,7 +479,7 @@ const handlers = {
         id: g.id,
         name: g.name,
         code: g.join_code,
-        members: people.filter((p) => p.group_id === g.id).map((p) => ({ id: p.id, name: p.name, itemCount: p.item_count })),
+        members: people.filter((p) => p.group_id === g.id).map(person).sort(byName),
       })),
     };
   },
@@ -475,6 +492,9 @@ const handlers = {
     const member = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?").bind(memberId).first();
     if (!member) fail(404, "List not found.");
     const own = memberId === me.id;
+    const nicks = own ? new Map() : await nicknamesFor(env, me.id);
+    member.fullName = member.name;
+    member.name = nicks.get(member.id) || member.name;
 
     if (own) {
       const { results } = await env.DB.prepare(
@@ -504,7 +524,7 @@ const handlers = {
       .bind(season(), memberId, me.id, me.id)
       .all();
     const visible = [];
-    for (const r of ideas) if (await canSeeIdea(env, me.id, r)) visible.push(ideaOut(r, me.id));
+    for (const r of ideas) if (await canSeeIdea(env, me.id, r)) visible.push(ideaOut(renameRow(r, nicks), me.id));
     return {
       member,
       own,
@@ -512,7 +532,7 @@ const handlers = {
         ...itemOut(r),
         removed: !!r.removed_at,
         claim: r.buyer_id
-          ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === me.id, price_cents: r.paid_cents }
+          ? { buyerId: r.buyer_id, buyerName: nicks.get(r.buyer_id) || r.buyer_name, mine: r.buyer_id === me.id, price_cents: r.paid_cents }
           : null,
       })),
       suggestions: visible.filter((i) => !i.mine),
@@ -609,7 +629,8 @@ const handlers = {
     )
       .bind(season(), me.id, ...(subject ? [subject] : []))
       .all();
-    return { ideas: results.map((r) => ideaOut(r, me.id)) };
+    const nicks = await nicknamesFor(env, me.id);
+    return { ideas: results.map((r) => ideaOut(renameRow(r, nicks), me.id)) };
   },
 
   async "POST idea/save"(req, env) {
@@ -739,6 +760,7 @@ const handlers = {
       ).bind(me.id, s).all(),
       env.DB.prepare(`${IDEA_SELECT} WHERE p.author_id = ? AND c.buyer_id IS NULL ORDER BY p.updated_at DESC`).bind(s, me.id).all(),
     ]);
+    const nicks = await nicknamesFor(env, me.id);
     const budgetOf = new Map(budgets.results.map((b) => [b.subject_id, b.amount_cents]));
     const purchase = (kind) => (r) => ({
       kind,
@@ -750,7 +772,7 @@ const handlers = {
       paid_cents: r.paid_cents,
       spent_cents: r.paid_cents ?? r.list_cents ?? 0,
       date: r.created_at,
-      from: kind === "item" ? "Their list" : r.author_id === me.id ? "My idea" : `Suggested by ${r.author_name}`,
+      from: kind === "item" ? "Their list" : r.author_id === me.id ? "My idea" : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
     });
     const purchases = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea"))];
     return {
@@ -759,14 +781,33 @@ const handlers = {
         const bought = purchases.filter((x) => x.subject_id === p.id);
         return {
           id: p.id,
-          name: p.name,
+          name: nicks.get(p.id) || p.name,
+          fullName: p.name,
           budget_cents: budgetOf.get(p.id) ?? null,
           spent_cents: bought.reduce((sum, x) => sum + x.spent_cents, 0),
           purchases: bought,
-          ideas: ideas.results.filter((r) => r.subject_id === p.id).map((r) => ideaOut(r, me.id)),
+          ideas: ideas.results.filter((r) => r.subject_id === p.id).map((r) => ideaOut(renameRow(r, nicks), me.id)),
         };
-      }),
+      }).sort(byName),
     };
+  },
+
+  // Your own name for someone (only you see it). An empty nickname goes back to their real name.
+  async "POST nickname"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    if (!b.subjectId || b.subjectId === me.id || !(await sharesGroup(env, me.id, b.subjectId))) fail(400, "Pick who to rename.");
+    const nickname = text(b.nickname, LIMITS.nickname, "Nickname");
+    if (nickname === null) {
+      await env.DB.prepare("DELETE FROM nicknames WHERE author_id = ? AND subject_id = ?").bind(me.id, b.subjectId).run();
+    } else {
+      await env.DB.prepare(
+        "INSERT INTO nicknames (author_id, subject_id, nickname, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (author_id, subject_id) DO UPDATE SET nickname = excluded.nickname, updated_at = excluded.updated_at",
+      )
+        .bind(me.id, b.subjectId, nickname, now())
+        .run();
+    }
+    return { ok: true };
   },
 
   // Change your name and/or PIN. pin: "1234" sets it, "" removes it, absent leaves it alone.
