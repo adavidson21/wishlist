@@ -390,6 +390,16 @@ async function leaveHousehold(env, memberId) {
   }
 }
 
+// A household you can organize: someone in it shares a circle with you. Returns its id or throws 404.
+async function manageableHousehold(env, meId, householdId) {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM members m JOIN group_members a ON a.member_id = m.id JOIN group_members b ON b.group_id = a.group_id
+      WHERE m.household_id = ? AND b.member_id = ? LIMIT 1`,
+  ).bind(String(householdId), meId).first();
+  if (!row) fail(404, "Household not found.");
+  return String(householdId);
+}
+
 async function newUniqueJoinCode(env) {
   for (let i = 0; i < 5; i++) {
     const c = newJoinCode();
@@ -922,13 +932,13 @@ const handlers = {
         const list = (h.id === myHh ? myPeople : [...seen.values()].filter((p) => p.household_id === h.id)).slice().sort(byName);
         households[h.id] = {
           id: h.id,
+          name: h.name || null,
           label: householdLabel(h.name, list.map((p) => (p.id === me.id ? me.name : nicks.get(p.id) || p.name))),
           circles: inCircles.filter((c) => c.household_id === h.id).map((c) => c.group_id),
         };
         if (h.id === myHh) {
           myHousehold = {
             ...households[h.id],
-            name: h.name || null,
             members: list.map((p) => ({ id: p.id, name: p.id === me.id ? me.name : nicks.get(p.id) || p.name, photo: p.photo_at || null })),
           };
         }
@@ -1547,18 +1557,50 @@ const handlers = {
   },
 
   // ---------- households ----------
-  // Add someone you share a circle with to your household (starting one if you don't have one yet).
-  // They join every circle your household is in. Honor system, like the rest of sign-in.
+  // Anyone in a circle can organize the households in it (honor system, like the rest of sign-in).
+  // Every action takes an optional householdId; without one it's your own household.
+
+  // Make a household out of people in one of your circles, and put it in that circle.
+  async "POST household/create"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const groupId = b.groupId;
+    if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    const ids = [...new Set((Array.isArray(b.memberIds) ? b.memberIds : []).map(String))];
+    if (!ids.length) fail(400, "Pick who's in the household.");
+    if (ids.length > 30) fail(400, "That's a lot of people for one household.");
+    const name = text(b.name, LIMITS.household, "Household name");
+    for (const id of ids) {
+      const row = await env.DB.prepare(
+        "SELECT m.name, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
+      ).bind(groupId, id).first();
+      if (!row) fail(404, "Someone you picked isn't in this circle.");
+      if (row.household_id) fail(409, `${row.name} is already in a household. Take them out of it first.`);
+    }
+    const hh = newId();
+    const t = now();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, ?, ?)").bind(hh, name, t),
+      env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?)").bind(groupId, hh, t),
+      ...ids.map((id) => env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, id)),
+    ]);
+    return { household: { id: hh } };
+  },
+
+  // Add someone you share a circle with to a household (yours by default, starting one if you don't have one).
+  // They join every circle the household is in.
   async "POST household/add"(req, env) {
     const me = await auth(req, env);
-    const { memberId } = await body(req);
-    if (!memberId || memberId === me.id) fail(400, "Pick someone to add.");
+    const b = await body(req);
+    const memberId = b.memberId;
+    if (!memberId) fail(400, "Pick someone to add.");
     if (!(await sharesGroup(env, me.id, memberId))) fail(404, "Person not found.");
     const them = await env.DB.prepare("SELECT name, household_id FROM members WHERE id = ?").bind(memberId).first();
     if (!them) fail(404, "Person not found.");
-    let hh = await householdOf(env, me.id);
-    if (them.household_id && them.household_id === hh) fail(409, `${them.name} is already in your household.`);
-    if (them.household_id) fail(409, `${them.name} is already in another household. They can leave it in Settings first.`);
+    let hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
+    if (them.household_id && them.household_id === hh) fail(409, `${them.name} is already in this household.`);
+    if (them.household_id) fail(409, `${them.name} is already in another household. Take them out of it first.`);
+    if (!hh && memberId === me.id) fail(400, "Pick someone to add.");
     const t = now();
     if (!hh) {
       hh = newId();
@@ -1569,7 +1611,7 @@ const handlers = {
     }
     const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all();
     const clash = await nameClash(env, results.map((r) => r.group_id), [memberId]);
-    if (clash) fail(409, `Someone named ${them.name} is already in ${clash}, which your household is in. One of them can add a last initial first.`);
+    if (clash) fail(409, `Someone named ${them.name} is already in ${clash}, which this household is in. One of them can add a last initial first.`);
     await env.DB.batch([
       env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, memberId),
       env.DB.prepare(
@@ -1579,33 +1621,35 @@ const handlers = {
     return { ok: true };
   },
 
-  // Take someone out of your household, or yourself (leave it). They drop out of circles they were only in
-  // through the household.
+  // Take someone out of a household (yours by default), or yourself (leave it). They drop out of circles
+  // they were only in through the household. A household nobody is left in goes away.
   async "POST household/remove"(req, env) {
     const me = await auth(req, env);
-    const memberId = (await body(req)).memberId || me.id;
-    const hh = await householdOf(env, me.id);
-    if (!hh || (await householdOf(env, memberId)) !== hh) fail(404, "They aren't in your household.");
+    const b = await body(req);
+    const memberId = b.memberId || me.id;
+    const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
+    if (!hh || (await householdOf(env, memberId)) !== hh) fail(404, "They aren't in that household.");
     await leaveHousehold(env, memberId);
     return { ok: true };
   },
 
-  // Name your household. "" goes back to the automatic name from its people.
+  // Name a household (yours by default). "" goes back to the automatic name from its people.
   async "POST household/rename"(req, env) {
     const me = await auth(req, env);
-    const hh = await householdOf(env, me.id);
+    const b = await body(req);
+    const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
     if (!hh) fail(404, "You're not in a household.");
-    const name = text((await body(req)).name, LIMITS.household, "Household name");
+    const name = text(b.name, LIMITS.household, "Household name");
     await env.DB.prepare("UPDATE households SET name = ? WHERE id = ?").bind(name, hh).run();
     return { ok: true };
   },
 
-  // Put your whole household in one of your circles (on), or take it out (off). In: everyone in it, including
-  // people added later. Out: people who were only there through the household leave that circle.
+  // Put a whole household (yours by default) in one of your circles (on), or take it out (off). In: everyone
+  // in it, including people added later. Out: people who were only there through the household leave that circle.
   async "POST household/circle"(req, env) {
     const me = await auth(req, env);
-    const { groupId, on } = await body(req);
-    const hh = await householdOf(env, me.id);
+    const { groupId, on, householdId } = await body(req);
+    const hh = householdId ? await manageableHousehold(env, me.id, householdId) : await householdOf(env, me.id);
     if (!hh) fail(404, "You're not in a household.");
     if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
     const { results: ppl } = await env.DB.prepare("SELECT id FROM members WHERE household_id = ?").bind(hh).all();
@@ -1613,7 +1657,7 @@ const handlers = {
     const t = now();
     if (on) {
       const clash = await nameClash(env, [groupId], ids);
-      if (clash) fail(409, `Someone in your household has the same name as someone already in ${clash}. One of them can add a last initial first.`);
+      if (clash) fail(409, `Someone in that household has the same name as someone already in ${clash}. One of them can add a last initial first.`);
       await env.DB.batch([
         env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(groupId, hh, t),
         ...ids.map((id) => env.DB.prepare(
