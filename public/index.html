@@ -1631,11 +1631,11 @@ function editItem(item, opts = {}) {
       <details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
         <div>
-          <label class="field"><span>Price <em>(optional)</em></span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="25"></label>
-          <label class="field"><span>Category <em>(helps family filter your list)</em></span>
+          <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="25"></label>
+          <label class="field"><span>Category</span>
             <select class="input" name="category"><option value="">Pick for me${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
               ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-          <label class="field"><span>Notes <em>(size, color, where to buy)</em></span><textarea class="input" name="notes" maxlength="1000">${esc(item.notes)}</textarea></label>
+          <label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Size, color, where to buy">${esc(item.notes)}</textarea></label>
         </div>
       </details>
       ${draft ? "" : `<label class="check"><span>Top pick<small>Shows a gold star so family knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
@@ -1674,8 +1674,8 @@ function editItem(item, opts = {}) {
 }
 // ---------- autofill from a link ----------
 function linkField(value) {
-  return `<label class="field"><span>Have a link? <em>Paste it to fill in the rest</em></span>
-    <div class="linkrow"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="Paste a link">
+  return `<label class="field"><span>Link</span>
+    <div class="linkrow"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="Paste a link to fill in the rest">
     <button class="btn small" type="button" data-fill>Fill</button></div>
     <small class="fillmsg" hidden></small></label>
     <div class="photo-box">
@@ -2135,9 +2135,9 @@ function editPerson(member, plan) {
     <h3>Edit ${esc(member.name)}</h3>
     <form id="personForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Nickname <em>(optional)</em></span>
+      <label class="field"><span>Nickname</span>
         <input class="input" name="nickname" maxlength="40" value="${hasNick ? esc(member.name) : ""}" placeholder="${esc(real)}"></label>
-      ${plan ? `<label class="field"><span>Budget for ${state.tracker?.season || "this year"} <em>(optional)</em></span>
+      ${plan ? `<label class="field"><span>Budget for ${state.tracker?.season || "this year"}</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(plan.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>` : ""}
       <p class="hint">${LOCK} Just for you. Everyone else still sees ${esc(real)}, and nobody sees your budget.</p>
       <button class="btn primary wide" type="submit">Save</button>
@@ -2211,7 +2211,7 @@ function markPurchased(kind, x, name) {
     <p class="what">${esc(x.title)}</p>
     <form id="markForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Price you paid <em>(optional)</em></span>
+      <label class="field"><span>Price you paid</span>
         <div class="input money-in"><span>$</span><input name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="0" aria-label="Price you paid"></div></label>
       <p class="hint">This goes toward your budget for ${esc(who)}.</p>
       ${editing ? `<div class="actions"><button class="btn danger" type="button" id="unmark">Not getting it</button><button class="btn primary" type="submit">Save</button></div>`
@@ -2374,12 +2374,12 @@ function editIdea(idea, subjectId, opts = {}) {
         : `<p class="what">For ${esc(personName(idea.subject_id))}</p>`}
       <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : "That book she mentioned"}" required></label>
       ${linkField(idea.url)}
-      <label class="field"><span>Price <em>(optional)</em></span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}"></label>
-      <label class="field"><span>Note <em>(optional)</em></span><textarea class="input" name="note" maxlength="1000">${esc(idea.note)}</textarea></label>
+      <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}"></label>
+      <label class="field"><span>Note</span><textarea class="input" name="note" maxlength="1000">${esc(idea.note)}</textarea></label>
       <label class="check"><span>Let family see this idea<small id="shareHint"></small></span><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}></label>
       ${boughtByOther ? `<p class="hint">${esc(idea.claim.buyerName)} is getting this.</p>` : `
       <label class="check"${purchase ? " hidden" : ""}><span>I'm getting this</span><input type="checkbox" name="bought" ${idea.claim?.mine || purchase ? "checked" : ""}></label>
-      <label class="field" id="paidField"><span>Price you paid <em>(optional)</em></span><input class="input" name="paid" inputmode="decimal" value="${esc(priceIn(idea.claim?.price_cents ?? idea.price_cents))}"></label>`}
+      <label class="field" id="paidField"><span>Price you paid</span><input class="input" name="paid" inputmode="decimal" value="${esc(priceIn(idea.claim?.price_cents ?? idea.price_cents))}"></label>`}
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeIdea">Delete</button>'}
         <button class="btn primary" type="submit">${purchase ? "Save purchase" : "Save"}</button>
@@ -2491,7 +2491,7 @@ function knowCard(p) {
     rows.push(["Birthday", `${esc(bdayText(p.birthday))}${soon ? `<span class="soon">${soon}</span>` : ""}`]);
   }
   for (const [k, l] of SIZE_LABELS) if (p.sizes?.[k]) rows.push([l.replace(" / top", ""), esc(p.sizes[k])]);
-  if (p.avoid) rows.push(["Please no", `<span class="no">${esc(p.avoid)}</span>`]);
+  if (p.avoid) rows.push(["Avoid", `<span class="no">${esc(p.avoid)}</span>`]);
   return `<div class="know"><div class="know-h">Good to know</div><dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join("")}</dl></div>`;
 }
 
@@ -2555,19 +2555,19 @@ async function renderSettings() {
         </div>
         <input type="file" accept="image/*" id="photoFile" hidden>
       </div>
-      <p class="sub" style="margin:10px 0 0">Your family sees it next to your name. Everything below shows on your list so they can shop with confidence.</p>
+      <p class="sub" style="margin:10px 0 0">Your family sees your profile on your list.</p>
       <hr class="set-div">
       <form id="profileForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
-        <span class="flabel">Birthday <em>(no year needed)</em></span>
+        <span class="flabel">Birthday</span>
         <div class="bday">
           <select class="input" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
           <select class="input" name="bday" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, k) => `<option value="${k + 1}"${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select>
         </div>
-        <span class="flabel">Sizes <em>(optional)</em></span>
+        <span class="flabel">Sizes</span>
         <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span style="font-size:14px;color:var(--muted);margin-bottom:4px">${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(prof.sizes?.[k] || "")}" placeholder="${SIZE_EG[k]}"></label>`).join("")}</div>
-        <label class="field" style="margin-top:4px"><span>Please no <em>(dislikes, allergies)</em></span>
+        <label class="field" style="margin-top:4px"><span>Dislikes and allergies</span>
           <textarea class="input" name="avoid" maxlength="300" placeholder="No scented candles, allergic to wool">${esc(prof.avoid || "")}</textarea></label>
         <button class="btn primary wide" type="submit">Save profile</button>
       </form>
@@ -2589,7 +2589,7 @@ async function renderSettings() {
       <div id="textSeg">${seg("Text size", TEXT_SIZES.map(([k, l, px]) => [k, `<b style="font-size:${px}px">Aa</b>${l}`]), root.dataset.text || "md", "four")}</div>
       <div class="ts-preview"><small>Preview</small>Cozy socks, size medium. Any color but orange!</div>
       <hr class="set-div">
-      ${swRow("motionSw", "Animations", "Little hops and wiggles around the app", root.dataset.motion !== "off")}
+      ${swRow("motionSw", "Animations", "", root.dataset.motion !== "off")}
     </div>
 
     <div class="label">Sign-in PIN</div>
@@ -2636,7 +2636,7 @@ async function renderSettings() {
     <div class="set-card" style="margin-top:26px">
       <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
     </div>
-    <p class="about">Wishlist · made with love for the family</p>`;
+`;
 
   // Light or dark: the two tiles always show what you're seeing now. Picking one turns "Match my phone" off.
   const paintTheme = () => {
