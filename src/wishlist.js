@@ -173,9 +173,9 @@ async function sharesGroup(env, a, b) {
   return !!row;
 }
 
-// SQL condition: item `i` is visible to the viewer (bound once as ?) through at least one shared family
-// that the owner hasn't hidden it from.
-const ITEM_VISIBLE = `EXISTS (
+// SQL condition: item `i` is published (not in the owner's "Just me" drafts) and visible to the viewer
+// (bound once as ?) through at least one shared family that the owner hasn't hidden it from.
+const ITEM_VISIBLE = `i.draft = 0 AND EXISTS (
   SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
    WHERE x.member_id = ? AND y.member_id = i.owner_id
      AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = x.group_id))`;
@@ -229,6 +229,7 @@ const itemOut = (r) => ({
   notes: r.notes,
   priority: r.priority,
   category: r.category || null,
+  draft: !!r.draft,
   created_at: r.created_at,
   updated_at: r.updated_at,
   image_url: r.image_url || null,
@@ -652,7 +653,7 @@ const handlers = {
       .all();
     const { results: people } = await env.DB.prepare(
       `SELECT gm.group_id, m.id, m.name,
-              (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL
+              (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
         WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?)
@@ -688,7 +689,7 @@ const handlers = {
 
     if (own) {
       const { results } = await env.DB.prepare(
-        "SELECT * FROM items WHERE owner_id = ? AND removed_at IS NULL ORDER BY (priority = 'must') DESC, created_at",
+        "SELECT * FROM items WHERE owner_id = ? AND removed_at IS NULL ORDER BY draft, (priority = 'must') DESC, created_at",
       )
         .bind(me.id)
         .all();
@@ -743,16 +744,22 @@ const handlers = {
     };
   },
 
-  // Add (no id) or edit (id) one of your own items.
+  // Add (no id) or edit (id) one of your own items. New items start in "Just me" (draft) until published.
+  // "Must have" only applies to published items, so it is dropped on drafts.
   async "POST item/save"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
+    const existing = b.id
+      ? await env.DB.prepare("SELECT draft FROM items WHERE id = ? AND owner_id = ? AND removed_at IS NULL").bind(b.id, me.id).first()
+      : null;
+    if (b.id && !existing) fail(404, "Item not found.");
+    const isDraft = existing ? !!existing.draft : true;
     const fields = [
       text(b.title, LIMITS.title, "Title", true),
       link(b.url),
       cents(b.price),
       text(b.notes, LIMITS.notes, "Notes"),
-      b.priority === "must" ? "must" : null,
+      !isDraft && b.priority === "must" ? "must" : null,
     ];
     const t = now();
     const image = fields[1] ? imageLink(b.image) : null;
@@ -783,11 +790,26 @@ const handlers = {
     const id = newId();
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
       ).bind(id, me.id, ...fields, t, t, image, image ? t : null, category(b.category)),
       ...(await hideRows(id)()),
     ]);
     return { id };
+  },
+
+  // Publish one of your "Just me" items to your wish list. One way: a published item never goes back to drafts.
+  // created_at is reset so it sorts as a new wish on the list.
+  async "POST item/publish"(req, env) {
+    const me = await auth(req, env);
+    const { id } = await body(req);
+    const t = now();
+    const res = await env.DB.prepare(
+      "UPDATE items SET draft = 0, created_at = ?, updated_at = ? WHERE id = ? AND owner_id = ? AND removed_at IS NULL AND draft = 1",
+    )
+      .bind(t, t, id, me.id)
+      .run();
+    if (!res.meta.changes) fail(404, "Item not found or already on your list.");
+    return { ok: true };
   },
 
   // Remove one of your items. If someone already bought it, keep it for them (flagged "removed").
