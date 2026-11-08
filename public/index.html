@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wishlist</title>
 <meta name="description" content="Family wish lists: share what you'd like, mark what you're getting, keep private gift notes.">
+<!-- Link previews. src/worker.js swaps the title and description for invite links (/join/CODE). -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Wishlist">
+<meta property="og:title" content="Wishlist">
+<meta property="og:description" content="Family wish lists: share what you'd like, mark what you're getting, keep gifts a surprise.">
+<meta property="og:url" content="https://wishlist.alexisdavidson.org/">
+<meta property="og:image" content="https://wishlist.alexisdavidson.org/og-invite.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="You're invited to Wishlist: a gift box on a burgundy card">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Wishlist">
+<meta name="twitter:description" content="Family wish lists: share what you'd like, mark what you're getting, keep gifts a surprise.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#4A0E22" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#2B0D18" media="(prefers-color-scheme: dark)">
@@ -404,6 +417,171 @@
   .pcard-body .stack { margin: 12px 0; }
   .pcard-body .row { box-shadow: none; border: 1.5px solid var(--line); }
 
+  /* Invite landing (/join/CODE): an envelope opens, the invite card rises, the family pops in. */
+  .hero.tall .hero-in { text-align: center; padding: 4px 0 6px; }
+  .hero.tall .squiggle { margin: 6px auto 0; }
+  .hero.tall h1 { font-size: 38px; }
+  .env { position: relative; width: 150px; height: 118px; margin: 4px auto 14px; }
+  .env svg { position: absolute; inset: 0; width: 150px; height: 118px; overflow: visible; }
+  .env .back-p { fill: #5E1530; } .env .front-p { fill: #8A2A47; } .env .flap { fill: #9C3554; transform-origin: 75px 46px; }
+  .env .letter { fill: #FAF6F1; } .env .letter-b { fill: #7A1B36; } .env .letter-g { fill: var(--gold); }
+  .env .letter-wrap { animation: letterUp .9s var(--spring) .75s both; }
+  .env .flap { transform: scaleY(-1); } .env .letter-wrap { transform: translateY(-28px); }
+  .env .flap { animation: flapOpen .55s cubic-bezier(.5, 0, .3, 1) .3s both; }
+  .env .bits { position: absolute; left: 75px; top: 30px; width: 0; height: 0; }
+  .env .bits .bit { animation-delay: 1.05s; }
+  .env .bits { animation: appear .01s linear 1.05s both; }
+  .ring .bits { visibility: hidden; }
+  .slide-card.on .ring .bits { animation: appear .01s linear 1s both; }
+  .env.sad svg { animation: wobble .7s ease .2s both; }
+  .env.sad .flap { animation: none; transform: none; } .env.sad .letter-wrap { display: none; }
+  .avs { display: flex; justify-content: center; margin: 2px 0 10px; }
+  .avs .avatar { width: 52px; height: 52px; font-size: 22px; border: 3px solid var(--bg); margin-left: -12px; animation: avPop .5s var(--spring) both; }
+  .avs .avatar:first-child { margin-left: 0; }
+  .avs .avatar.more { background: var(--panel) !important; color: var(--muted); font-family: var(--sans); font-size: 16px; font-weight: 800; }
+  .avs .avatar.you { outline: 3px dashed color-mix(in srgb, var(--brand) 55%, transparent); outline-offset: 1px; }
+  .avs-cap { text-align: center; color: var(--muted); margin: 0 0 22px; font-size: 16px; animation: slide .45s ease 1.2s both; }
+  .avs-cap strong { color: var(--ink); }
+  .perks { display: grid; gap: 10px; margin: 0 0 22px; }
+  .perk { display: flex; align-items: center; gap: 14px; background: var(--card); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); font-weight: 600; }
+  .perk .pi { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+  .perk small { display: block; font-weight: 500; color: var(--muted); font-size: 14px; }
+  .shine { position: relative; overflow: hidden; }
+  .shine::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; transform: skewX(-20deg);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .35), transparent); animation: shine 3.2s ease-in-out 1.6s infinite; }
+  .add.big { min-height: 60px; font-size: 18px; border-radius: 18px; }
+  .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; font-weight: 600; margin: 22px 0 12px; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .name-preview { display: flex; justify-content: center; margin: 0 0 16px; }
+  .name-preview .avatar { width: 72px; height: 72px; font-size: 32px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); transition: background-color .3s ease; }
+  .name-preview .avatar.bump { animation: checkpop .4s var(--spring) both; }
+
+  /* Invite ticket: the family code, link, share and QR. */
+  .ticket { position: relative; background: var(--card); border-radius: 22px; box-shadow: var(--shadow); overflow: hidden; }
+  .ticket-top { position: relative; background: var(--hero); color: var(--hero-ink); padding: 20px 20px 24px; text-align: center; overflow: hidden; }
+  .ticket-top .doodle { right: -60px; top: -40px; opacity: .16; }
+  .ticket-top p { margin: 0; color: var(--hero-muted); font-size: 14px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .code-big { display: flex; justify-content: center; gap: 6px; margin: 10px 0 8px; font-family: var(--serif); font-size: 40px; font-weight: 600; line-height: 1; }
+  .code-big span { display: inline-grid; place-items: center; width: 42px; height: 54px; border-radius: 10px; background: rgba(255, 255, 255, .1);
+    animation: flipIn .5s var(--spring) both; }
+  .ticket-top small { color: var(--hero-muted); font-size: 14px; overflow-wrap: anywhere; }
+  .ticket-mid { position: relative; height: 0; border-top: 2px dashed var(--line); margin: 0 18px; }
+  .ticket-mid::before, .ticket-mid::after { content: ""; position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--bg); }
+  .ticket-mid::before { left: -30px; } .ticket-mid::after { right: -30px; }
+  .sheet .ticket-mid::before, .sheet .ticket-mid::after { background: var(--bg); }
+  .ticket-body { padding: 18px; }
+  .ticket-actions { display: flex; gap: 10px; }
+  .ticket-actions .btn { flex: 1; }
+  .ticket .copied { background: var(--ok-soft); border-color: var(--ok-soft); color: var(--ok); }
+  .ticket .copied svg { animation: checkpop .45s var(--spring) both; }
+  .ticket.wiggle { animation: wiggle .5s ease both; }
+  .qr-btn { width: 100%; margin-top: 8px; }
+  .qr { display: grid; place-items: center; padding: 6px 0 4px; }
+  .qr svg { width: 210px; height: 210px; border-radius: 14px; animation: qrIn .7s cubic-bezier(.2, .8, .3, 1) both; }
+  .qr small { color: var(--muted); font-size: 14px; margin-top: 8px; text-align: center; }
+
+  /* Welcome tour: a full-screen dialog of swipeable cards, each with a little animated scene. */
+  dialog.tour { border: 0; padding: 0; margin: 0; width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; background: var(--bg); color: var(--ink); }
+  dialog.tour[open] { display: flex; flex-direction: column; animation: fade .3s ease both; }
+  dialog.tour::backdrop { background: var(--bg); }
+  .tour-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 560px; width: 100%; margin: 0 auto;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 18px 0; }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 8px; height: 8px; border-radius: 4px; background: var(--line); transition: width .35s var(--spring), background-color .3s ease; }
+  .dots i.on { width: 26px; background: var(--brand); }
+  .track { flex: 1; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .track::-webkit-scrollbar { display: none; }
+  .slide-card { flex: 0 0 100%; scroll-snap-align: center; scroll-snap-stop: always; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 10px 26px; max-width: 100%; overflow-y: auto; }
+  .slide-card > * { max-width: 460px; }
+  .slide-card h2 { font-size: 30px; margin: 22px 0 10px; }
+  .slide-card p { color: var(--muted); margin: 0; font-size: 17px; }
+  .slide-card .opacity-in { opacity: 1; }
+  .slide-card.on h2 { animation: slide .5s ease .1s both; }
+  .slide-card.on p { animation: slide .5s ease .2s both; }
+  .tour-foot { max-width: 560px; width: 100%; margin: 0 auto; padding: 12px 20px calc(env(safe-area-inset-bottom, 0px) + 18px); }
+  .scene { position: relative; width: 260px; height: 220px; display: grid; place-items: center; }
+  .scene > :not(.blob) { position: relative; }
+  .scene .blob { position: absolute; inset: 14px 6px; border-radius: 46% 54% 50% 50% / 52% 46% 54% 48%; background: var(--soft); }
+  .slide-card.on .scene .blob { animation: blob 6s ease-in-out infinite; }
+  /* Scene: welcome (you join the circle) */
+  .ring { position: relative; width: 200px; height: 200px; }
+  .ring .avatar { position: absolute; width: 52px; height: 52px; font-size: 22px; border: 3px solid var(--bg); }
+  .ring .me { left: 64px; top: 64px; width: 72px; height: 72px; font-size: 30px; }
+  .slide-card.on .ring .avatar { animation: avPop .5s var(--spring) both; }
+  .slide-card.on .ring .me { animation: meDrop .8s var(--spring) .45s both; }
+  .ring .bits { position: absolute; left: 100px; top: 100px; width: 0; height: 0; }
+  .ring .bit { animation: none; opacity: 0; }
+  .slide-card.on .ring .bit { animation: burst .9s cubic-bezier(.15, .7, .4, 1) 1s both; }
+  /* Scene: add a wish (a link turns into a card) */
+  .mock { position: relative; width: 230px; background: var(--card); border-radius: 18px; box-shadow: 0 10px 30px rgba(74, 14, 34, .14); padding: 14px; text-align: left; }
+  .mock .ln { height: 40px; border-radius: 10px; border: 1.5px solid var(--line); display: flex; align-items: center; padding: 0 10px; font-size: 13px; color: var(--muted); overflow: hidden; white-space: nowrap; }
+  .mock .ln b { color: var(--ink); font-weight: 600; display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; max-width: 100%; }
+  .slide-card.on .mock .ln b { animation: typing 1.2s steps(22) .4s both; }
+  .mock .res { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+  .mock .res .tile { width: 46px; height: 46px; font-size: 20px; border-radius: 12px; }
+  .mock .res strong { display: block; font-size: 15px; } .mock .res .price-tag { margin-top: 4px; height: 24px; font-size: 13px; }
+  .slide-card.on .mock .res { animation: drop .7s cubic-bezier(.2, .8, .3, 1) 1.7s both; }
+  .slide-card.on .mock .res .price-tag { animation: swing 1s ease 2.2s both; }
+  .mock .sparkle { position: absolute; right: -10px; top: -12px; color: var(--gold); }
+  .slide-card.on .mock .sparkle { animation: twinkle 1.6s ease 2s infinite; }
+  /* Scene: surprises (family sees the check, you don't) */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 250px; }
+  .mini-card { background: var(--card); border-radius: 14px; box-shadow: 0 8px 22px rgba(74, 14, 34, .12); padding: 12px 10px; display: grid; justify-items: center; gap: 8px; }
+  .mini-card small { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .mini-card .tile { width: 48px; height: 48px; font-size: 21px; }
+  .mini-card .chk { width: 30px; height: 30px; }
+  .mini-card .eye { width: 30px; height: 30px; border-radius: 50%; background: var(--panel); color: var(--muted); display: grid; place-items: center; }
+  .slide-card.on .pair .chk { animation: checkpop .5s var(--spring) .6s both; }
+  .slide-card.on .pair .eye { animation: checkpop .5s var(--spring) 1.1s both; }
+  .slide-card.on .pair .mini-card:last-child { animation: peek 2.8s ease 1.6s infinite; }
+  /* Scene: private notes (a lock snaps shut, a budget fills) */
+  .note { position: relative; width: 210px; background: var(--card); border-radius: 18px; box-shadow: 0 10px 30px rgba(74, 14, 34, .14); padding: 16px; text-align: left; }
+  .note .l { height: 10px; border-radius: 5px; background: var(--panel); margin-bottom: 9px; }
+  .note .meter { margin-top: 14px; }
+  .slide-card.on .note .meter i { animation: fill 1.1s var(--spring) .7s both; }
+  .note .lockbadge { position: absolute; right: -14px; top: -16px; }
+  .lockbadge { width: 50px; height: 50px; border-radius: 50%; background: var(--gold); color: #4A2A05;
+    display: grid; place-items: center; box-shadow: 0 6px 14px rgba(0, 0, 0, .18); }
+  .lockbadge .shackle { transform-origin: 16px 9px; }
+  .slide-card.on .lockbadge { animation: checkpop .5s var(--spring) .3s both; }
+  .slide-card.on .lockbadge .shackle { animation: shackle .6s var(--spring) 1s both; }
+  /* Scene: PIN */
+  .pin-dots { display: flex; gap: 14px; justify-content: center; margin: 4px 0 0; }
+  .pin-dots i { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--brand); transition: background-color .15s ease; }
+  .pin-dots i.on { background: var(--brand); animation: checkpop .3s var(--spring) both; }
+  .pin-dots.done i { background: var(--ok); border-color: var(--ok); }
+  .pin-dots.shake { animation: wobble .5s ease both; }
+  .tour-pin { margin: 20px auto 0; max-width: 220px; }
+  .tour-pin .input { text-align: center; }
+  /* Scene: home screen */
+  .phone { position: relative; width: 150px; height: 210px; border-radius: 26px; border: 4px solid var(--ink); background: var(--panel); padding: 22px 14px; }
+  .phone .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .phone .app { aspect-ratio: 1; border-radius: 10px; background: var(--line); }
+  .phone .app.ours { background: #82263C; display: grid; place-items: center; box-shadow: 0 4px 10px rgba(130, 38, 60, .4); }
+  .slide-card.on .phone .app.ours { animation: appIn .9s var(--spring) .5s both; }
+  .steps-mini { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; text-align: left; }
+  .steps-mini li { display: flex; gap: 10px; align-items: center; background: var(--card); border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow); font-size: 15px; font-weight: 600; }
+  .steps-mini li b { width: 26px; height: 26px; border-radius: 50%; background: var(--soft); color: var(--soft-ink); display: grid; place-items: center; font-size: 14px; flex: none; }
+  .tour-invite { width: 100%; margin-top: 18px; text-align: left; }
+
+  /* Getting started on My list: add 3 wishes. */
+  .starter { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
+  .starter strong { display: block; font-size: 17px; }
+  .starter p { margin: 2px 0 12px; color: var(--muted); font-size: 15px; }
+  .segs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .segs i { height: 10px; border-radius: 5px; background: var(--panel); overflow: hidden; position: relative; }
+  .segs i.on::after { content: ""; position: absolute; inset: 0; border-radius: 5px; background: var(--gold); transform-origin: left; }
+  .segs i.on.new::after { animation: fill .8s var(--spring) .2s both; }
+  .starter.done { background: var(--gold-soft); text-align: center; position: relative; }
+  .starter.done strong { font-family: var(--serif); font-size: 22px; font-weight: 600; color: var(--gold-ink); }
+  .idea-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 18px; }
+  .idea-chips .chip { animation: avPop .45s var(--spring) both; }
+
+  /* Big celebration confetti, anywhere on screen. */
+  .party { position: fixed; width: 0; height: 0; z-index: 40; pointer-events: none; }
+  .party .bit { width: 10px; height: 6px; animation: burst 1.2s cubic-bezier(.15, .7, .4, 1) both; }
+
   /* Motion. Every animation marks a real moment; all of it turns off with Reduce Motion. */
   .slide { animation: slide .45s cubic-bezier(.2, .8, .3, 1) both; }
   .drop { animation: drop .6s cubic-bezier(.2, .8, .3, 1) both; }
@@ -425,6 +603,22 @@
   @keyframes rise { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
   @keyframes toastIn { 0% { opacity: 0; transform: translateY(20px) scale(.96); } 100% { opacity: 1; transform: none; } }
+  @keyframes appear { from { visibility: hidden; } to { visibility: visible; } }
+  @keyframes flapOpen { from { transform: none; } to { transform: scaleY(-1); } }
+  @keyframes letterUp { 0% { transform: translateY(60px); } 70% { transform: translateY(-34px); } 100% { transform: translateY(-28px); } }
+  @keyframes wobble { 0%, 100% { transform: none; } 20% { transform: rotate(-8deg); } 40% { transform: rotate(6deg); } 60% { transform: rotate(-4deg); } 80% { transform: rotate(2deg); } }
+  @keyframes avPop { 0% { opacity: 0; transform: scale(.3) translateY(10px); } 100% { opacity: 1; transform: none; } }
+  @keyframes shine { 0% { left: -60%; } 40%, 100% { left: 130%; } }
+  @keyframes flipIn { 0% { opacity: 0; transform: rotateX(90deg) translateY(-6px); } 100% { opacity: 1; transform: none; } }
+  @keyframes wiggle { 0%, 100% { transform: none; } 25% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.2deg) scale(1.01); } 75% { transform: rotate(-.6deg); } }
+  @keyframes qrIn { 0% { clip-path: circle(0% at 50% 50%); transform: scale(.85) rotate(-4deg); } 100% { clip-path: circle(75% at 50% 50%); transform: none; } }
+  @keyframes blob { 0%, 100% { border-radius: 46% 54% 50% 50% / 52% 46% 54% 48%; transform: rotate(0); } 50% { border-radius: 54% 46% 46% 54% / 46% 54% 48% 52%; transform: rotate(4deg); } }
+  @keyframes meDrop { 0% { opacity: 0; transform: translateY(-120px) scale(.6); } 60% { opacity: 1; transform: translateY(8px) scale(1.08); } 100% { opacity: 1; transform: none; } }
+  @keyframes typing { from { max-width: 0; } to { max-width: 100%; } }
+  @keyframes twinkle { 0%, 100% { transform: scale(1) rotate(0); opacity: 1; } 50% { transform: scale(1.35) rotate(20deg); opacity: .7; } }
+  @keyframes peek { 0%, 70%, 100% { transform: none; } 80% { transform: translateY(-4px) rotate(-2deg); } 90% { transform: translateY(0) rotate(2deg); } }
+  @keyframes shackle { 0% { transform: translateY(-5px); } 100% { transform: none; } }
+  @keyframes appIn { 0% { opacity: 0; transform: translateY(-90px) scale(1.6) rotate(-20deg); } 60% { opacity: 1; transform: translateY(4px) scale(.95) rotate(4deg); } 100% { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -460,6 +654,7 @@
   </div>
 </nav>
 
+<dialog class="tour" id="tour" aria-label="Welcome tour"></dialog>
 <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetBody"></div></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -765,7 +960,8 @@ async function refreshMe() {
 async function render() {
   const signedIn = !!getToken();
   $("#tabs").hidden = !signedIn;
-  if (!signedIn) return renderWelcome();
+  if (!signedIn) return renderWelcome(invite ? "invite" : "code");
+  $("#hero").classList.remove("tall");
 
   document.querySelectorAll(".tab[data-tab]").forEach((b) => b.setAttribute("aria-current", !state.person && b.dataset.tab === state.tab ? "page" : "false"));
   if (state.person) $('.tab[data-tab="family"]').setAttribute("aria-current", "page");
@@ -775,6 +971,7 @@ async function render() {
     else if (state.tab === "family") await renderFamily();
     else if (state.tab === "notes") await renderTracker();
     else await renderMine();
+    if (!state.me.onboarded && !state.toured) openTour();
   } catch (e) {
     if (!getToken()) return;
     $("#view").innerHTML = `<div class="err">${esc(e.message)}</div><button class="btn" type="button" id="retry">Try again</button>`;
@@ -785,17 +982,92 @@ async function render() {
 }
 
 // ---------- welcome / join ----------
-function renderWelcome(step = "code", info = {}) {
+// Invite links: /join/CODE?from=memberId (older links: /?code=CODE). The path stays until you've joined,
+// so a refresh keeps the invite.
+function readInvite() {
+  const m = location.pathname.match(/^\/join\/([A-Za-z0-9]+)/);
+  const q = new URLSearchParams(location.search);
+  const code = (m?.[1] || q.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return code ? { code, from: q.get("from") || "" } : null;
+}
+let invite = readInvite();
+
+const ENVELOPE = `<svg viewBox="0 0 150 118" aria-hidden="true">
+  <defs><clipPath id="envClip"><rect x="0" y="-120" width="150" height="234"/></clipPath></defs>
+  <rect class="back-p" x="5" y="40" width="140" height="74" rx="10"/>
+  <path class="flap" d="M5 46 L75 92 L145 46 Z" stroke-linejoin="round"/>
+  <g clip-path="url(#envClip)"><g class="letter-wrap">
+    <rect class="letter" x="22" y="30" width="106" height="78" rx="8"/>
+    <rect class="letter-b" x="60" y="52" width="30" height="22" rx="3"/><rect class="letter-b" x="56" y="45" width="38" height="8" rx="2.5"/>
+    <rect class="letter" x="73" y="45" width="4" height="29"/>
+    <path class="letter-g" d="M75 45c-3-7-12-9-12-4 0 3 6 4 12 4zM75 45c3-7 12-9 12-4 0 3-6 4-12 4z"/>
+    <rect class="letter-b" x="46" y="84" width="58" height="5" rx="2.5" opacity=".25"/><rect class="letter-b" x="56" y="94" width="38" height="5" rx="2.5" opacity=".18"/>
+  </g></g>
+  <path class="front-p" d="M5 50 L75 88 L145 50 V104 a10 10 0 0 1 -10 10 H15 a10 10 0 0 1 -10 -10 Z"/>
+</svg>`;
+const envelope = (sad) => `<div class="env${sad ? " sad" : ""}">${ENVELOPE}${sad || reduceMotion() ? "" : `<span class="bits">${CONFETTI}</span>`}</div>`;
+
+// Overlapping avatars of who's already in the family. `you` adds a dashed "you" bubble on the end.
+function avatarStack(members, you) {
+  const shown = members.slice(0, 5);
+  const extra = members.length - shown.length;
+  const delayed = (html, s) => html.replace('style="', `style="animation-delay:${s}s;`);
+  return `<div class="avs">${shown.map((m, i) => delayed(avatar(m.name, m.id), 0.9 + i * 0.09)).join("")}${extra > 0 ? `<span class="avatar more" style="animation-delay:${0.9 + shown.length * 0.09}s" aria-hidden="true">+${extra}</span>` : ""}${you
+    ? `<span class="avatar you" style="background:var(--panel);color:var(--muted);animation-delay:${1 + shown.length * 0.09}s" aria-hidden="true">?</span>` : ""}</div>`;
+}
+function whoIsHere(members) {
+  const n = members.map((m) => `<strong>${esc(m.name)}</strong>`);
+  if (!n.length) return "Be the first one here.";
+  if (n.length === 1) return `${n[0]} is already here.`;
+  if (n.length === 2) return `${n[0]} and ${n[1]} are already here.`;
+  return `${n[0]}, ${n[1]} and ${plural(n.length - 2, "other", "others")} are already here.`;
+}
+const PERK_GIFT = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg>';
+const PERK_EYE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+const perks = () => `<div class="perks">
+  <div class="perk slide" style="animation-delay:1.3s"><span class="pi" style="background:var(--t0);color:var(--t0-ink)">${PERK_GIFT}</span><span>Make your wish list<small>Type a name or paste a link from any store</small></span></div>
+  <div class="perk slide" style="animation-delay:1.4s"><span class="pi" style="background:var(--t3);color:var(--t3-ink)">${PERK_EYE}</span><span>See what everyone's hoping for<small>And quietly mark what you're getting</small></span></div>
+  <div class="perk slide" style="animation-delay:1.5s"><span class="pi" style="background:var(--t1);color:var(--t1-ink)">${LOCK.replace(/width="14" height="14"/, 'width="22" height="22"')}</span><span>Gifts stay a surprise<small>You never see what's been bought for you</small></span></div>
+</div>`;
+
+async function renderWelcome(step = "code", info = {}) {
   const v = $("#view");
-  const codeFromLink = new URLSearchParams(location.search).get("code") || "";
-  if (step === "code") {
-    setHero(`<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Family wish lists", "Welcome to Wishlist")}`);
+  $("#hero").classList.toggle("tall", step === "invite" || step === "badInvite");
+  const backBtn = `<button class="back" type="button" id="backBtn">${BACK} Back</button>`;
+
+  // Opened an invite link: the envelope, the family, one big Join button.
+  if (step === "invite") {
+    setHero(heroTitle("Wishlist", "You're invited"));
+    v.innerHTML = '<div class="loading">Opening your invite...</div>';
+    let res;
+    try { res = await api("lookup", { code: invite.code, from: invite.from }); }
+    catch (e) { return renderWelcome(e.status === 404 || e.status === 400 ? "badInvite" : "code", { message: e.message }); }
+    info = { code: invite.code, ...res };
+    setHero(envelope() + heroTitle(res.inviter ? `${res.inviter} invited you to` : "You're invited to", res.group.name));
     v.innerHTML = `
-      <p class="lead">Make your own wish list, see what everyone else would love, and quietly mark what you're getting them.</p>
+      ${avatarStack(res.members, true)}
+      <p class="avs-cap">${whoIsHere(res.members)}</p>
+      ${perks()}
+      <button class="add big shine slide" style="animation-delay:1.65s" type="button" id="joinBtn">Join ${esc(res.group.name)}</button>
+      <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="otherCode">Different family? Enter a code</button></p>`;
+    $("#joinBtn").onclick = () => renderWelcome("who", info);
+    $("#otherCode").onclick = () => { invite = null; renderWelcome("code"); };
+    return;
+  }
+
+  // The link didn't match a family (old, mistyped, or the family was renamed). Offer the code box.
+  if (step === "badInvite" || step === "code") {
+    const bad = step === "badInvite";
+    setHero(bad ? envelope(true) + heroTitle("Hmm", "That invite didn't work")
+      : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Family wish lists", "Welcome to Wishlist")}`);
+    v.innerHTML = `
+      <p class="lead">${bad ? "The link may be old or cut off. Ask whoever sent it for the family code and type it here."
+        : "Make your own wish list, see what everyone else would love, and quietly mark what you're getting them."}</p>
       <form class="card" id="codeForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>Enter your family code</span>
-          <input class="input code-in" name="code" maxlength="8" value="${esc(codeFromLink)}" placeholder="ABC234" autocapitalize="characters" required></label>
+          <input class="input code-in" name="code" maxlength="8" value="${esc(bad ? "" : invite?.code || "")}" placeholder="ABC234" autocapitalize="characters" required></label>
         <button class="btn primary wide" type="submit">Continue</button>
       </form>
       <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="startBtn">Start a new family</button></p>`;
@@ -807,23 +1079,24 @@ function renderWelcome(step = "code", info = {}) {
     return;
   }
 
-  const backBtn = `<button class="back" type="button" id="backBtn">${BACK} Back</button>`;
+  // New people are the usual case, so "I'm new" comes first; returning people tap their name.
   if (step === "who") {
-    setHero(backBtn + heroTitle("Tap your name", info.group.name));
+    setHero(backBtn + heroTitle(info.group.name, "Are you new here?"));
     v.innerHTML = `
+      <button class="add big shine slide" type="button" id="newBtn">${PLUS} Yes, add me</button>
+      ${info.members.length ? `<div class="or">or, already joined? Tap your name</div>
       <div class="picker">
-        ${info.members.map((m, i) => `<button class="member slide" style="animation-delay:${i * 0.05}s" type="button" data-id="${esc(m.id)}">
+        ${info.members.map((m, i) => `<button class="member slide" style="animation-delay:${0.1 + i * 0.05}s" type="button" data-id="${esc(m.id)}">
             ${avatar(m.name, m.id)}
             <span class="who"><strong>${esc(m.name)}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
           </button>`).join("")}
-        <button class="add soft" type="button" id="newBtn">${PLUS} I'm not on the list yet</button>
-      </div>`;
-    $("#backBtn").onclick = () => renderWelcome("code");
+      </div>` : ""}`;
+    $("#backBtn").onclick = () => renderWelcome(invite ? "invite" : "code");
     $("#newBtn").onclick = () => renderWelcome("new", info);
     v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = async () => {
       const m = info.members.find((x) => x.id === b.dataset.id);
       if (m.hasPin) return renderWelcome("pin", { ...info, member: m });
-      try { finishJoin(await api("join", { code: info.code, memberId: m.id })); }
+      try { finishJoin(await api("join", { code: info.code, memberId: m.id }), { returning: true }); }
       catch (e) { toast(e.message); }
     }));
     return;
@@ -839,39 +1112,257 @@ function renderWelcome(step = "code", info = {}) {
         <button class="btn primary wide" type="submit">Sign in</button>
       </form>`;
     $("#backBtn").onclick = () => renderWelcome("who", info);
-    wireForm($("#pinForm"), async ({ pin }) => finishJoin(await api("join", { code: info.code, memberId: info.member.id, pin })));
+    wireForm($("#pinForm"), async ({ pin }) => finishJoin(await api("join", { code: info.code, memberId: info.member.id, pin }), { returning: true }));
     return;
   }
 
+  // Your name, with your avatar updating as you type. The PIN comes later, in the welcome tour.
   if (step === "new" || step === "start") {
     const starting = step === "start";
-    setHero(backBtn + heroTitle(starting ? "You'll get a code to share" : "Add yourself", starting ? "Start a new family" : `Join ${info.group.name}`));
+    setHero(backBtn + heroTitle(starting ? "You'll get a link to share" : `Join ${info.group.name}`, starting ? "Start a new family" : "Nice to meet you"));
     v.innerHTML = `
-      <form class="card" id="newForm" autocomplete="off">
+      <form class="card slide" id="newForm" autocomplete="off">
         <div class="err" hidden></div>
-        ${starting ? "" : `<p class="hint">Already in another family on Wishlist? Sign in there instead, then join this one from Settings, so you keep one list.</p>`}
+        <div class="name-preview" id="namePrev">${avatar("?", "new", true)}</div>
+        ${starting ? "" : `<p class="hint" style="margin-top:0">Already in another family on Wishlist? Sign in there instead, then join this one from Settings, so you keep one list.</p>`}
         ${starting ? `<label class="field"><span>Family name</span><input class="input" name="groupName" maxlength="60" placeholder="The Davidsons" required></label>` : ""}
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
-        <label class="field"><span>PIN <em>(optional)</em></span><input class="input pin-in" name="pin" inputmode="numeric" pattern="\\d{4}" maxlength="4"></label>
-        <p class="hint">A 4-digit PIN keeps others from signing in as you and seeing your private ideas. You can add one later.</p>
-        <button class="btn primary wide" type="submit">${starting ? "Create family" : "Join"}</button>
+        <button class="btn primary wide" type="submit">${starting ? "Create family" : `Join ${esc(info.group.name)}`}</button>
       </form>`;
-    $("#backBtn").onclick = () => (starting ? renderWelcome("code") : renderWelcome("who", info));
+    const nameIn = $("#newForm").elements.name;
+    let last = "?";
+    nameIn.addEventListener("input", () => {
+      const ch = initial(nameIn.value.trim() || "?");
+      if (ch === last) return;
+      last = ch;
+      $("#namePrev").innerHTML = avatar(ch, nameIn.value.trim() || "new", true).replace('class="avatar big"', 'class="avatar big bump"');
+    });
+    if (!starting) setTimeout(() => nameIn.focus(), 350);
+    $("#backBtn").onclick = () => (starting ? renderWelcome(invite ? "invite" : "code") : renderWelcome("who", info));
     wireForm($("#newForm"), async (d) => {
-      finishJoin(starting ? await api("start", d) : await api("join", { code: info.code, name: d.name, pin: d.pin }));
+      if (starting) finishJoin(await api("start", d), { started: d.groupName.trim() });
+      else finishJoin(await api("join", { code: info.code, name: d.name }), { joined: info.group.name });
     });
   }
 }
 
-function finishJoin({ token }) {
+// Signed in: clean up the URL, then the welcome tour (for new people) plays over My list.
+function finishJoin({ token }, how = {}) {
   setToken(token);
   try { localStorage.removeItem(CACHE_KEY); } catch {}
-  history.replaceState(null, "", location.pathname + "#mine");
+  invite = null;
+  history.replaceState(null, "", "/#mine");
+  $("#hero").classList.remove("tall");
   state.me = null;
   state.tab = "mine";
   state.person = null;
+  state.welcome = how;
   render();
 }
+
+// Confetti from a point on screen (default: the middle). Skipped with Reduce Motion.
+function party(x = innerWidth / 2, y = innerHeight / 2.6, count = 34) {
+  if (reduceMotion()) return;
+  const colors = ["#7A1B36", "#D9A94A", "#2F6B4F", "#E8A5B5", "#33407A"];
+  const el = document.createElement("div");
+  el.className = "party";
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  el.innerHTML = Array.from({ length: count }, (_, i) => {
+    const a = (i / count) * Math.PI * 2 + Math.random() * 0.4, d = 90 + Math.random() * 140;
+    return `<i class="bit" style="background:${colors[i % colors.length]};--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d - 60}px;--r:${Math.round(Math.random() * 720 - 360)}deg;animation-delay:${Math.random() * 0.12}s"></i>`;
+  }).join("");
+  // Open dialogs sit above everything else, so the confetti goes inside them.
+  (tourEl.open ? tourEl : sheet.open ? sheet : document.body).appendChild(el);
+  setTimeout(() => el.remove(), 1500);
+}
+
+// ---------- invite link opened while signed in ----------
+async function offerJoin(inv) {
+  if (state.groups.some((g) => g.code === inv.code)) return; // already in it: just open the app
+  let res;
+  try { res = await api("lookup", { code: inv.code, from: inv.from }); }
+  catch (e) { return toast(e.status === 404 ? "That invite link didn't work" : e.message); }
+  const name = res.group.name;
+  openSheet(`
+    ${envelope()}
+    <h3 style="text-align:center;margin:0 0 6px">Join ${esc(name)}?</h3>
+    <p style="text-align:center">${res.inviter ? `${esc(res.inviter)} invited you. ` : ""}You keep one list for all your families, and you can hide any wish from ${esc(name)} later.</p>
+    ${avatarStack(res.members, true)}
+    <p class="avs-cap">${whoIsHere(res.members)}</p>
+    <div class="err" hidden></div>
+    <div class="actions"><button class="btn" type="button" id="notNow">Not now</button><button class="btn primary shine" type="button" id="yesJoin">Join ${esc(name)}</button></div>`, (el) => {
+    $("#notNow", el).onclick = closeSheet;
+    $("#yesJoin", el).onclick = async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        await api("family/join", { code: inv.code });
+        closeSheet();
+        party();
+        toast(`You joined ${name}`);
+        state.me = null;
+        render();
+      } catch (err) {
+        const box = $(".err", el);
+        box.textContent = err.message;
+        box.hidden = false;
+        e.currentTarget.disabled = false;
+      }
+    };
+  });
+}
+
+// ---------- welcome tour ----------
+// Shown once per person after they join (the server remembers), and from Settings any time.
+const tourEl = $("#tour");
+let installPrompt = null;
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; });
+const LOCK_BIG = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path class="shackle" d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const GIFT_W = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg>';
+
+function ringScene() {
+  const real = everyone().filter((m) => m.id !== state.me.id).slice(0, 6);
+  const ppl = real.length ? real : [{ name: "?", id: "a" }, { name: "?", id: "b" }, { name: "?", id: "c" }, { name: "?", id: "d" }];
+  const around = ppl.map((m, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / ppl.length;
+    const pos = `left:${Math.round(100 + Math.cos(a) * 74 - 26)}px;top:${Math.round(100 + Math.sin(a) * 74 - 26)}px;animation-delay:${0.1 + i * 0.08}s;`;
+    return avatar(m.name, m.id).replace('style="', `style="${pos}`).replace('" aria-hidden', `${real.length ? "" : ";background:var(--line);color:var(--muted)"}" aria-hidden`);
+  }).join("");
+  return `<div class="scene"><span class="blob"></span><div class="ring">${around}${avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar me"')}<span class="bits">${CONFETTI}</span></div></div>`;
+}
+const addScene = () => `<div class="scene"><span class="blob"></span><div class="mock">
+    <span class="sparkle">${STAR.replace("<path", '<path fill="currentColor" stroke="currentColor"').replace('width="18" height="18"', 'width="28" height="28"')}</span>
+    <div class="ln">Paste:&nbsp;<b>shop.example.com/cozy-slippers</b></div>
+    <div class="res">${tile("Cozy slippers", "slip")}<span><strong>Cozy slippers</strong><span class="price-tag">$32</span></span></div>
+  </div></div>`;
+const surpriseScene = () => `<div class="scene"><span class="blob"></span><div class="pair">
+    <div class="mini-card"><small>Family sees</small>${tile("Slippers", "slip")}<span class="chk">${CHECK}</span><small style="color:var(--ok)">Getting it</small></div>
+    <div class="mini-card"><small>You see</small>${tile("Slippers", "slip")}<span class="eye">${EYE_OFF}</span><small>No spoilers</small></div>
+  </div></div>`;
+const privateScene = () => `<div class="scene"><span class="blob"></span><div class="note">
+    <span class="lockbadge">${LOCK_BIG}</span>
+    <strong style="font-size:15px">Ideas for Mom</strong>
+    <div class="l" style="width:90%;margin-top:12px"></div><div class="l" style="width:68%"></div><div class="l" style="width:80%"></div>
+    <div class="meter"><i style="width:64%"></i></div><small style="color:var(--muted);font-size:12px">$64 of $100 budget</small>
+  </div></div>`;
+const pinScene = () => `<div class="scene" style="height:180px"><span class="blob"></span><div style="position:relative">
+    <span class="lockbadge" style="width:66px;height:66px;margin:0 auto 18px">${LOCK_BIG}</span>
+    <div class="pin-dots" id="pinDots"><i></i><i></i><i></i><i></i></div></div></div>`;
+const installScene = () => `<div class="scene"><span class="blob"></span><div class="phone"><div class="grid">
+    ${Array.from({ length: 9 }, (_, i) => (i === 4 ? `<span class="app ours">${GIFT_W}</span>` : '<span class="app"></span>')).join("")}</div></div></div>`;
+
+function openTour() {
+  state.toured = true;
+  const w = state.welcome || {};
+  const fam = w.joined || w.started || "";
+  const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const steps = (list) => `<ol class="steps-mini">${list.map((t, i) => `<li class="slide" style="animation-delay:${0.3 + i * 0.1}s"><b>${i + 1}</b>${t}</li>`).join("")}</ol>`;
+  const slides = [
+    { id: "hi", scene: ringScene(), title: w.started ? `${fam} is ready!` : fam ? `Welcome to ${fam}!` : `Welcome, ${state.me.name}!`,
+      text: w.started ? "Here's how Wishlist works. It takes about 20 seconds." : fam ? `So glad you're here, ${state.me.name}. Here's how it works.` : "Here's a quick look at how Wishlist works." },
+    { id: "add", scene: addScene(), title: "Add what you'd love", text: "Type a name or paste a link from any store. We fill in the name and price for you." },
+    { id: "surprise", scene: surpriseScene(), title: "Gifts stay a surprise", text: "When someone marks a gift on your list, you never see it. No spoilers, ever." },
+    { id: "private", scene: privateScene(), title: "Your notes are just for you", text: "Jot down gift ideas and set a budget for each person in Budget. Nobody else can see them." },
+    !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
+      text: "Your notes are already hidden from everyone. A 4-digit PIN just stops someone else from signing in as you on another phone.",
+      extra: '<div class="tour-pin"><input class="input pin-in" id="tourPin" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" aria-label="4-digit PIN" placeholder="····"></div>' },
+    !standalone && { id: "install", scene: installScene(), title: "Keep it on your home screen", text: "Open Wishlist in one tap, like any other app.",
+      extra: iOS ? steps(["Tap the Share button in Safari", "Choose <strong>Add to Home Screen</strong>"])
+        : installPrompt ? '<button class="btn primary" type="button" id="installBtn" style="margin-top:18px">Add to home screen</button>'
+        : steps(["Open your browser's menu (the three dots)", "Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>"]) },
+    w.started && group() && { id: "invite", scene: "", title: "Now invite your family", text: "Send them this link. It opens right to your family.",
+      extra: `<div class="tour-invite">${inviteCard(group())}</div>` },
+  ].filter(Boolean);
+
+  tourEl.innerHTML = `
+    <div class="tour-top"><div class="dots" aria-hidden="true">${slides.map(() => "<i></i>").join("")}</div>
+      <button class="btn quiet" type="button" id="tourSkip">Skip</button></div>
+    <div class="track" id="track">${slides.map((sl, i) => `<section class="slide-card" data-i="${i}" aria-roledescription="slide" aria-label="${i + 1} of ${slides.length}">
+      ${sl.scene}<h2>${esc(sl.title)}</h2><p>${esc(sl.text)}</p>${sl.extra || ""}</section>`).join("")}</div>
+    <div class="tour-foot"><button class="add big" type="button" id="tourNext" autofocus>Next</button></div>`;
+  if (!tourEl.open) tourEl.showModal();
+  if (w.joined || w.started) setTimeout(() => tourEl.open && party(innerWidth / 2, innerHeight * 0.36, 40), 1050);
+  const track = $("#track", tourEl), next = $("#tourNext", tourEl), cards = [...tourEl.querySelectorAll(".slide-card")], dots = [...tourEl.querySelectorAll(".dots i")];
+  let idx = -1;
+  const pinIn = $("#tourPin", tourEl);
+  const label = () => {
+    const sl = slides[idx];
+    if (sl.id === "pin") return pinIn.value.length === 4 ? "Save PIN" : "Skip for now";
+    return idx === slides.length - 1 ? "Start my list" : "Next";
+  };
+  const show = (i) => {
+    if (i === idx) return;
+    idx = i;
+    cards.forEach((c, n) => c.classList.toggle("on", n === i));
+    dots.forEach((d, n) => d.classList.toggle("on", n === i));
+    next.textContent = label();
+    next.classList.toggle("shine", idx === slides.length - 1);
+    $("#tourSkip", tourEl).style.visibility = idx === slides.length - 1 ? "hidden" : "visible";
+  };
+  const go = (i) => track.scrollTo({ left: i * track.clientWidth, behavior: reduceMotion() ? "auto" : "smooth" });
+  track.addEventListener("scroll", () => show(Math.max(0, Math.min(slides.length - 1, Math.round(track.scrollLeft / track.clientWidth)))), { passive: true });
+  show(0);
+
+  if (pinIn) {
+    const pinDots = $("#pinDots", tourEl);
+    pinIn.addEventListener("input", () => {
+      pinIn.value = pinIn.value.replace(/\D/g, "").slice(0, 4);
+      [...pinDots.children].forEach((d, n) => d.classList.toggle("on", n < pinIn.value.length));
+      next.textContent = label();
+    });
+  }
+  $("#installBtn", tourEl)?.addEventListener("click", async () => {
+    try { installPrompt.prompt(); const r = await installPrompt.userChoice; installPrompt = null; if (r.outcome === "accepted") { party(); go(idx + 1 < slides.length ? idx + 1 : idx); } } catch {}
+  });
+  if (w.started && group()) wireInviteCard(tourEl, group());
+
+  next.onclick = async () => {
+    const sl = slides[idx];
+    if (sl.id === "pin" && pinIn.value.length === 4) {
+      next.disabled = true;
+      try {
+        await api("profile", { pin: pinIn.value });
+        state.me.hasPin = true;
+        $("#pinDots", tourEl).classList.add("done");
+        const r = next.getBoundingClientRect();
+        party(r.left + r.width / 2, r.top - 120, 18);
+        buzz();
+        await new Promise((ok) => setTimeout(ok, reduceMotion() ? 0 : 650));
+      } catch (e) {
+        const pd = $("#pinDots", tourEl);
+        pd.classList.remove("shake"); void pd.offsetWidth; pd.classList.add("shake");
+        toast(e.message);
+        return;
+      } finally { next.disabled = false; }
+    }
+    if (idx === slides.length - 1) return finishTour();
+    go(idx + 1);
+  };
+  $("#tourSkip", tourEl).onclick = finishTour;
+}
+tourEl.addEventListener("cancel", (e) => { e.preventDefault(); finishTour(); });
+
+function finishTour() {
+  if (!tourEl.open) return;
+  tourEl.close();
+  state.welcome = null;
+  if (state.me && !state.me.onboarded) {
+    state.me.onboarded = true;
+    api("onboarded", {}).catch(() => {});
+    writeStarter(true);
+  }
+  if (state.tab !== "mine" || state.person) setTab("mine");
+  else render();
+}
+
+// "Add 3 things" on My list, after the tour. Remembered on this device until you reach 3.
+const STARTER_KEY = "wishlist-starter";
+function readStarter() { try { return localStorage.getItem(STARTER_KEY) === state.me?.id; } catch { return false; } }
+function writeStarter(on) { try { on ? localStorage.setItem(STARTER_KEY, state.me.id) : localStorage.removeItem(STARTER_KEY); } catch {} }
+const STARTER_IDEAS = [["📚", "A book", { placeholder: "A book you'd like to read" }], ["🧦", "Something cozy", { placeholder: "Warm slippers, size 8" }],
+  ["🍳", "For the kitchen", { placeholder: "A nice olive oil, a cast iron pan" }], ["🎟️", "An experience", { placeholder: "Concert tickets, a class, a day out" }],
+  ["🎁", "A gift card", { title: "Gift card to " }]];
 
 // ---------- empty state: a bobbing gift box that pops open ----------
 function giftBox(label) {
@@ -892,18 +1383,37 @@ async function renderMine() {
   state.myItems = data.items;
   setHero(heroTitle(`Hi ${state.me.name}`, "Your wishlist"));
   const v = $("#view");
-  v.innerHTML = data.items.length ? `
-    <p class="count-line">${plural(data.items.length, "wish", "wishes")} on your list</p>
-    <div class="stack">${data.items.map((i, n) => itemRow(i, n)).join("")}</div>
+  const n = data.items.length;
+  // Getting started: an empty list turns the "add 3" guide on; reaching 3 celebrates and turns it off.
+  if (!n) writeStarter(true);
+  let starter = "", celebrate = false;
+  if (n && readStarter()) {
+    if (n < 3) starter = `<div class="starter slide"><strong>${n} of 3 added</strong><p>${n === 1 ? "Two more" : "One more"} and your family has plenty of ideas.</p>
+      <div class="segs">${[0, 1, 2].map((k) => `<i class="${k < n ? "on" : ""}${k === n - 1 && state.flash ? " new" : ""}"></i>`).join("")}</div></div>`;
+    else {
+      writeStarter(false);
+      if (state.flash) {
+        celebrate = true;
+        starter = `<div class="starter done drop"><strong>Your list is off to a great start!</strong><p style="margin:4px 0 0">Add more anytime with the + button.</p></div>`;
+      }
+    }
+  }
+  v.innerHTML = n ? `
+    ${starter}
+    <p class="count-line">${plural(n, "wish", "wishes")} on your list</p>
+    <div class="stack">${data.items.map((i, k) => itemRow(i, k)).join("")}</div>
     <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : `
     <div class="empty">
       ${giftBox("Add your first wish")}
-      <strong>Your list is empty</strong>
-      <p>Add your first wish so your family knows what to get you. A name is all you need.</p>
-      <button class="add" type="button" id="addFirst">${PLUS} Add a wish</button>
+      <strong>Let's start your list</strong>
+      <p>Add 3 things so your family has ideas. A name is all you need. Need a nudge? Tap one:</p>
+      <div class="idea-chips">${STARTER_IDEAS.map(([e, l], k) => `<button class="chip" type="button" data-idea="${k}" style="animation-delay:${0.2 + k * 0.07}s">${e} ${esc(l)}</button>`).join("")}</div>
+      <button class="add big shine" type="button" id="addFirst">${PLUS} Add a wish</button>
       <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>
     </div>`;
   $("#addFirst")?.addEventListener("click", () => editItem());
+  v.querySelectorAll("[data-idea]").forEach((b) => (b.onclick = () => editItem(null, STARTER_IDEAS[b.dataset.idea][2])));
+  if (celebrate) setTimeout(() => { const r = $(".starter", v)?.getBoundingClientRect(); if (r) party(r.left + r.width / 2, r.top + r.height / 2, 30); }, 250);
   wireGiftBox(v, () => editItem());
   v.querySelectorAll(".row[data-id]").forEach((el) => {
     const item = data.items.find((i) => i.id === el.dataset.id);
@@ -967,15 +1477,16 @@ async function toggleTopPick(item, btn) {
   }
 }
 
-function editItem(item) {
-  const isNew = !item;
+// item: a wish to edit, or nothing for a new one. opts.title / opts.placeholder start a new one off (starter ideas).
+function editItem(item, opts = {}) {
+  const isNew = !item?.id;
   item ||= {};
   const hasDetails = item.price_cents != null || !!item.notes || !!item.category;
   openSheet(`
     <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
     <form id="itemForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title)}" placeholder="Warm slippers, size 8" required></label>
+      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || "Warm slippers, size 8")}" required></label>
       ${linkField(item.url)}
       <details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
@@ -998,7 +1509,7 @@ function editItem(item) {
       // type=url rejects links without https://, so let the server fix those up instead.
       form.noValidate = true;
       wireAutofill(form);
-      if (isNew) setTimeout(() => form.elements.title.focus(), 300);
+      if (isNew) setTimeout(() => { const t = form.elements.title; t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 300);
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
         const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, category: d.category || null, priority: d.must ? "must" : null, image: imageFor(form) };
@@ -1208,7 +1719,7 @@ async function renderFamily() {
   const sections = state.groups.map((fam, n) => {
     const ppl = fam.members.filter((m) => m.id !== state.me.id);
     return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${esc(fam.name)}</span><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></div>
-      <div class="stack" style="margin-top:12px">${ppl.length ? ppl.map(personBtn).join("") : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the code.</p>`}</div>`;
+      <div class="stack" style="margin-top:12px">${ppl.length ? ppl.map(personBtn).join("") : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
   }).join("");
   v.innerHTML = multi() ? `${sections}
     <div class="label">You</div>
@@ -1217,22 +1728,24 @@ async function renderFamily() {
     </div>` : `
     ${people.length ? `<div class="label" style="margin-top:0">Who you're shopping for</div><div class="stack" style="margin-top:12px">
       ${people.map(personBtn).join("")}</div>` : `
-      <div class="empty">${giftBox("Invite your family")}<strong>Just you so far</strong><p>Invite your family with the code below and their lists will show up here.</p></div>`}
+      <div class="empty">${giftBox("Invite your family")}<strong>Just you so far</strong><p>Send your family the invite below and their lists will show up here.</p></div>`}
     <div class="label">You</div>
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
     </div>
     <div class="label">Invite someone</div>
-    <div class="card invite" style="margin-top:12px">
-      <div style="flex:1"><div class="code">${esc(g?.code || "")}</div><small style="color:var(--muted)">Family code</small></div>
-      <button class="btn primary" type="button" id="shareBtn">Send invite</button>
-    </div>
+    <div style="margin-top:12px">${g ? inviteCard(g) : ""}</div>
     <p class="footnote">In another family too? Join it from Settings and keep one list for both.</p>`;
   v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
   $("#meRow").onclick = () => setTab("mine");
-  $("#shareBtn")?.addEventListener("click", () => shareInvite(g));
-  v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => shareInvite(state.groups.find((x) => x.id === b.dataset.share))));
-  wireGiftBox(v, () => shareInvite(g));
+  if (g && !multi()) wireInviteCard(v, g);
+  v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((x) => x.id === b.dataset.share))));
+  wireGiftBox(v, () => {
+    const card = $("[data-ticket]", v);
+    if (!card) return openInvite(g);
+    card.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" });
+    setTimeout(() => { card.classList.remove("wiggle"); void card.offsetWidth; card.classList.add("wiggle"); }, 450);
+  });
 }
 
 function budgetMini(p) {
@@ -1243,15 +1756,88 @@ function budgetMini(p) {
     <span>${over ? `${money(p.spent_cents - p.budget_cents)} over` : `${money(p.spent_cents)} of ${money(p.budget_cents)}`}</span></span>`;
 }
 
+// ---------- invites ----------
+// The link opens a landing page for that family, and `from` lets it say who sent it.
+const inviteLink = (g) => `${location.origin}/join/${encodeURIComponent(g.code)}?from=${encodeURIComponent(state.me.id)}`;
+const inviteText = (g) => `${state.me.name} invited you to ${g.name} on Wishlist 🎁 Add what you'd love this year, see what everyone's hoping for, and keep gifts a surprise.`;
+const COPY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const SEND = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>';
+const QR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>';
+
+// A ticket with the code, the link, Copy / Send, and a QR code to show someone in person.
+function inviteCard(g) {
+  const link = inviteLink(g);
+  const canSend = !!navigator.share;
+  return `<div class="ticket" data-ticket>
+    <div class="ticket-top">${DOODLE}<p>${esc(g.name)}</p>
+      <div class="code-big" role="img" aria-label="Family code ${esc([...g.code].join(" "))}">${[...g.code].map((c, i) => `<span style="animation-delay:${0.1 + i * 0.07}s">${esc(c)}</span>`).join("")}</div>
+      <small>${esc(link.replace(/^https?:\/\//, "").replace(/\?.*$/, ""))}</small></div>
+    <div class="ticket-mid"></div>
+    <div class="ticket-body">
+      <div class="ticket-actions">
+        <button class="btn${canSend ? "" : " primary"}" type="button" data-copy>${COPY} Copy invite</button>
+        ${canSend ? `<button class="btn primary" type="button" data-send>${SEND} Send</button>` : ""}
+      </div>
+      <div class="qr" hidden></div>
+      <button class="btn quiet qr-btn" type="button" data-qr>${QR_ICON} Show QR code</button>
+    </div></div>`;
+}
+
+let qrLoading;
+function loadQr() {
+  return (qrLoading ||= new Promise((ok, no) => {
+    const sc = document.createElement("script");
+    sc.src = "/qr.js";
+    sc.onload = ok;
+    sc.onerror = () => { qrLoading = null; no(new Error("Couldn't load the QR code. Check your connection.")); };
+    document.head.appendChild(sc);
+  }));
+}
+
+function wireInviteCard(root, g) {
+  const card = $("[data-ticket]", root);
+  if (!card) return;
+  const link = inviteLink(g);
+  const copyBtn = $("[data-copy]", card);
+  copyBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(`${inviteText(g)}\n\nJoin here: ${link}\nFamily code: ${g.code}`);
+    } catch { return toast(`Family code: ${g.code}`); }
+    buzz();
+    copyBtn.innerHTML = `${CHECK} Copied!`;
+    copyBtn.classList.add("copied");
+    card.classList.remove("wiggle"); void card.offsetWidth; card.classList.add("wiggle");
+    const r = copyBtn.getBoundingClientRect();
+    party(r.left + r.width / 2, r.top, 14);
+    clearTimeout(copyBtn._t);
+    copyBtn._t = setTimeout(() => { copyBtn.innerHTML = `${COPY} Copy invite`; copyBtn.classList.remove("copied"); }, 2400);
+  };
+  $("[data-send]", card)?.addEventListener("click", async () => {
+    try { await navigator.share({ title: `Join ${g.name} on Wishlist`, text: inviteText(g), url: link }); }
+    catch (e) { if (e?.name !== "AbortError") copyBtn.click(); }
+  });
+  const qrBtn = $("[data-qr]", card), qrBox = $(".qr", card);
+  qrBtn.onclick = async () => {
+    if (!qrBox.hidden) { qrBox.hidden = true; qrBtn.innerHTML = `${QR_ICON} Show QR code`; return; }
+    try { await loadQr(); } catch (e) { return toast(e.message); }
+    qrBox.innerHTML = window.qrSvg(link, { dark: "#4A0E22", light: "#FFFFFF", label: `QR code to join ${g.name}` }) + "<small>Point a phone camera here to join</small>";
+    qrBox.hidden = false;
+    qrBtn.innerHTML = `${QR_ICON} Hide QR code`;
+  };
+}
+
+function openInvite(g) {
+  openSheet(`<h3>Invite to ${esc(g.name)}</h3><p>Send this link. It opens right to your family, no code typing needed.</p>${inviteCard(g)}`, (el) => wireInviteCard(el, g));
+}
+
+// "Remind them" on someone's empty list.
 async function shareInvite(g, nudgeName) {
-  const link = `${location.origin}/?code=${encodeURIComponent(g.code)}`;
-  const text = nudgeName
-    ? `Hi ${nudgeName}! Add a few things to your Wishlist so we know what to get you. Family code: ${g.code}`
-    : `Join our family Wishlist (${g.name}). Code: ${g.code}`;
+  const link = inviteLink(g);
+  const text = `Hi ${nudgeName}! Add a few things to your Wishlist so we know what to get you 🎁`;
   try {
     if (navigator.share) return await navigator.share({ title: "Wishlist", text, url: link });
     await navigator.clipboard.writeText(`${text}\n${link}`);
-    toast(nudgeName ? "Reminder copied" : "Invite copied");
+    toast("Reminder copied");
   } catch (e) {
     if (e?.name !== "AbortError") toast(`Code: ${g.code}`);
   }
@@ -1792,12 +2378,14 @@ function openSettings(joinCode = "") {
     <div class="sheet-sec">
       <h4>Add to home screen</h4>
       <p>${iOS ? "In Safari, tap Share, then Add to Home Screen." : "In Chrome, open the menu, then Add to Home screen or Install app."}</p>
+      <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
     </div>
     <div class="sheet-sec">
       <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
     </div>`, (el) => {
       const reload = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
-      el.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => shareInvite(state.groups.find((g) => g.id === b.dataset.share))));
+      el.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
+      $("#replayTour", el).onclick = () => { closeSheet(); state.welcome = null; openTour(); };
       el.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
         const name = groupName(b.dataset.leave);
         if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other families.`)) return;
@@ -1843,10 +2431,10 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("visibilitychange", () => { if (!document.hidden && getToken() && !sheet.open) { state.me = null; render(); } });
 
 readHash();
-// An invite link opened while signed in: offer to join that family from Settings once you're loaded.
-const inviteCode = getToken() ? new URLSearchParams(location.search).get("code") : null;
-if (inviteCode) history.replaceState(null, "", location.pathname + location.hash);
-render().then(() => { if (inviteCode && state.me) openSettings(inviteCode); });
+// An invite link opened while signed in: offer to join that family once you're loaded.
+const signedInInvite = getToken() ? invite : null;
+if (signedInInvite) { invite = null; history.replaceState(null, "", "/" + location.hash); }
+render().then(() => { if (signedInInvite && state.me) offerJoin(signedInInvite); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
 </body>

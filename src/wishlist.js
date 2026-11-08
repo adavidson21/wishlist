@@ -151,7 +151,7 @@ async function auth(request, env) {
   const token = request.headers.get("x-wishlist-token");
   if (!token) fail(401, "Not signed in.");
   const me = await env.DB.prepare(
-    "SELECT m.id, m.name, m.pin_hash FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
+    "SELECT m.id, m.name, m.pin_hash, m.onboarded_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
   )
     .bind(token)
     .first();
@@ -160,7 +160,7 @@ async function auth(request, env) {
   await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE token = ? AND last_seen < ?")
     .bind(now(), token, new Date(Date.now() - 86_400_000).toISOString())
     .run();
-  return { id: me.id, name: me.name, hasPin: !!me.pin_hash, token };
+  return { id: me.id, name: me.name, hasPin: !!me.pin_hash, onboarded: !!me.onboarded_at, token };
 }
 
 async function sharesGroup(env, a, b) {
@@ -199,6 +199,26 @@ async function groupByCode(env, code) {
   const group = await env.DB.prepare("SELECT id, name, join_code FROM groups WHERE join_code = ?").bind(c).first();
   if (!group) fail(404, "No family found with that code. Check it and try again.");
   return group;
+}
+
+// For invite links (/join/CODE?from=memberId): the family's name and, if `from` is someone in that
+// family, their name. Null when the code doesn't match a family. Used by the lookup API and by
+// src/worker.js for the link preview (Open Graph tags).
+export async function inviteInfo(env, code, fromId) {
+  const c = String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!c || !env.DB) return null;
+  const group = await env.DB.prepare("SELECT id, name FROM groups WHERE join_code = ?").bind(c).first();
+  if (!group) return null;
+  let inviter = null;
+  if (fromId) {
+    const row = await env.DB.prepare(
+      "SELECT m.name FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
+    )
+      .bind(group.id, String(fromId))
+      .first();
+    inviter = row?.name || null;
+  }
+  return { group, inviter };
 }
 
 const itemOut = (r) => ({
@@ -540,8 +560,11 @@ async function bestLink(x, grounded) {
 
 const handlers = {
   // Step 1 of joining: show the family name and who is already in it.
+  // `from` (optional) is the id of whoever sent the invite link; their name comes back as `inviter`.
   async "POST lookup"(req, env) {
-    const group = await groupByCode(env, (await body(req)).code);
+    const b = await body(req);
+    const group = await groupByCode(env, b.code);
+    const info = b.from ? await inviteInfo(env, b.code, b.from) : null;
     const { results } = await env.DB.prepare(
       "SELECT m.id, m.name, m.pin_hash FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? ORDER BY m.name COLLATE NOCASE",
     )
@@ -549,6 +572,7 @@ const handlers = {
       .all();
     return {
       group: { name: group.name },
+      inviter: info?.inviter || null,
       members: results.map((m) => ({ id: m.id, name: m.name, hasPin: !!m.pin_hash })),
     };
   },
@@ -639,7 +663,7 @@ const handlers = {
     const nicks = await nicknamesFor(env, me.id);
     const person = (p) => ({ id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count });
     return {
-      me: { id: me.id, name: me.name, hasPin: me.hasPin },
+      me: { id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded },
       season: season(),
       groups: groups.map((g) => ({
         id: g.id,
@@ -1116,6 +1140,13 @@ const handlers = {
         .bind(pin ? await hashPin(me.id, pin) : null, me.id)
         .run();
     }
+    return { ok: true };
+  },
+
+  // Finished (or skipped) the welcome tour. Stored per person so it doesn't come back on a new phone.
+  async "POST onboarded"(req, env) {
+    const me = await auth(req, env);
+    await env.DB.prepare("UPDATE members SET onboarded_at = ? WHERE id = ? AND onboarded_at IS NULL").bind(now(), me.id).run();
     return { ok: true };
   },
 

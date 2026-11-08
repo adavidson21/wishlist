@@ -8,7 +8,7 @@ One Cloudflare Worker with a D1 database. No build step.
 
 ```
 wrangler.jsonc        Cloudflare config: Worker, custom domain, D1 binding
-src/worker.js         Router: /api/* to wishlist.js, everything else from public/
+src/worker.js         Router: /api/* to wishlist.js, /join/CODE invite pages (with link previews), everything else from public/
 src/wishlist.js       API and privacy rules (D1)
 src/gemini.js         Gemini call used by photo search
 src/stores.js         Stores photo search may link to, plus blocked marketplaces
@@ -18,6 +18,8 @@ public/sw.js          Service worker (network first, offline fallback)
 public/manifest.webmanifest, icons/, fonts/ (Figtree, Fraunces, OFL)
 public/theme.js       Applies the saved light/dark choice (picked in Settings)
 public/xlsx.js        Builds the Budget tab's Excel export in the browser
+public/qr.js          Makes the invite QR code (SVG), loaded only when someone taps "Show QR code"
+public/og-invite.png  Link preview image for invite links
 ```
 
 ## Deploy
@@ -42,7 +44,10 @@ public/xlsx.js        Builds the Budget tab's Excel export in the browser
 - **Sign-in** is the honor system: a family code, then pick your name (or add yourself). A 4-digit PIN is optional and protects your private notes. Each device keeps a token in localStorage.
 - **Privacy rules** live in `src/wishlist.js`: the list owner never gets purchased marks, private ideas only go to their author, and you only see lists of people in a family you share.
 - **Seasons:** purchased marks are per calendar year (New York time), so they reset each Christmas while wishes carry over. Removing an item someone already bought keeps it for the buyer, flagged "removed".
-- **Share link:** `/?code=ABC234` prefills the family code (the Family tab's Share button sends it).
+- **Invite links:** `/join/ABC234?from=memberId`. The Worker serves the app page with the title and Open Graph tags swapped ("Join The Davidsons on Wishlist", "Alexis invited you...") so pasted links show a nice preview card. The page opens on an invite screen: an envelope opens, the family's avatars pop in, and one Join button leads to "Are you new here?" (new people first, returning people tap their name). A bad code gets a friendly "That invite didn't work" screen with a code box. Old `/?code=ABC234` links still work. Opening an invite while signed in asks "Join The Davidsons?" in a sheet (or does nothing if you're already in it).
+- **Invite card:** the Family tab (and Invite buttons in Settings and per family) shows a ticket with the code, Copy invite (warm message, link, and code), Send (the phone's share sheet), and Show QR code for inviting someone in person.
+- **Welcome tour:** after joining, a full-screen set of swipeable cards, each with a small animation: welcome, adding wishes, surprises stay hidden, private notes and budgets, an optional PIN, adding to the home screen, and (for someone who started a family) inviting the family. Shown once per person (`members.onboarded_at`, migration 0005; people from before it count as done). Settings has "Replay the welcome tour".
+- **Getting started:** an empty My list suggests ideas (a book, something cozy, ...) and asks for 3 wishes, with a progress bar until the third, which gets confetti.
 - **Ideas and suggestions:** an idea about someone is private to its author. "Share as a suggestion" shows it to everyone in the family except the person it's for, who never gets it from the API.
 - **Autofill:** pasting a link calls `/api/preview`, which reads the product name and price from JSON-LD, Open Graph tags, or Amazon's markup. Stores that block bots fall back to a name guessed from the URL.
 - **Photo search:** `/api/identify` sends a shrunk photo to Gemini (`GEMINI_MODEL` in `wrangler.jsonc`) with Google Search turned on, for up to 4 matches. Each match gets a store link: the brand's own site first, then retailers in `src/stores.js`, then Amazon. Amazon ranks with the retailers only when the page shows it is shipped and sold by Amazon. Every link is opened to confirm it is a real product page (or, if the store blocks bots, that Google Search really returned it). Marketplaces and resellers are never linked. With no confirmed page, the link searches the likeliest store instead. Search grounding is billed per search after 5,000 free a month. Photos are not stored.
@@ -55,7 +60,7 @@ public/xlsx.js        Builds the Budget tab's Excel export in the browser
 - **More than one family:** in Settings, join another family by code, start a new one, invite, or leave one (not your last). You stay one person with one list. Each wish has a "Who can see this" switch per family; a wish hidden from a family is never shown through that family (`item_hidden`, migration 0004), though anyone who shares another family with you where it isn't hidden still sees it. The Family tab shows a section per family. Joining is blocked if that family already has someone with your name. Opening an invite link while signed in opens Settings with the code filled in.
 - **Tabs:** My list, Family, a raised center Add a wish button (adds to your list from any screen), Budget, Settings.
 - **Settings:** text size (Default, Large, Extra large) and appearance (Automatic, Light, Dark) are saved on the device.
-- **Look and motion:** cream background, a wine header band, burgundy actions, gold for top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for everything else. Animations mark real moments (adding a wish, starring a top pick, "I'll get this" confetti, budget numbers counting) and all turn off with the device's Reduce Motion setting.
+- **Look and motion:** cream background, a wine header band, burgundy actions, gold for top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for everything else. Animations mark real moments (opening an invite, joining, the tour, adding a wish, starring a top pick, "I'll get this" confetti, budget numbers counting) and all turn off with the device's Reduce Motion setting.
 
 ## Schema changes
 
