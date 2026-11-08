@@ -406,6 +406,66 @@
   .know dd { margin: 0; overflow-wrap: anywhere; }
   .know .soon { display: inline-block; margin-left: 6px; font-size: 13px; font-weight: 700; color: var(--gold-ink); background: var(--gold-soft); border-radius: 8px; padding: 1px 8px; }
   .know .no { white-space: pre-wrap; }
+  .brand-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .brand-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 11px; border-radius: 999px; background: var(--soft); color: var(--soft-ink); font-size: 14px; font-weight: 700; }
+  .brand-chip button { border: 0; background: none; color: inherit; font-size: 20px; line-height: 1; padding: 0 0 0 4px; min-width: 28px; min-height: 32px; cursor: pointer; }
+  .brand-chips.edit { margin-bottom: 10px; }
+  .brand-chips.edit .brand-chip { padding: 0 2px 0 12px; animation: avPop .35s var(--spring) both; }
+  .brand-add { display: flex; gap: 8px; margin-bottom: 16px; }
+  .brand-add .input { flex: 1; min-width: 0; }
+
+  /* Gift cards: little cards in the brand's color, never "taken". */
+  .gc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px 12px; margin-top: 12px; }
+  .gc-item { display: flex; flex-direction: column; gap: 6px; border: 0; background: none; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+  .gc-item:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; border-radius: 14px; }
+  .gc { position: relative; aspect-ratio: 1.586; width: 100%; border-radius: 13px; overflow: hidden; color: #fff; padding: 10px 12px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: radial-gradient(120% 90% at 100% 0%, rgba(255,255,255,.22), transparent 55%), linear-gradient(140deg, var(--gc), color-mix(in srgb, var(--gc) 70%, #000));
+    box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 6px 14px color-mix(in srgb, var(--gc) 30%, transparent); transition: transform .18s var(--spring); }
+  .gc::after { content: ""; position: absolute; top: -20%; bottom: -20%; width: 40%; left: -60%; transform: rotate(18deg);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent); pointer-events: none; }
+  .gc-item:hover .gc, .gc-item:focus-visible .gc { transform: translateY(-3px) rotate(-1.5deg); }
+  .gc-item:hover .gc::after { animation: shine 1.1s ease; }
+  .gc-item:active .gc { transform: scale(.96); }
+  .gc-top { display: flex; align-items: flex-start; justify-content: space-between; }
+  .gc-chip { width: 26px; height: 19px; border-radius: 4px; background: linear-gradient(135deg, #F3D98B, #C9A246); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+    background-image: linear-gradient(135deg, #F3D98B, #C9A246), linear-gradient(90deg, transparent 45%, rgba(0,0,0,.18) 45% 55%, transparent 55%); background-blend-mode: multiply; }
+  .gc-emoji { font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+  .gc-name { font-weight: 800; font-size: 15px; line-height: 1.15; text-shadow: 0 1px 2px rgba(0,0,0,.3); overflow-wrap: anywhere; }
+  .gc-name small { display: block; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin-bottom: 1px; }
+  .gc-badge { position: absolute; right: 8px; bottom: 8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    background: #fff; color: var(--ok); box-shadow: 0 2px 6px rgba(0,0,0,.25); animation: checkpop .45s var(--spring) both; }
+  .gc-cap { font-size: 14px; color: var(--muted); font-weight: 600; line-height: 1.3; min-height: 18px; }
+  .gc-cap.mine { color: var(--ok); }
+  .gc-item { position: relative; }
+  .gc-item[hidden] { display: none; }
+  .gc-pop .gc { animation-delay: var(--d, 0s); }
+  a.btn.gc-find { text-decoration: none; color: var(--brand); margin-top: 6px; }
+  .gc-item.removed .gc { filter: grayscale(.7); opacity: .75; }
+  .gc-add { aspect-ratio: 1.586; width: 100%; border-radius: 13px; border: 2px dashed var(--line); background: var(--card); color: var(--brand);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .gc-add:hover { border-color: var(--brand); }
+  .gc-add:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+  .gc-pop .gc { animation: gcIn .55s var(--spring) both; }
+  @keyframes gcIn { 0% { opacity: 0; transform: rotateY(80deg) translateY(8px) scale(.9); } 100% { opacity: 1; transform: none; } }
+  /* Picker */
+  .gc-search { margin-bottom: 6px; }
+  .gc-group { margin: 16px 0 8px; font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .gc-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
+  .gc-pick .gc-item .gc { padding: 7px 9px; border-radius: 11px; }
+  .gc-pick .gc-name { font-size: 12.5px; }
+  .gc-pick .gc-name small { font-size: 8.5px; }
+  .gc-pick .gc-chip { width: 20px; height: 15px; }
+  .gc-pick .gc-emoji { font-size: 18px; }
+  .gc-pick .gc-item[aria-pressed="true"] .gc { box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--brand); }
+  .gc-pick .gc-item[aria-pressed="true"] .gc-check { display: grid; }
+  .gc-check { display: none; position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 50%; place-items: center; background: #fff; color: var(--brand);
+    box-shadow: 0 2px 6px rgba(0,0,0,.25); animation: checkpop .4s var(--spring) both; }
+  .gc-pick-foot { position: sticky; bottom: -1px; background: var(--bg); padding: 12px 0 4px; margin-top: 14px; box-shadow: 0 -10px 12px -10px rgba(0,0,0,.15); }
+  .gc-hero { max-width: 230px; margin: 4px auto 16px; }
+  .gc-hero .gc { transform: rotate(-2deg); }
+  .gc-hero .gc-name { font-size: 20px; }
+  .gc-hero .gc-emoji { font-size: 34px; }
   .about { text-align: center; color: var(--faint); font-size: 13px; margin-top: 22px; }
 
   /* Bottom tabs: My list, Family, [Add a wish], Budget, Settings */
@@ -736,6 +796,7 @@
 <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetBody"></div></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
+<script src="/giftcards.js"></script>
 <script>
 "use strict";
 const API = "/api/";
@@ -807,11 +868,10 @@ const CATS = [
   ["beauty", "Beauty", "bottle"], ["tech", "Tech", "device"], ["clothing", "Clothing", "shirt"], ["shoes", "Shoes", "shoe"],
   ["accessories", "Bags & jewelry", "gem"], ["home", "Home", "candle"], ["kitchen", "Kitchen", "pan"], ["books", "Books", "book"],
   ["toys", "Toys & games", "toy"], ["outdoors", "Outdoors & fitness", "pack"], ["treats", "Food & drink", "treat"],
-  ["experiences", "Experiences", "ticket"], ["giftcards", "Gift cards", "card"], ["other", "Other", "gift"],
+  ["experiences", "Experiences", "ticket"], ["other", "Other", "gift"],
 ];
 const CAT = Object.fromEntries(CATS.map(([k, label, icon]) => [k, { label, icon }]));
 const CAT_RULES = [
-  [/gift ?card|e-?gift|voucher/i, "giftcards"],
   [/perfume|parfum|cologne|fragrance|eau de|lipstick|makeup|mascara|skin ?care|serum|lotion|moisturi|nail polish|shampoo|beauty|razor|beard/i, "beauty"],
   [/kindle|paperwhite|ipad|tablet|laptop|iphone|phone|camera|smart ?watch|apple watch|charger|\btv\b|monitor|echo|alexa|keyboard|mouse|headphone|earbud|airpod|speaker|soundbar|beats|drone|\bssd\b|router/i, "tech"],
   [/playstation|ps5|xbox|nintendo|switch|controller|video game|lego|puzzle|\btoy|doll|plush|board game|blocks|card game/i, "toys"],
@@ -1103,7 +1163,7 @@ async function render() {
     $("#view").innerHTML = `<div class="err">${esc(e.message)}</div><button class="btn" type="button" id="retry">Try again</button>`;
     $("#retry").onclick = () => { state.me = null; render(); };
   }
-  state.flash = state.burst = state.pop = null;
+  state.flash = state.burst = state.pop = state.gcNew = null;
   fetchImages($("#view"));
 }
 
@@ -1493,7 +1553,7 @@ function readStarter() { try { return localStorage.getItem(STARTER_KEY) === stat
 function writeStarter(on) { try { on ? localStorage.setItem(STARTER_KEY, state.me.id) : localStorage.removeItem(STARTER_KEY); } catch {} }
 const STARTER_IDEAS = [["📚", "A book", { placeholder: "A book you'd like to read" }], ["🧦", "Something cozy", { placeholder: "Warm slippers, size 8" }],
   ["🍳", "For the kitchen", { placeholder: "A nice olive oil, a cast iron pan" }], ["🎟️", "An experience", { placeholder: "Concert tickets, a class, a day out" }],
-  ["🎁", "A gift card", { title: "Gift card to " }]];
+  ["💳", "Gift cards", { giftCards: true }]];
 
 // ---------- empty state: a bobbing gift box that pops open ----------
 function giftBox(label) {
@@ -1551,7 +1611,7 @@ async function renderMine() {
     <p class="footnote">Family sees this list. Surprises stay hidden from you.</p>` : `
     <p class="label">Wish list</p>
     <p class="subtle">Nothing published yet. Tap Publish on a wish above when you want your family to see it.</p>`;
-  v.innerHTML = data.items.length ? draftSection + liveSection : `
+  v.innerHTML = data.items.length ? draftSection + liveSection + myGiftCards(data.giftCards) : `
     <div class="empty">
       ${giftBox("Add your first wish")}
       <strong>Let's start your list</strong>
@@ -1559,11 +1619,16 @@ async function renderMine() {
       <div class="idea-chips">${STARTER_IDEAS.map(([e, l], k) => `<button class="chip" type="button" data-idea="${k}" style="animation-delay:${0.2 + k * 0.07}s">${e} ${esc(l)}</button>`).join("")}</div>
       <button class="add big shine" type="button" id="addFirst">${PLUS} Add a wish</button>
       <p class="footnote">Family sees your published wishes. Surprises stay hidden from you.</p>
-    </div>`;
+    </div>
+    ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`;
   $("#addFirst")?.addEventListener("click", () => editItem());
   $("#bdayAdd")?.addEventListener("click", () => setTab("settings"));
   $("#bdayLater")?.addEventListener("click", () => { try { localStorage.setItem(BDAY_NUDGE_KEY, state.me.id); } catch {} $("#bdayNudge")?.remove(); });
-  v.querySelectorAll("[data-idea]").forEach((b) => (b.onclick = () => editItem(null, STARTER_IDEAS[b.dataset.idea][2])));
+  v.querySelectorAll("[data-idea]").forEach((b) => (b.onclick = () => {
+    const opts = STARTER_IDEAS[b.dataset.idea][2];
+    opts.giftCards ? pickGiftCards(data.giftCards) : editItem(null, opts);
+  }));
+  v.querySelectorAll("[data-gc-edit]").forEach((b) => (b.onclick = () => pickGiftCards(data.giftCards)));
   if (celebrate) setTimeout(() => { const r = $(".starter", v)?.getBoundingClientRect(); if (r) party(r.left + r.width / 2, r.top + r.height / 2, 30); }, 250);
   wireGiftBox(v, () => editItem());
   v.querySelectorAll(".row[data-id]").forEach((el) => {
@@ -1674,6 +1739,7 @@ function editItem(item, opts = {}) {
     <form id="itemForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || "Warm slippers, size 8")}" required></label>
+      ${isNew ? `<p class="hint" style="margin-top:-10px">Want a gift card? <button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Pick stores instead</button></p>` : ""}
       ${linkField(item.url)}
       <details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
@@ -1698,6 +1764,10 @@ function editItem(item, opts = {}) {
       form.noValidate = true;
       wireAutofill(form);
       if (isNew) setTimeout(() => { const t = form.elements.title; t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 300);
+      $("#toGiftCards", el)?.addEventListener("click", async () => {
+        const mine = await api("list").catch(() => ({ giftCards: [] }));
+        pickGiftCards(mine.giftCards);
+      });
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
         const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form) };
@@ -2154,6 +2224,7 @@ async function renderPerson(id) {
         <p>Give ${esc(name)} a little nudge, or jot down your own idea. ${esc(name)} will never see your ideas.</p>
         <div class="stack"><button class="add" type="button" id="nudge">${MSG} Send ${esc(name)} a reminder</button></div>
       </div>`}
+    ${theirGiftCards(list.giftCards, name, id)}
     ${sugg.length ? `<div class="label">Ideas from family</div><p class="subtle">Hidden from ${esc(name)}.</p>
       <div class="stack">${sugg.map((i, n) => personRow(i, "idea", n)).join("")}</div>` : ""}
     <div class="label">Your ideas for ${esc(name)}</div>
@@ -2176,6 +2247,7 @@ async function renderPerson(id) {
   // Keep the chosen chip in view when the row scrolls sideways.
   v.querySelectorAll('.chip[aria-pressed="true"]').forEach((c) => c.scrollIntoView({ block: "nearest", inline: "nearest" }));
   wireIdeaRows(v, mine);
+  v.querySelectorAll("[data-give]").forEach((b) => (b.onclick = () => giveGiftCard(list.giftCards.find((c) => c.brand === b.dataset.give), list.member, name, id)));
   const byKind = { item: all, idea: sugg };
   v.querySelectorAll("[data-mark]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.mark.split(":");
@@ -2520,6 +2592,180 @@ function editIdea(idea, subjectId, opts = {}) {
     });
 }
 
+// ---------- gift cards ----------
+// Brands come from public/giftcards.js (shared with the server). A gift card is never "taken":
+// anyone can give one, and the owner never learns who.
+const GIFT_LIST = window.GIFT_CARDS || [];
+const GC = Object.fromEntries(GIFT_LIST.map((g) => [g.key, g]));
+const GC_GROUPS = [...new Set(GIFT_LIST.map((g) => g.group))];
+const gcFindUrl = (g) => `https://www.google.com/search?q=${encodeURIComponent(`${g.name} gift card`)}`;
+const squash = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function giftCard(g, extra = "") {
+  return `<span class="gc" style="--gc:${g.color}" aria-hidden="true"><span class="gc-top"><span class="gc-chip"></span><span class="gc-emoji">${g.emoji}</span></span>
+    <span class="gc-name"><small>Gift card</small>${esc(g.name)}</span>${extra}</span>`;
+}
+
+// My list: the gift cards I picked, plus a tile to change them.
+function myGiftCards(cards = []) {
+  const list = cards.filter((c) => GC[c.brand]);
+  let k = 0;
+  return `<div class="label">Gift cards</div>
+    <p class="subtle">${list.length ? "Always on your list, never used up. Family can give as many as they like." : "Pick stores you'd love a gift card to. Just tap, no details needed."}</p>
+    <div class="gc-grid">${list.map((c, n) => {
+      const pop = state.gcNew?.has(c.brand);
+      return `<button class="gc-item ${pop ? "gc-pop" : "slide"}" type="button" data-gc-edit style="${pop ? `--d:${k++ * 0.08}s` : `animation-delay:${n * 0.04}s`}"
+        aria-label="${esc(GC[c.brand].name)} gift card. Tap to change your gift cards.">${giftCard(GC[c.brand])}</button>`;
+    }).join("")}
+      <button class="gc-add" type="button" data-gc-edit>${PLUS}<span>${list.length ? "Add or remove" : "Add gift cards"}</span></button></div>`;
+}
+
+// Pick gift cards: tap stores on and off, then save. Replaces the whole set.
+function pickGiftCards(current = []) {
+  const before = new Set(current.map((c) => c.brand).filter((k) => GC[k]));
+  const chosen = new Set(before);
+  const card = (g) => `<button class="gc-item" type="button" data-pick="${g.key}" aria-pressed="${chosen.has(g.key)}" aria-label="${esc(g.name)}">${giftCard(g, `<span class="gc-check">${CHECK}</span>`)}</button>`;
+  openSheet(`
+    <h3>Gift cards you'd love</h3>
+    <p class="subtle">Tap as many as you like. No details needed, and they stay on your list every year.</p>
+    <input class="input gc-search" type="search" placeholder="Search stores" aria-label="Search stores" autocomplete="off">
+    ${GC_GROUPS.map((grp) => `<section data-group><div class="gc-group">${esc(grp)}</div>
+      <div class="gc-pick">${GIFT_LIST.filter((g) => g.group === grp).map(card).join("")}</div></section>`).join("")}
+    <p class="subtle" id="gcNone" hidden style="margin-top:14px">No stores match. Try another name.</p>
+    <div class="gc-pick-foot"><div class="err" hidden></div><button class="btn primary wide" type="button" id="gcSave"></button></div>`, (el) => {
+      const save = $("#gcSave", el);
+      const label = () => {
+        const same = chosen.size === before.size && [...chosen].every((k) => before.has(k));
+        save.textContent = same ? "Done" : chosen.size ? `Save ${plural(chosen.size, "gift card", "gift cards")}` : "Remove all gift cards";
+      };
+      label();
+      el.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => {
+        const k = b.dataset.pick;
+        if (chosen.has(k)) chosen.delete(k); else chosen.add(k);
+        b.setAttribute("aria-pressed", String(chosen.has(k)));
+        buzz();
+        label();
+      }));
+      const search = $(".gc-search", el);
+      search.oninput = () => {
+        const q = squash(search.value);
+        let any = false;
+        el.querySelectorAll("[data-group]").forEach((sec) => {
+          let shown = 0;
+          sec.querySelectorAll("[data-pick]").forEach((b) => {
+            const ok = !q || squash(GC[b.dataset.pick].name).includes(q) || squash(GC[b.dataset.pick].group).includes(q);
+            b.hidden = !ok;
+            if (ok) shown++;
+          });
+          sec.hidden = !shown;
+          if (shown) any = true;
+        });
+        $("#gcNone", el).hidden = any;
+      };
+      save.onclick = async () => {
+        const added = [...chosen].filter((k) => !before.has(k));
+        const removed = [...before].filter((k) => !chosen.has(k));
+        if (!added.length && !removed.length) return closeSheet();
+        const err = $(".err", el);
+        err.hidden = true;
+        save.disabled = true;
+        try {
+          await api("giftcards/save", { brands: [...chosen] });
+          closeSheet();
+          buzz();
+          toast(added.length ? `Added ${plural(added.length, "gift card", "gift cards")} to your list` : "Gift cards saved");
+          state.me = null;
+          state.gcNew = new Set(added);
+          if (added.length) setTimeout(() => party(innerWidth / 2, innerHeight / 2.4, 26), 350);
+          if (state.tab !== "mine" || state.person) return setTab("mine");
+          render();
+        } catch (e) {
+          err.textContent = e.message;
+          err.hidden = false;
+          save.disabled = false;
+        }
+      };
+    });
+}
+
+// Someone else's list: their gift cards. Never shown as taken. Removed ones only show if you're giving it.
+// c.mine: your gifts for their upcoming occasions, [{ occasion, amount_cents }].
+function theirGiftCards(cards = [], name, personId) {
+  const list = cards.filter((c) => GC[c.brand]);
+  if (!list.length) return "";
+  return `<div class="label">Gift cards ${esc(name)} would love</div>
+    <p class="subtle">Anyone can give one, and ${esc(name)} won't see who.</p>
+    <div class="gc-grid">${list.map((c, n) => {
+      const g = GC[c.brand];
+      const mine = c.mine || [];
+      const fresh = state.burst === `gc:${c.brand}`;
+      const cap = mine.length > 1 ? `You're giving ${mine.length}, one for each`
+        : mine.length ? `You're giving ${mine[0].amount_cents ? money(mine[0].amount_cents) : "one"}${occTag(personId, mine[0].occasion)}`
+        : c.others === 1 ? "1 other is giving one" : c.others ? `${c.others} others are giving one` : "Tap to give one";
+      return `<button class="gc-item${c.removed ? " removed" : ""} ${fresh ? "gc-pop" : "slide"}" type="button" data-give="${c.brand}" style="animation-delay:${n * 0.05}s"
+        aria-label="${esc(g.name)} gift card. ${esc(cap)}">${giftCard(g, mine.length ? `<span class="gc-badge">${CHECK}</span>` : "")}
+        <span class="gc-cap${mine.length ? " mine" : ""}">${c.removed ? `Removed by ${esc(name)}` : esc(cap)}</span>
+        ${fresh && !reduceMotion() ? `<span class="burst" aria-hidden="true">${CONFETTI}</span>` : ""}</button>`;
+    }).join("")}</div>`;
+}
+
+// "I'm giving one" for one of their occasions (Christmas, or their birthday if they added one), with an
+// optional amount. Picking an occasion you already gave for switches to editing that gift.
+function giveGiftCard(c, member, name, personId) {
+  if (!c) return;
+  const g = GC[c.brand];
+  const who = name || "them";
+  const mine = c.mine || [];
+  const occ = occasionsOf(personId);
+  const mineAt = (code) => mine.find((m) => String(m.occasion) === String(code));
+  const first = mine[0]?.occasion;
+  openSheet(`
+    <h3>${mine.length ? "Your gift card" : `Give ${esc(who)} a gift card?`}</h3>
+    <div class="gc-hero">${giftCard(g)}</div>
+    ${c.removed ? `<p class="hint" style="margin-top:0">${esc(who)} took this one off their list. You can keep it or take it back.</p>` : ""}
+    ${c.others ? `<p class="hint" style="margin-top:0">${c.others === 1 ? "1 other person is" : `${c.others} others are`} giving ${esc(g.name)} too. That's fine, gift cards add up.</p>` : ""}
+    <form id="giveForm" autocomplete="off">
+      <div class="err" hidden></div>
+      ${occPicker(personId, first)}
+      <label class="field"><span>Amount</span>
+        <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" placeholder="25" aria-label="Gift card amount"></div></label>
+      <p class="hint">${LOCK} ${esc(who)} never sees who gives gift cards. ${occ.length > 1 ? "This goes toward your budget for the one you pick." : `This goes toward your budget for ${esc(who)}.`}</p>
+      <div id="giveActions"></div>
+      <a class="btn quiet wide gc-find" href="${esc(gcFindUrl(g))}" target="_blank" rel="noopener">Find ${esc(g.name)} gift cards ${OUT}</a>
+    </form>`, (el) => {
+      const form = $("#giveForm", el);
+      const occasion = wireOccPicker(el);
+      const send = (on, amount, code) => api("giftcard/give", { memberId: member.id, brand: c.brand, on, amount, occasion: code });
+      // The amount and buttons follow the picked occasion: your gift for it, or a new one.
+      const paint = () => {
+        const have = mineAt(occasion() ?? first ?? occ[0]?.code);
+        form.elements.amount.value = have ? priceIn(have.amount_cents) : "";
+        $("#giveActions", el).innerHTML = have
+          ? `<div class="actions"><button class="btn danger" type="button" id="ungive">Not giving it</button><button class="btn primary" type="submit">Save</button></div>`
+          : `<button class="btn primary wide" type="submit">${GIFT_SM} Yes, I'm giving one</button>`;
+        $("#ungive", el)?.addEventListener("click", async () => {
+          try { await send(false, undefined, have.occasion); closeSheet(); toast("Taken back"); render(); }
+          catch (e) { toast(e.message); }
+        });
+      };
+      paint();
+      el.querySelectorAll("[data-occ] button").forEach((b) => b.addEventListener("click", paint));
+      wireForm(form, async ({ amount }) => {
+        const code = occasion() ?? first;
+        const editing = !!mineAt(code ?? occ[0]?.code);
+        await send(true, amount, code);
+        closeSheet();
+        if (editing) { toast("Saved"); return render(); }
+        buzz();
+        const n = parseFloat(String(amount).replace(/[$,\s]/g, ""));
+        const filed = code ?? occ[0]?.code;
+        toast(n > 0 ? `Added ${money(Math.round(n * 100))} to ${who}'s budget` : `You're giving ${who} a ${g.name} gift card`,
+          () => send(false, undefined, filed).then(render, (e) => toast(e.message)));
+        state.burst = `gc:${c.brand}`;
+        render();
+      });
+    });
+}
+
 // ---------- Excel export ----------
 function loadXlsx() {
   if (window.buildXlsx) return Promise.resolve();
@@ -2587,7 +2833,9 @@ function bdayIn(b) {
   if (next < t) next = new Date(t.getFullYear() + 1, m - 1, d);
   return Math.round((next - t) / 86400000);
 }
-const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || Object.values(p.sizes || {}).some(Boolean));
+const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || Object.values(p.sizes || {}).some(Boolean));
+const brandChips = (brands, edit) => `<span class="brand-chips${edit ? " edit" : ""}">${brands.map((b, k) => `<span class="brand-chip">${esc(b)}${edit
+  ? `<button type="button" data-unbrand="${k}" aria-label="Remove ${esc(b)}">&times;</button>` : ""}</span>`).join("")}</span>`;
 function knowCard(p) {
   if (!hasProfile(p)) return "";
   const rows = [];
@@ -2599,6 +2847,7 @@ function knowCard(p) {
     rows.push(["Birthday", `${esc(bdayText(p.birthday))}${turning ? `, turning ${turning}` : ""}${soon ? `<span class="soon">${soon}</span>` : ""}`]);
   }
   for (const [k, l] of SIZE_LABELS) if (p.sizes?.[k]) rows.push([l.replace(" / top", ""), esc(p.sizes[k])]);
+  if (p.brands?.length) rows.push(["Favorite brands", brandChips(p.brands)]);
   if (p.avoid) rows.push(["Avoid", `<span class="no">${esc(p.avoid)}</span>`]);
   return `<div class="know"><div class="know-h">Good to know</div><dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join("")}</dl></div>`;
 }
@@ -2676,6 +2925,13 @@ async function renderSettings() {
         </div>
         <span class="flabel">Sizes</span>
         <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span style="font-size:14px;color:var(--muted);margin-bottom:4px">${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(prof.sizes?.[k] || "")}" placeholder="${SIZE_EG[k]}"></label>`).join("")}</div>
+        <span class="flabel" style="margin-top:4px">Favorite brands</span>
+        <div id="brandChips">${brandChips(prof.brands || [], true)}</div>
+        <div class="brand-add">
+          <input class="input" id="brandIn" maxlength="40" list="brandList" placeholder="Lululemon, Trader Joe's" autocomplete="off" enterkeyhint="done" aria-label="Add a favorite brand">
+          <button class="btn small" type="button" id="brandAdd">${PLUS} Add</button>
+        </div>
+        <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
         <label class="field" style="margin-top:4px"><span>Dislikes and allergies</span>
           <textarea class="input" name="avoid" maxlength="300" placeholder="No scented candles, allergic to wool">${esc(prof.avoid || "")}</textarea></label>
         <button class="btn primary wide" type="submit">Save profile</button>
@@ -2799,8 +3055,30 @@ async function renderSettings() {
   $("#removePhoto", v)?.addEventListener("click", async () => {
     try { await api("profile", { photo: "" }); PHOTOS.delete(state.me.id); reload("Photo removed"); } catch (e) { toast(e.message); }
   });
+  // Favorite brands: typed or picked from the list, shown as chips. Saved with the rest of the profile.
+  const brands = [...(prof.brands || [])];
+  const brandIn = $("#brandIn", v);
+  const paintBrands = () => {
+    $("#brandChips", v).innerHTML = brandChips(brands, true);
+    v.querySelectorAll("[data-unbrand]").forEach((b) => (b.onclick = () => { brands.splice(+b.dataset.unbrand, 1); paintBrands(); }));
+  };
+  const addBrand = () => {
+    const name = brandIn.value.replace(/\s+/g, " ").trim();
+    brandIn.value = "";
+    if (!name) return;
+    if (brands.some((b) => b.toLowerCase() === name.toLowerCase())) return toast(`${name} is already on there`);
+    if (brands.length >= 20) return toast("That's a lot of brands. Keep it to 20.");
+    brands.push(name);
+    paintBrands();
+  };
+  paintBrands();
+  $("#brandAdd", v).onclick = () => { addBrand(); brandIn.focus(); };
+  brandIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addBrand(); } });
+  // Picking a suggestion from the list adds it right away.
+  brandIn.addEventListener("input", (e) => { if (e.inputType === "insertReplacementText" || (!e.inputType && GIFT_LIST.some((g) => g.name === brandIn.value))) addBrand(); });
   wireForm($("#profileForm", v), async (f) => {
     if (!!f.bmonth !== !!f.bday) throw new Error("Pick both a month and a day for your birthday, or leave both empty.");
+    if (brandIn.value.trim()) addBrand();
     const pad = (n) => String(n).padStart(2, "0");
     await api("profile", {
       name: f.name,
@@ -2808,6 +3086,7 @@ async function renderSettings() {
       birthYear: f.bmonth ? f.byear.trim() : "",
       sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, f[`size_${k}`]])),
       avoid: f.avoid,
+      brands,
     });
     reload("Profile saved");
   });
