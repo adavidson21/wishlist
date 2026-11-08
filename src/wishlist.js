@@ -20,7 +20,7 @@ import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost
 const BASE = "/api/";
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
 const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
-const LIMITS = { nickname: 40, name: 40, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { nickname: 40, name: 40, size: 30, avoid: 300, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "giftcards", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -163,6 +163,29 @@ async function auth(request, env) {
     .bind(now(), token, new Date(Date.now() - 86_400_000).toISOString())
     .run();
   return { id: me.id, name: me.name, hasPin: !!me.pin_hash, onboarded: !!me.onboarded_at, token };
+}
+
+// Profile details shown to family on your list (migration 0008). Reads with SELECT * so a missing column
+// just means an empty profile.
+const SIZE_KEYS = ["shirt", "pants", "shoe", "ring"];
+function profileOut(row) {
+  let sizes = {};
+  try { sizes = JSON.parse(row?.sizes || "{}") || {}; } catch {}
+  return {
+    birthday: row?.birthday || null,
+    sizes: Object.fromEntries(SIZE_KEYS.map((k) => [k, typeof sizes[k] === "string" ? sizes[k] : ""])),
+    avoid: row?.avoid || "",
+  };
+}
+async function profileOf(env, memberId) {
+  return profileOut(await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first());
+}
+function birthdayValue(v) {
+  if (v === null || v === "") return null;
+  const m = typeof v === "string" && v.match(/^(\d{2})-(\d{2})$/);
+  const mo = m && Number(m[1]), d = m && Number(m[2]);
+  if (!m || mo < 1 || mo > 12 || d < 1 || d > new Date(2024, mo, 0).getDate()) fail(400, "That birthday doesn't look right.");
+  return v;
 }
 
 async function sharesGroup(env, a, b) {
@@ -665,7 +688,7 @@ const handlers = {
     const nicks = await nicknamesFor(env, me.id);
     const person = (p) => ({ id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null });
     return {
-      me: { id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || null },
+      me: { id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || null, profile: await profileOf(env, me.id) },
       season: season(),
       groups: groups.map((g) => ({
         id: g.id,
@@ -687,6 +710,7 @@ const handlers = {
     const nicks = own ? new Map() : await nicknamesFor(env, me.id);
     member.fullName = member.name;
     member.name = nicks.get(member.id) || member.name;
+    member.profile = await profileOf(env, member.id);
 
     if (own) {
       const { results } = await env.DB.prepare(
@@ -1129,14 +1153,26 @@ const handlers = {
     return { ok: true };
   },
 
-  // Change your name, PIN and/or photo. pin: "1234" sets it, "" removes it, absent leaves it alone.
+  // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
+  // birthday: "MM-DD" or "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text. Absent = unchanged.
   async "POST profile"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
     if (b.name !== undefined) {
       const name = text(b.name, LIMITS.name, "Name", true);
       await env.DB.prepare("UPDATE members SET name = ? WHERE id = ?").bind(name, me.id).run();
+    }
+    if (b.birthday !== undefined) {
+      await env.DB.prepare("UPDATE members SET birthday = ? WHERE id = ?").bind(birthdayValue(b.birthday), me.id).run();
+    }
+    if (b.sizes !== undefined) {
+      const src = b.sizes && typeof b.sizes === "object" ? b.sizes : {};
+      const sizes = Object.fromEntries(SIZE_KEYS.map((k) => [k, text(src[k], LIMITS.size, "Size") || ""]).filter(([, v]) => v));
+      await env.DB.prepare("UPDATE members SET sizes = ? WHERE id = ?").bind(Object.keys(sizes).length ? JSON.stringify(sizes) : null, me.id).run();
+    }
+    if (b.avoid !== undefined) {
+      await env.DB.prepare("UPDATE members SET avoid = ? WHERE id = ?").bind(text(b.avoid, LIMITS.avoid, "Please no"), me.id).run();
     }
     if (b.pin !== undefined) {
       const pin = pinValue(b.pin);
