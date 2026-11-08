@@ -110,6 +110,8 @@
   .code { font-size: 26px; font-weight: 800; letter-spacing: .14em; }
   .person-head { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
   .person-head h2 { margin: 0; }
+  .person-head .who-name { flex: 1; min-width: 0; }
+  .person-head small { display: block; color: var(--muted); font-size: 14px; margin-top: 2px; }
 
   .back { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--brand); font-weight: 700; font-size: 16px;
     padding: 8px 0; margin: -8px 0 10px; min-height: 44px; }
@@ -671,7 +673,7 @@ function renderFamily() {
     <div class="stack">
       ${people.length ? people.map((m) => `<button class="member" type="button" data-id="${esc(m.id)}">
           ${avatar(m.name, m.id)}
-          <span class="who"><strong>${esc(m.name)}</strong><small>${m.itemCount} ${m.itemCount === 1 ? "wish" : "wishes"}</small></span>${CHEV}
+          <span class="who"><strong>${esc(m.name)}</strong><small>${m.itemCount} ${m.itemCount === 1 ? "wish" : "wishes"}${m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : ""}</small></span>${CHEV}
         </button>`).join("") : emptyBox("Just you so far", "Invite your family with the code below.")}
     </div>
     <div class="label">Invite your family</div>
@@ -706,7 +708,9 @@ async function renderPerson(id) {
   const v = $("#view");
   v.innerHTML = `
     <button class="back" type="button" id="backBtn">&larr; Family</button>
-    <div class="person-head">${avatar(name, id, true)}<h2>${esc(name)}'s list</h2></div>
+    <div class="person-head">${avatar(name, id, true)}
+      <div class="who-name"><h2>${esc(name)}'s list</h2>${list.member.fullName !== name ? `<small>${esc(list.member.fullName)}</small>` : ""}</div>
+      <button class="btn quiet small" type="button" id="renameBtn">Rename</button></div>
     <p class="lead">${esc(name)} can't see what's been bought or any ideas below.</p>
     <div class="stack">
       ${list.items.length ? "" : emptyBox("Nothing yet", `${esc(name)} hasn't added any wishes.`)}
@@ -723,6 +727,7 @@ async function renderPerson(id) {
       ${mine.map(ideaRow).join("")}
     </div>`;
   $("#backBtn").onclick = () => setTab("family");
+  $("#renameBtn").onclick = () => editNickname(list.member);
   $("#addIdea").onclick = () => editIdea(null, id);
   wireIdeaRows(v, mine);
   const all = { item: list.items, idea: sugg };
@@ -730,6 +735,29 @@ async function renderPerson(id) {
     const [kind, itemId] = b.dataset.mark.split(":");
     markPurchased(kind, all[kind].find((x) => x.id === itemId));
   }));
+}
+
+// Your own name for someone ("Grandma" instead of "Jane Doe"). Only you see it.
+function editNickname(member) {
+  const hasNick = member.name !== member.fullName;
+  openSheet(`
+    <h3>What do you call ${esc(member.fullName)}?</h3>
+    <p>${LOCK} Only you see this. Everyone else still sees ${esc(member.fullName)}.</p>
+    <form id="nickForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Nickname</span>
+        <input class="input" name="nickname" maxlength="40" value="${hasNick ? esc(member.name) : ""}" placeholder="Grandma" required autofocus></label>
+      <div class="actions">
+        ${hasNick ? '<button class="btn danger" type="button" id="clearNick">Use real name</button>' : ""}
+        <button class="btn primary" type="submit">Save</button>
+      </div>
+    </form>`, (el) => {
+      const done = (msg) => { closeSheet(); toast(msg); state.me = null; render(); };
+      wireForm($("#nickForm", el), async ({ nickname }) => { await api("nickname", { subjectId: member.id, nickname }); done("Nickname saved"); });
+      $("#clearNick", el)?.addEventListener("click", async () => {
+        try { await api("nickname", { subjectId: member.id, nickname: "" }); done("Back to their real name"); } catch (e) { toast(e.message); }
+      });
+    });
 }
 
 function personRow(i, kind) {

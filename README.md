@@ -43,6 +43,7 @@ public/xlsx.js        Builds the Tracker's Excel export in the browser
 - **Ideas and suggestions:** an idea about someone is private to its author. "Share as a suggestion" shows it to everyone in the family except the person it's for, who never gets it from the API.
 - **Autofill:** pasting a link calls `/api/preview`, which reads the product name and price from JSON-LD, Open Graph tags, or Amazon's markup. Stores that block bots fall back to a name guessed from the URL.
 - **Photo search:** `/api/identify` sends a shrunk photo to Gemini (`GEMINI_MODEL` in `wrangler.jsonc`) for up to 4 matches. Photos are not stored.
+- **Nicknames:** on someone's list, Rename lets you call them what you call them ("Grandma" instead of "Jane Doe"). Only you see it: the API swaps names for the viewer's nicknames everywhere (family, lists, "Bought by", tracker, Excel), and the real name still shows in small text. Table `nicknames` (`migrations/0003_nicknames.sql`).
 - **Tracker:** your private budget per person, what you bought, and your open ideas, per season. "Export to Excel" builds the .xlsx in the browser.
 
 ## Schema changes
