@@ -1,6 +1,6 @@
 // Network first so updates show up right away; cached copy only if offline.
 // API calls are never cached here (the page keeps its own last-loaded copy for offline viewing).
-const CACHE = "wishlist-v26";
+const CACHE = "wishlist-v27";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/xlsx.js", "/giftcards.js", "/qr.js", "/fonts/fonts.css", "/fonts/figtree-latin-wght-normal.woff2", "/fonts/bricolage-grotesque-latin-standard-normal.woff2", "/theme.js"];
 
 self.addEventListener("install", (e) => {
@@ -24,4 +24,26 @@ self.addEventListener("fetch", (e) => {
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("/")))
   );
+});
+
+// Notifications (sent by src/push.js): { title, body, url, tag }. Tapping one opens that screen in the app.
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || "Hints", {
+    body: d.body || "",
+    tag: d.tag || undefined,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: { url: d.url || "/" },
+  }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || "/", self.location.origin).href;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    const win = wins.find((w) => new URL(w.url).origin === self.location.origin);
+    if (win) return win.navigate(url).then((w) => (w || win).focus()).catch(() => win.focus());
+    return self.clients.openWindow(url);
+  }));
 });

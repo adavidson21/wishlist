@@ -2,7 +2,7 @@
 // retired wishlist.alexisdavidson.org can redirect everything here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
 // with a link preview for that circle, everything else is a static file.
 // Every response gets the security headers below. API calls and invite pages also pass a per-IP burst cap (src/limits.js).
-import { routes, inviteInfo } from "./wishlist.js";
+import { routes, inviteInfo, runSchedule } from "./wishlist.js";
 import { json } from "./gemini.js";
 import { LIMITS, burstOk, hit, ipOf } from "./limits.js";
 
@@ -33,25 +33,29 @@ const tooMany = () => {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.hostname === OLD_HOST) {
       url.protocol = "https:";
       url.hostname = HOST;
       return Response.redirect(url.toString(), 301);
     }
-    return secure(await route(request, env, url));
+    return secure(await route(request, env, url, ctx));
+  },
+  // Hourly Cron Trigger (wrangler.jsonc): notifications (new-wish digest, and reminders at 9am New York).
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runSchedule(env));
   },
 };
 
-async function route(request, env, url) {
+async function route(request, env, url, ctx) {
   const isApi = url.pathname.startsWith("/api/");
   const join = url.pathname.match(/^\/join\/([A-Za-z0-9]{3,12})\/?$/);
   if ((isApi || join) && !(await burstOk(env, request))) {
     return isApi ? tooMany() : new Response("Too many requests. Wait a minute and try again.", { status: 429, headers: { "retry-after": "60" } });
   }
   const handler = routes[url.pathname];
-  if (handler) return handler(request, env);
+  if (handler) return handler(request, env, ctx);
   if (isApi) return json({ error: "Not found." }, 404);
   if (join && (request.method === "GET" || request.method === "HEAD")) return invitePage(request, env, url, join[1]);
   return env.ASSETS.fetch(request);

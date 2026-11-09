@@ -24,6 +24,7 @@
 //     that family: you see it only if you share some other family with the owner where it isn't hidden.
 import { json, callGemini } from "./gemini.js";
 import { LIMITS as ABUSE, hit, ipOf } from "./limits.js";
+import { sendPush, vapidKeys, pushEndpointOk } from "./push.js";
 import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost, cleanBrandDomain } from "./stores.js";
 // Sets globalThis.GIFT_CARDS. Shared with the app, so both sides use the same brand list.
 import "../public/giftcards.js";
@@ -1450,6 +1451,151 @@ async function refreshRow(env, table, row) {
 
 // ---------- handlers ----------
 
+// ---------- notifications ----------
+// Web Push (src/push.js), turned on per device in Settings. Three kinds, each with its own switch
+// (members.notify, NULL = all on): new wishes (hourly digest), birthday and Christmas reminders (9am New York),
+// and group gifts (sent when one starts). Everything follows the privacy rules: only people you share a circle
+// with, only wishes you can see, never anything about your own gifts.
+const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts"];
+function notifyPrefs(v) {
+  let o = {};
+  try { o = JSON.parse(v || "{}") || {}; } catch {}
+  return Object.fromEntries(NOTIFY_KINDS.map((k) => [k, o[k] !== false]));
+}
+// Everyone with at least one device that has notifications on and this kind switched on.
+async function pushRecipients(env, kind) {
+  const { results } = await env.DB.prepare(
+    "SELECT DISTINCT m.id, m.name, m.notify FROM push_subs s JOIN members m ON m.id = s.member_id",
+  ).all();
+  return results.filter((m) => notifyPrefs(m.notify)[kind]);
+}
+// Sends to every device a person turned on. Gone subscriptions (404/410) are deleted. Returns how many got it.
+async function pushTo(env, memberId, payload) {
+  const { results } = await env.DB.prepare("SELECT endpoint, p256dh, auth FROM push_subs WHERE member_id = ?").bind(memberId).all();
+  let sent = 0;
+  for (const sub of results) {
+    const status = await sendPush(env, sub, payload).catch((err) => (console.error("push", err), 0));
+    if (status === 404 || status === 410) await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(sub.endpoint).run();
+    else if (status >= 200 && status < 300) sent++;
+  }
+  return sent;
+}
+// A reminder goes out once per key, even if a run is retried.
+async function onceOnly(env, key) {
+  const res = await env.DB.prepare("INSERT OR IGNORE INTO push_sent (key, sent_at) VALUES (?, ?)").bind(key, now()).run();
+  return !!res.meta.changes;
+}
+const daysBetween = (a, b) => Math.round((Date.UTC(Math.floor(b / 10000), Math.floor(b / 100) % 100 - 1, b % 100) - Date.UTC(Math.floor(a / 10000), Math.floor(a / 100) % 100 - 1, a % 100)) / 86400000);
+// Has `buyerId` got anything for `subjectId` for this occasion yet (a wish, an idea, or a gift card)?
+async function hasGiftFor(env, buyerId, subjectId, code) {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id = ?1 AND i.owner_id = ?2 AND c.season = ?3
+     UNION ALL SELECT 1 FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id WHERE c.buyer_id = ?1 AND p.subject_id = ?2 AND c.season = ?3
+     UNION ALL SELECT 1 FROM gift_card_gifts WHERE buyer_id = ?1 AND member_id = ?2 AND season = ?3 LIMIT 1`,
+  ).bind(buyerId, subjectId, code).first();
+  return !!row;
+}
+// People someone shares a circle with (not themself), with birthdays.
+async function circlePeople(env, memberId) {
+  const { results } = await env.DB.prepare(
+    `SELECT DISTINCT m.id, m.name, m.birthday, m.birth_year FROM group_members gm JOIN members m ON m.id = gm.member_id
+      WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ?`,
+  ).bind(memberId, memberId).all();
+  return results;
+}
+
+// Hourly: "Sam added 2 wishes" for wishes published since the last run, to everyone who can see them.
+// Skips people you look after (you added those wishes yourself).
+async function wishDigest(env) {
+  const t = now();
+  const cur = await env.DB.prepare("SELECT value FROM app_keys WHERE name = 'wishes_cursor'").first();
+  await env.DB.prepare("INSERT INTO app_keys (name, value) VALUES ('wishes_cursor', ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value").bind(t).run();
+  if (!cur) return 0; // First run: start counting from now.
+  let sent = 0;
+  for (const r of await pushRecipients(env, "wishes")) {
+    const { results } = await env.DB.prepare(
+      `SELECT i.owner_id, m.name, COUNT(*) AS n FROM items i JOIN members m ON m.id = i.owner_id
+        WHERE i.created_at > ? AND i.created_at <= ? AND i.removed_at IS NULL AND i.owner_id != ? AND ${ITEM_VISIBLE.replace("?", "?4")}
+        GROUP BY i.owner_id, m.name ORDER BY MAX(i.created_at) DESC`,
+    ).bind(cur.value, t, r.id, r.id).all();
+    const rows = [];
+    for (const x of results) if (!(await canManage(env, r.id, x.owner_id))) rows.push(x);
+    if (!rows.length) continue;
+    const nicks = await nicknamesFor(env, r.id);
+    const nm = (x) => nicks.get(x.owner_id) || x.name;
+    const wishes = (n) => (n === 1 ? "a wish" : `${n} wishes`);
+    const payload = rows.length === 1
+      ? { title: `${nm(rows[0])} added ${wishes(rows[0].n)}`, body: `See what's new on ${nm(rows[0])}'s list.`, url: `/#person/${rows[0].owner_id}`, tag: `wishes:${rows[0].owner_id}` }
+      : { title: "New wishes", body: `${peopleList(rows.map((x) => `${nm(x)} added ${rows.length > 3 ? x.n : wishes(x.n)}`))}.`, url: "/#family", tag: "wishes" };
+    sent += await pushTo(env, r.id, payload);
+  }
+  return sent;
+}
+
+// Daily at 9am New York: birthdays 14 and 3 days out, and Christmas on Dec 1 and Dec 18 when you still need gifts.
+async function reminders(env) {
+  const d = today();
+  const xmas = occasionsFor({}, d).find((o) => o.christmas).code;
+  const xmasIn = daysBetween(d, xmas);
+  let sent = 0;
+  for (const r of await pushRecipients(env, "birthdays")) {
+    const people = await circlePeople(env, r.id);
+    const nicks = await nicknamesFor(env, r.id);
+    const nm = (p) => nicks.get(p.id) || p.name;
+    for (const p of people) {
+      const bday = occasionsFor(p, d).find((o) => o.birthday);
+      const n = bday ? daysBetween(d, bday.code) : -1;
+      if (n !== 14 && n !== 3) continue;
+      if (!(await onceOnly(env, `bday:${r.id}:${p.id}:${bday.code}:${n}`))) continue;
+      const has = await hasGiftFor(env, r.id, p.id, bday.code);
+      sent += await pushTo(env, r.id, {
+        title: `${nm(p)}'s birthday is ${n === 14 ? "in 2 weeks" : "in 3 days"}${bday.turning ? ` (turning ${bday.turning})` : ""}`,
+        body: has ? "You've already got something lined up." : "You haven't picked a gift yet. Peek at their list?",
+        url: `/#person/${p.id}`, tag: `bday:${p.id}`,
+      });
+    }
+    if (xmasIn === 24 || xmasIn === 7) {
+      const need = [];
+      for (const p of people) if (!(await hasGiftFor(env, r.id, p.id, xmas))) need.push(nm(p));
+      if (need.length && (await onceOnly(env, `xmas:${r.id}:${xmas}:${xmasIn}`))) {
+        sent += await pushTo(env, r.id, {
+          title: `Christmas is ${xmasIn === 7 ? "a week away" : `in ${xmasIn} days`}`,
+          body: `Still need a gift for ${peopleList(need.sort())}.`, url: "/#budget", tag: "xmas",
+        });
+      }
+    }
+  }
+  return sent;
+}
+
+// Someone started a group gift: tell everyone who can see that wish, except the person it's for and the starter.
+// Once per wish, and a few a day per person, so starting and leaving over and over can't spam the circle.
+async function groupGiftStarted(env, starter, item) {
+  if (!(await underLimit(env, `groupalert:${starter.id}`, ABUSE.groupAlertsPerMemberDay))) return;
+  if (!(await onceOnly(env, `group:${item.id}`))) return;
+  for (const r of await pushRecipients(env, "groupGifts")) {
+    if (r.id === starter.id || r.id === item.owner_id) continue;
+    const seen = await env.DB.prepare(`SELECT 1 FROM items i WHERE i.id = ? AND i.removed_at IS NULL AND ${ITEM_VISIBLE}`).bind(item.id, r.id).first();
+    if (!seen) continue;
+    const nicks = await nicknamesFor(env, r.id);
+    const owner = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(item.owner_id).first();
+    await pushTo(env, r.id, {
+      title: `${nicks.get(starter.id) || starter.name} started a group gift for ${nicks.get(item.owner_id) || owner?.name || "someone"}`,
+      body: `${item.title}. Want to chip in?`, url: `/#person/${item.owner_id}`, tag: `group:${item.id}`,
+    });
+  }
+}
+
+// The Cron Trigger (src/worker.js, hourly): the wish digest every time, reminders in the 9am New York hour.
+export async function runSchedule(env) {
+  if (!env.DB) return;
+  const hour = +new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(new Date());
+  const wishes = await wishDigest(env).catch((err) => (console.error("digest", err), 0));
+  // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
+  const remind = hour === 9 || env.PUSH_DEV_REMIND === "1" ? await reminders(env).catch((err) => (console.error("reminders", err), 0)) : 0;
+  console.log(`schedule hour=${hour} wishes=${wishes} reminders=${remind}`);
+}
+
 // Signing in as someone who is looked after isn't allowed until a manager hands their list over.
 async function notManaged(env, member) {
   if (!member.managed_by) return;
@@ -1630,6 +1776,7 @@ const handlers = {
         // Someone cleared your forgotten PIN (see "POST pin/clear"). Shown once as a notice.
         pinCleared,
         profile: await profileOf(env, me.id), household: myHousehold,
+        notify: notifyPrefs((await env.DB.prepare("SELECT notify FROM members WHERE id = ?").bind(me.id).first())?.notify),
       },
       today: t,
       households,
@@ -1901,7 +2048,7 @@ const handlers = {
   // chipIn: true starts the group gift (needs one left) or joins it (same occasion as the group).
   // occasion: which of the owner's occasions it's for (YYYYMMDD; absent = keep it, or the soonest).
   // Returns started: true when this started a new group gift.
-  async "POST claim"(req, env) {
+  async "POST claim"(req, env, url, ctx) {
     const me = await auth(req, env);
     const { itemId, on, price, occasion, qty, chipIn } = await body(req);
     const paid = cents(price);
@@ -1943,7 +2090,9 @@ const handlers = {
           .bind(itemId, s, me.id, paid, now(), n, wantChip ? 1 : 0)
           .run();
       }
-      return { ok: true, started: wantChip && !groupOthers.length && !existing?.chip_in };
+      const started = wantChip && !groupOthers.length && !existing?.chip_in;
+      if (started) ctx?.waitUntil(groupGiftStarted(env, me, item).catch((err) => console.error("group push", err)));
+      return { ok: true, started };
     } else if (existing) {
       await env.DB.prepare("DELETE FROM claims WHERE item_id = ? AND season = ? AND buyer_id = ?").bind(itemId, existing.season, me.id).run();
       // An item the owner already removed disappears once nobody has bought it.
@@ -2519,6 +2668,59 @@ const handlers = {
     return { ok: true };
   },
 
+  // ---------- notifications ----------
+
+  // The app's public key, for pushManager.subscribe({ applicationServerKey }).
+  async "GET push/key"(req, env) {
+    await auth(req, env);
+    return { key: (await vapidKeys(env)).pub };
+  },
+
+  // Turn notifications on for this device. subscription: PushSubscription.toJSON().
+  async "POST push/subscribe"(req, env) {
+    const me = await auth(req, env);
+    const { subscription: sub } = await body(req);
+    const endpoint = String(sub?.endpoint || "");
+    const p256dh = String(sub?.keys?.p256dh || ""), key = String(sub?.keys?.auth || "");
+    if (!pushEndpointOk(endpoint, env) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(key)) fail(400, "That browser's notifications didn't work.");
+    await env.DB.prepare(
+      `INSERT INTO push_subs (endpoint, member_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (endpoint) DO UPDATE SET member_id = excluded.member_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+    ).bind(endpoint, me.id, p256dh, key, now()).run();
+    // Keep the newest few devices per person.
+    await env.DB.prepare(
+      "DELETE FROM push_subs WHERE member_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM push_subs WHERE member_id = ?1 ORDER BY created_at DESC LIMIT ?2)",
+    ).bind(me.id, ABUSE.pushSubsPerMember).run();
+    return { ok: true };
+  },
+
+  async "POST push/unsubscribe"(req, env) {
+    const me = await auth(req, env);
+    const { endpoint } = await body(req);
+    await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ? AND member_id = ?").bind(String(endpoint || ""), me.id).run();
+    return { ok: true };
+  },
+
+  // Which kinds you want: { wishes, birthdays, groupGifts } (absent = unchanged).
+  async "POST push/prefs"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const row = await env.DB.prepare("SELECT notify FROM members WHERE id = ?").bind(me.id).first();
+    const prefs = notifyPrefs(row?.notify);
+    for (const k of NOTIFY_KINDS) if (b[k] !== undefined) prefs[k] = !!b[k];
+    await env.DB.prepare("UPDATE members SET notify = ? WHERE id = ?").bind(JSON.stringify(prefs), me.id).run();
+    return { notify: prefs };
+  },
+
+  // A test notification to every device you turned on.
+  async "POST push/test"(req, env) {
+    const me = await auth(req, env);
+    await rateLimit(env, `pushtest:${me.id}`, ABUSE.pushTestPerMember);
+    const sent = await pushTo(env, me.id, { title: "Notifications are on 🎁", body: "You'll hear about new wishes, birthdays and group gifts here.", url: "/#mine", tag: "test" });
+    if (!sent) fail(502, "That didn't go through. Turn notifications off and on again on this device.");
+    return { sent };
+  },
+
   // ---------- people you look after ----------
 
   // Add someone who doesn't use the app (a kid, a grandparent). groupIds: which of your circles they're in
@@ -2876,10 +3078,10 @@ const handlers = {
   },
 };
 
-async function handle(request, env, key) {
+async function handle(request, env, key, ctx) {
   if (!env.DB) return json({ error: "Hints database isn't set up yet (missing DB binding)." }, 500);
   try {
-    const out = await handlers[key](request, env, new URL(request.url));
+    const out = await handlers[key](request, env, new URL(request.url), ctx);
     return out instanceof Response ? out : json(out);
   } catch (err) {
     if (err instanceof HttpError) return json({ error: err.message }, err.status);
@@ -2897,9 +3099,9 @@ for (const key of Object.keys(handlers)) {
 export const routes = Object.fromEntries(
   Object.entries(paths).map(([path, byMethod]) => [
     path,
-    (request, env) => {
+    (request, env, ctx) => {
       const key = byMethod[request.method];
-      return key ? handle(request, env, key) : json({ error: "Method not allowed." }, 405);
+      return key ? handle(request, env, key, ctx) : json({ error: "Method not allowed." }, 405);
     },
   ]),
 );

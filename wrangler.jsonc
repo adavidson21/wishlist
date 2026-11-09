@@ -10,6 +10,8 @@
     { "pattern": "hints.alexisdavidson.org", "custom_domain": true },
     { "pattern": "wishlist.alexisdavidson.org", "custom_domain": true }
   ],
+  // Notifications (src/wishlist.js runSchedule): new-wish digest every hour, reminders in the 9am New York hour.
+  "triggers": { "crons": ["0 * * * *"] },
   // GEMINI_DAILY_CAP: most Gemini calls the whole app makes per day (UTC), so abuse can't run up the bill.
   "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite", "GEMINI_DAILY_CAP": "1500" },
   // Per-IP burst cap on every API call and invite page (src/limits.js). Approximate, per Cloudflare location.
