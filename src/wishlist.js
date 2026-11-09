@@ -17,6 +17,9 @@
 //     already swapped for the viewer's nickname; fullName is sent alongside where the UI needs it.
 //   - Gift card gifts ("I'm giving one") are never returned to the person they're for. Any number of people
 //     can give the same brand, so gift cards never show as taken.
+//   - Chat about a person (chat_messages, one thread per circle) goes to everyone in that circle except the
+//     person it's about. They never get a message, a count or an unread badge about their own thread.
+//     Tags only point at wishes visible in that circle or at shared suggestions, so a tag can't leak a private idea.
 //   - A person can be in several families. An item hidden from a family (item_hidden) is never shown through
 //     that family: you see it only if you share some other family with the owner where it isn't hidden.
 import { json, callGemini } from "./gemini.js";
@@ -34,7 +37,7 @@ function photoValue(v) {
   if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
   return photo;
 }
-const LIMITS = { tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -394,6 +397,113 @@ const ITEM_VISIBLE = `i.draft = 0 AND EXISTS (
   SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
    WHERE x.member_id = ? AND y.member_id = i.owner_id
      AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = x.group_id))`;
+
+// ---------- chat about a person ----------
+// One thread per circle and person. Messages older than this are swept and never returned.
+const CHAT_KEEP_DAYS = 183;
+const chatCutoff = () => new Date(Date.now() - CHAT_KEEP_DAYS * 86_400_000).toISOString();
+const CHAT_EDIT_MS = 15 * 60_000;
+
+// The viewer may read and write the chat about subject in group: both are in that circle and the viewer isn't the subject.
+async function canSeeChat(env, viewerId, groupId, subjectId) {
+  if (!groupId || !subjectId || viewerId === subjectId) return false;
+  const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND member_id IN (?, ?)")
+    .bind(String(groupId), viewerId, String(subjectId)).first();
+  return n === 2;
+}
+
+// Message rows with what their tag points at. The tag's title is only filled in while it's still
+// visible in this circle (a published wish not hidden from it, or a suggestion that's still shared).
+const CHAT_SELECT = `SELECT c.*, a.name AS author_name,
+    CASE WHEN i.id IS NOT NULL AND i.removed_at IS NULL AND i.draft = 0 AND i.owner_id = c.subject_id
+          AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = c.group_id) THEN i.title END AS item_title,
+    CASE WHEN p.id IS NOT NULL AND p.shared = 1 AND p.subject_id = c.subject_id THEN p.title END AS idea_title
+  FROM chat_messages c
+  JOIN members a ON a.id = c.author_id
+  LEFT JOIN items i ON i.id = c.item_id
+  LEFT JOIN private_ideas p ON p.id = c.idea_id`;
+
+function chatOut(r, meId, nicks) {
+  const deleted = !!r.deleted_at;
+  const tag = r.item_id ? { kind: "item", id: r.item_id, title: r.item_title || null }
+    : r.idea_id ? { kind: "idea", id: r.idea_id, title: r.idea_title || null } : null;
+  return {
+    id: r.id,
+    authorId: r.author_id,
+    authorName: r.author_id === meId ? "You" : nicks.get(r.author_id) || r.author_name,
+    mine: r.author_id === meId,
+    body: deleted ? null : r.body,
+    tag: deleted ? null : tag,
+    at: r.created_at,
+    edited: !!r.edited_at,
+    deleted,
+    canEdit: !deleted && r.author_id === meId && Date.now() - Date.parse(r.created_at) < CHAT_EDIT_MS,
+  };
+}
+
+// Checks a tag for a new message: a wish of theirs visible in this circle, or a shared suggestion about them.
+async function chatTag(env, groupId, subjectId, b) {
+  if (b.itemId) {
+    const ok = await env.DB.prepare(
+      `SELECT 1 FROM items i WHERE i.id = ? AND i.owner_id = ? AND i.removed_at IS NULL AND i.draft = 0
+         AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = ?)`,
+    ).bind(String(b.itemId), subjectId, groupId).first();
+    if (!ok) fail(400, "That wish isn't on their list anymore.");
+    return { item: String(b.itemId), idea: null };
+  }
+  if (b.ideaId) {
+    const ok = await env.DB.prepare(
+      `SELECT 1 FROM private_ideas p WHERE p.id = ? AND p.subject_id = ? AND p.shared = 1
+         AND EXISTS (SELECT 1 FROM group_members WHERE group_id = ? AND member_id = p.author_id)`,
+    ).bind(String(b.ideaId), subjectId, groupId).first();
+    if (!ok) fail(400, "Only shared suggestions can be tagged.");
+    return { item: null, idea: String(b.ideaId) };
+  }
+  return { item: null, idea: null };
+}
+
+// Unread counts for every thread the viewer can see: Map "groupId:subjectId" -> count. Never the viewer's own thread.
+async function chatUnread(env, meId) {
+  const { results } = await env.DB.prepare(
+    `SELECT c.group_id, c.subject_id, COUNT(*) AS n
+       FROM chat_messages c
+       JOIN group_members me ON me.group_id = c.group_id AND me.member_id = ?1
+       JOIN group_members s ON s.group_id = c.group_id AND s.member_id = c.subject_id
+       LEFT JOIN chat_reads r ON r.member_id = ?1 AND r.group_id = c.group_id AND r.subject_id = c.subject_id
+      WHERE c.subject_id != ?1 AND c.author_id != ?1 AND c.deleted_at IS NULL AND c.created_at > ?2
+        AND c.created_at > COALESCE(r.last_read_at, '')
+      GROUP BY c.group_id, c.subject_id`,
+  ).bind(meId, chatCutoff()).all();
+  return new Map(results.map((r) => [`${r.group_id}:${r.subject_id}`, r.n]));
+}
+
+async function markChatRead(env, meId, groupId, subjectId) {
+  await env.DB.prepare(
+    `INSERT INTO chat_reads (member_id, group_id, subject_id, last_read_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (member_id, group_id, subject_id) DO UPDATE SET last_read_at = excluded.last_read_at`,
+  ).bind(meId, groupId, subjectId, now()).run();
+}
+
+async function chatMessageFor(env, me, id) {
+  const r = await env.DB.prepare(`${CHAT_SELECT} WHERE c.id = ?`).bind(String(id || "")).first();
+  if (!r || !(await canSeeChat(env, me.id, r.group_id, r.subject_id))) fail(404, "Message not found.");
+  return r;
+}
+
+// Messages tagged to each of subject's wishes and suggestions, in circles the viewer shares with them.
+async function chatCounts(env, meId, subjectId) {
+  if (meId === subjectId) return {};
+  const { results } = await env.DB.prepare(
+    `SELECT c.item_id, c.idea_id, COUNT(*) AS n FROM chat_messages c
+       JOIN group_members x ON x.group_id = c.group_id AND x.member_id = ?1
+       JOIN group_members y ON y.group_id = c.group_id AND y.member_id = ?2
+      WHERE c.subject_id = ?2 AND c.deleted_at IS NULL AND c.created_at > ?3 AND (c.item_id IS NOT NULL OR c.idea_id IS NOT NULL)
+      GROUP BY c.item_id, c.idea_id`,
+  ).bind(meId, subjectId, chatCutoff()).all();
+  const out = {};
+  for (const r of results) out[r.item_id ? `item:${r.item_id}` : `idea:${r.idea_id}`] = r.n;
+  return out;
+}
 
 async function myGroupIds(env, memberId) {
   const { results } = await env.DB.prepare("SELECT group_id FROM group_members WHERE member_id = ?").bind(memberId).all();
@@ -1462,6 +1572,7 @@ const handlers = {
     const nicks = await nicknamesFor(env, me.id);
     const t = today();
     const myHh = await householdOf(env, me.id);
+    const unread = await chatUnread(env, me.id);
     const person = (p) => ({
       id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null,
       occasions: occasionsFor(p, t), householdId: p.household_id || null, hasPin: !!p.has_pin,
@@ -1470,6 +1581,8 @@ const handlers = {
       // Someone who doesn't use the app: who added them, and whether you can run their list (canManage, same rule).
       managedBy: p.managed_by || null,
       canManage: !!p.managed_by && (p.managed_by === me.id || (!!p.household_id && p.household_id === myHh)),
+      // Unread messages in the chat about them in this circle. Always 0 for yourself (chatUnread skips your thread).
+      chatUnread: p.id === me.id ? 0 : unread.get(`${p.group_id}:${p.id}`) || 0,
     });
     // Households of anyone you can see. Labels use only people you can see (and your nicknames for them),
     // except your own household, which lists everyone in it.
@@ -1529,6 +1642,71 @@ const handlers = {
         members: people.filter((p) => p.group_id === g.id).map(person).sort(byName),
       })),
     };
+  },
+
+  // ---------- chat about a person ----------
+  // The thread about `member` in circle `group`. after: only messages newer than this (polling). Marks it read.
+  async "GET chat"(req, env, url) {
+    const me = await auth(req, env);
+    const groupId = url.searchParams.get("group");
+    const subjectId = url.searchParams.get("member");
+    if (!(await canSeeChat(env, me.id, groupId, subjectId))) fail(404, "Chat not found.");
+    const after = url.searchParams.get("after");
+    // Polling also picks up edits and deletes since `after`.
+    const { results } = await env.DB.prepare(
+      after
+        ? `${CHAT_SELECT} WHERE c.group_id = ?1 AND c.subject_id = ?2 AND c.created_at > ?3
+             AND (c.created_at > ?4 OR c.edited_at > ?4 OR c.deleted_at > ?4) ORDER BY c.created_at LIMIT 200`
+        : `${CHAT_SELECT} WHERE c.group_id = ?1 AND c.subject_id = ?2 AND c.created_at > ?3 ORDER BY c.created_at DESC LIMIT 200`,
+    ).bind(...(after ? [groupId, subjectId, chatCutoff(), String(after)] : [groupId, subjectId, chatCutoff()])).all();
+    const rows = after ? results : results.reverse();
+    if (!after || rows.length) await markChatRead(env, me.id, groupId, subjectId);
+    const nicks = await nicknamesFor(env, me.id);
+    return { messages: rows.map((r) => chatOut(r, me.id, nicks)), admin: (await adminOf(env, groupId)) === me.id, now: now() };
+  },
+
+  // { group, member, body, itemId?, ideaId? }
+  async "POST chat/send"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const groupId = String(b.group || "");
+    const subjectId = String(b.member || "");
+    if (!(await canSeeChat(env, me.id, groupId, subjectId))) fail(404, "Chat not found.");
+    const msg = text(b.body, LIMITS.chat, "Message", true);
+    const tag = await chatTag(env, groupId, subjectId, b);
+    await rateLimit(env, `chat:m:${me.id}`, ABUSE.chatSendsPerMember);
+    const id = newId();
+    const t = now();
+    await env.DB.prepare(
+      "INSERT INTO chat_messages (id, group_id, subject_id, author_id, item_id, idea_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(id, groupId, subjectId, me.id, tag.item, tag.idea, msg, t).run();
+    await markChatRead(env, me.id, groupId, subjectId);
+    // Sweep messages past the keep window now and then.
+    if (Math.random() < 0.05) await env.DB.prepare("DELETE FROM chat_messages WHERE created_at < ?").bind(chatCutoff()).run().catch(() => {});
+    const r = await env.DB.prepare(`${CHAT_SELECT} WHERE c.id = ?`).bind(id).first();
+    return { message: chatOut(r, me.id, await nicknamesFor(env, me.id)) };
+  },
+
+  // Fix your own message within 15 minutes. { id, body }
+  async "POST chat/edit"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const r = await chatMessageFor(env, me, b.id);
+    if (r.author_id !== me.id || r.deleted_at) fail(404, "Message not found.");
+    if (Date.now() - Date.parse(r.created_at) >= CHAT_EDIT_MS) fail(400, "Messages can only be edited for 15 minutes.");
+    const msg = text(b.body, LIMITS.chat, "Message", true);
+    await env.DB.prepare("UPDATE chat_messages SET body = ?, edited_at = ? WHERE id = ?").bind(msg, now(), r.id).run();
+    return { message: chatOut({ ...r, body: msg, edited_at: now() }, me.id, await nicknamesFor(env, me.id)) };
+  },
+
+  // Your own message, or any message if you're the circle's admin. Shows as "Message removed". { id }
+  async "POST chat/delete"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const r = await chatMessageFor(env, me, b.id);
+    if (r.author_id !== me.id && (await adminOf(env, r.group_id)) !== me.id) fail(403, "You can only remove your own messages.");
+    await env.DB.prepare("UPDATE chat_messages SET deleted_at = ?, body = '' WHERE id = ? AND deleted_at IS NULL").bind(now(), r.id).run();
+    return { ok: true };
   },
 
   // A member's wish list. Purchased marks are included only when you are not the owner.
@@ -1609,6 +1787,9 @@ const handlers = {
       })),
       suggestions: visible.filter((i) => !i.mine),
       myIdeas: visible.filter((i) => i.mine),
+      // Messages tagged to each wish or suggestion, across the circles you share with them ("item:<id>" -> count).
+      // Only here, on someone else's list: the owner's own list never gets this.
+      chatCounts: await chatCounts(env, me.id, memberId),
     };
   },
 

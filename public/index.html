@@ -1320,6 +1320,52 @@
   @keyframes peek { 0%, 70%, 100% { transform: none; } 80% { transform: translateY(-4px) rotate(-2deg); } 90% { transform: translateY(0) rotate(2deg); } }
   @keyframes shackle { 0% { transform: translateY(-5px); } 100% { transform: none; } }
   @keyframes appIn { 0% { opacity: 0; transform: translateY(-90px) scale(1.6) rotate(-20deg); } 60% { opacity: 1; transform: translateY(4px) scale(.95) rotate(4deg); } 100% { opacity: 1; transform: none; } }
+  /* ---------- chat about a person (hidden from them) ---------- */
+  .chat-bar { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; margin-top: 12px; padding: 14px 16px; border-radius: var(--r);
+    border: 1.5px solid var(--line); background: var(--card); box-shadow: var(--shadow); color: var(--ink); }
+  .chat-bar .chat-ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--soft-ink); flex: none; }
+  .chat-bar .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .chat-bar small { color: var(--muted); font-size: 14px; display: inline-flex; align-items: center; gap: 5px; }
+  .chat-bar .new-badge { margin-left: 6px; }
+  .chat-badge { background: var(--gold); color: var(--gold-ink); }
+  .ask-btn { gap: 5px; }
+  .ask-btn span { font-size: 13px; font-weight: 800; }
+  .chat-sheet h3 { margin-bottom: 4px; }
+  .chat-lock { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px; padding: 5px 11px; border-radius: 999px; background: var(--gold-soft); color: var(--gold-ink); font-size: 14px; font-weight: 700; }
+  .chat-circles { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 8px; }
+  .chat-circles .chip { min-height: 38px; font-size: 14px; padding: 0 13px; }
+  .chat-list { display: flex; flex-direction: column; gap: 6px; max-height: 48dvh; min-height: 120px; overflow-y: auto; padding: 8px 2px 10px; overscroll-behavior: contain; }
+  .chat-empty { margin: auto; text-align: center; color: var(--muted); padding: 18px 10px; }
+  .chat-empty strong { display: block; color: var(--ink); font-family: var(--display); font-size: 18px; margin-bottom: 4px; }
+  .chat-day { align-self: center; font-size: 12px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; margin: 8px 0 2px; }
+  .msg { display: flex; align-items: flex-end; gap: 8px; max-width: 86%; animation: slide .25s ease both; }
+  .msg.mine { align-self: flex-end; flex-direction: row-reverse; }
+  .msg .avatar { width: 28px; height: 28px; font-size: 12px; }
+  .msg-b { border: 0; text-align: left; padding: 9px 13px; border-radius: 18px 18px 18px 6px; background: var(--card); box-shadow: var(--shadow); color: var(--ink); font-size: 16px; line-height: 1.35; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .msg.mine .msg-b { border-radius: 18px 18px 6px 18px; background: var(--brand); color: var(--brand-ink); }
+  .msg-b p { margin: 0; color: inherit; font-size: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .chat-bar + * { margin-top: 12px; }
+  .msg-who { font-size: 13px; font-weight: 800; color: var(--brand); }
+  .msg-meta { font-size: 12px; opacity: .7; }
+  .msg.gone .msg-b { background: none; box-shadow: none; border: 1.5px dashed var(--line); color: var(--muted); font-style: italic; }
+  .msg-tag { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; border: 0; border-radius: 999px; padding: 3px 10px; font-size: 13px; font-weight: 700;
+    background: var(--gold-soft); color: var(--gold-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .msg.mine .msg-tag { background: rgba(255, 255, 255, .2); color: inherit; }
+  .msg-acts { display: flex; gap: 4px; align-self: flex-end; margin: -2px 34px 4px; }
+  .msg-acts.mine { margin-right: 0; }
+  .msg-acts .btn { min-height: 34px; padding: 4px 10px; font-size: 14px; }
+  .chat-compose { border-top: 1.5px solid var(--line); padding-top: 10px; }
+  .chat-pending { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; color: var(--muted); }
+  .chat-pending .msg-tag { flex: 0 1 auto; }
+  .chat-pending button.x { border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; min-width: 32px; min-height: 32px; }
+  .chat-starters { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 8px; }
+  .chat-starters .chip { min-height: 36px; font-size: 14px; padding: 0 12px; font-weight: 600; }
+  .chat-form { display: flex; gap: 8px; align-items: flex-end; }
+  .chat-form textarea { flex: 1; min-height: 48px; max-height: 140px; resize: none; padding: 12px 14px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--card); line-height: 1.35; }
+  .chat-form .btn { flex: none; }
+  .chat-form .err { margin: 8px 0 0; }
+  .row.chat-flash { animation: chatFlash 1.6s ease both; }
+  @keyframes chatFlash { 0%, 60% { box-shadow: 0 0 0 4px var(--gold); } 100% { box-shadow: var(--shadow); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; } }
   :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after, :root[data-motion="off"] ::backdrop { animation: none !important; transition: none !important; }
   /* Gold accents: the hero's squiggle, carried into headings across the app. */
@@ -3549,7 +3595,7 @@ async function renderFamily() {
         const soon = bday && daysUntil(bday) <= 30 ? `<small class="occ-when">Birthday ${inDays(bday)}${bday.turning ? `, turning ${bday.turning}` : ""}</small>` : "";
         return `<button class="member slide" style="animation-delay:${i * 0.06}s" type="button" data-id="${esc(m.id)}">
           ${avatar(m.name, m.id, true)}
-          <span class="who"><strong>${esc(m.name)}${newBadge(m)}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${soon}${m.managedBy ? `<small class="looked-after">${m.managedBy === state.me.id ? "You look after this list" : m.canManage ? "Your household looks after this list" : `Looked after by ${esc(personName(m.managedBy))}`}</small>` : ""}${budgetMini(p)}</span>${CHEV}
+          <span class="who"><strong>${esc(m.name)}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${soon}${m.managedBy ? `<small class="looked-after">${m.managedBy === state.me.id ? "You look after this list" : m.canManage ? "Your household looks after this list" : `Looked after by ${esc(personName(m.managedBy))}`}</small>` : ""}${budgetMini(p)}</span>${CHEV}
         </button>`;
   };
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
@@ -3793,6 +3839,7 @@ async function renderPerson(id) {
   // Someone you look after: you add and edit their wishes and profile here.
   const manage = !!list.canManage;
   state.manageList = manage;
+  state.chatCounts = list.chatCounts || {};
 
   // Summary numbers.
   const open = all.filter((i) => !i.claim && !i.removed);
@@ -3859,6 +3906,7 @@ async function renderPerson(id) {
   const v = $("#view");
   v.innerHTML = `<div class="person-layout"><div class="person-side">
     ${manage ? manageCard(list, name) : ""}
+    ${chatBar(id, name)}
     ${hintsCard(list.member.profile)}
     ${knowCard(list.member.profile)}
     ${all.length ? `<div class="stats">
@@ -3888,6 +3936,12 @@ async function renderPerson(id) {
   $("#backBtn").onclick = () => setTab("family");
   $("#editBtn").onclick = () => editPerson(list.member, plan);
   $("#addIdea").onclick = () => addThing(id);
+  $("#chatBar")?.addEventListener("click", () => openChat(id));
+  v.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = () => {
+    const [kind, itemId] = b.dataset.ask.split(":");
+    const x = (kind === "item" ? all : sugg).find((r) => r.id === itemId);
+    if (x) openChat(id, { tag: { kind, id: itemId, title: x.title } });
+  }));
   $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
   if (manage) wireManageCard(v, list, name, id);
   wireGiftBox(v, () => addThing(id));
@@ -3910,6 +3964,201 @@ async function renderPerson(id) {
     const itemId = b.dataset.chip.split(":")[1];
     markPurchased("item", all.find((x) => x.id === itemId), name, id, { chip: true });
   }));
+}
+
+// ---------- chat about a person ----------
+// A thread per circle about one person, which that person never sees (the API never sends it to them).
+// Opened from the bar on their page, or "Ask about this" on a wish or suggestion (tagged to it).
+const CHAT_POLL_MS = 20_000;
+// Circles you share with them: one thread each.
+const chatCircles = (personId) => state.groups.filter((g) => g.members.some((m) => m.id === personId) && g.members.some((m) => m.id === state.me.id));
+const chatUnreadFor = (personId) => chatCircles(personId).reduce((n, g) => n + (g.members.find((m) => m.id === personId)?.chatUnread || 0), 0);
+
+function chatBar(personId, name) {
+  if (!chatCircles(personId).length) return "";
+  const n = chatUnreadFor(personId);
+  return `<button class="chat-bar" type="button" id="chatBar">
+    <span class="chat-ic">${MSG}</span>
+    <span class="who"><strong>Chat about ${esc(name)}${n ? `<span class="new-badge chat-badge">${n} new</span>` : ""}</strong>
+      <small>${LOCK} ${esc(name)} can't see this</small></span>${CHEV}
+  </button>`;
+}
+
+const chatTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function chatDay(iso) {
+  const d = new Date(iso), t = new Date();
+  const y = new Date(t); y.setDate(t.getDate() - 1);
+  if (d.toDateString() === t.toDateString()) return "Today";
+  if (d.toDateString() === y.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { month: "short", day: "numeric", ...(d.getFullYear() !== t.getFullYear() ? { year: "numeric" } : {}) });
+}
+const tagLabel = (tag) => (tag.title ? `re: ${tag.title}` : tag.kind === "item" ? "re: a removed wish" : "re: a removed idea");
+
+function openChat(personId, opts = {}) {
+  const circles = chatCircles(personId);
+  if (!circles.length) return;
+  const name = personName(personId);
+  // Start in the circle with something unread, else the first one.
+  let gid = opts.group || (circles.find((g) => g.members.find((m) => m.id === personId)?.chatUnread) || circles[0]).id;
+  let msgs = [], admin = false, after = null, tag = opts.tag || null, editing = null, open = null, timer = null, changed = false;
+  const starters = (t) => (t
+    ? ["What size?", `Does ${name} still want this?`, "Is anyone already getting this?", "I'll get this. Can someone get something to go with it?"]
+    : [`What size is ${name} these days?`, `Any ideas for ${name}?`, "Who's getting what?", "Want to go in on something together?"]);
+
+  openSheet(`<div class="chat-sheet">
+    <h3>Chat about ${esc(name)}</h3>
+    <p class="chat-lock">${LOCK} ${esc(name)} can't see this</p>
+    ${circles.length > 1 ? `<div class="chat-circles" role="group" aria-label="Which circle">${circles.map((g) => `<button class="chip" type="button" data-circle="${esc(g.id)}">${esc(g.name)}</button>`).join("")}</div>` : ""}
+    <div class="chat-list" id="chatList" aria-live="polite"><p class="chat-empty">Loading...</p></div>
+    <div class="chat-compose">
+      <div id="chatPending"></div>
+      <div class="chat-starters" id="chatStarters"></div>
+      <form class="chat-form" id="chatForm">
+        <textarea id="chatText" rows="1" maxlength="500" placeholder="Message the circle" aria-label="Message"></textarea>
+        <button class="btn primary" type="submit" id="chatSend">Send</button>
+      </form>
+      <p class="err" id="chatErr" hidden></p>
+    </div>
+  </div>`, (root) => {
+    const list = $("#chatList", root), ta = $("#chatText", root), form = $("#chatForm", root), err = $("#chatErr", root);
+    const showErr = (m) => { err.textContent = m; err.hidden = !m; };
+    const circleName = () => circles.find((g) => g.id === gid)?.name || "the circle";
+
+    const paintCircles = () => root.querySelectorAll("[data-circle]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.circle === gid));
+    function paintCompose() {
+      $("#chatPending", root).innerHTML = editing ? `<div class="chat-pending">Editing your message <button class="linkbtn" type="button" data-cancel>Cancel</button></div>`
+        : tag ? `<div class="chat-pending"><span class="msg-tag">${GIFT_SM.replace(/18/g, "13")} ${esc(tagLabel(tag))}</span><button class="x" type="button" data-untag aria-label="Remove tag">&times;</button></div>` : "";
+      const show = !editing && !ta.value.trim() && (tag || !msgs.some((m) => !m.deleted));
+      $("#chatStarters", root).innerHTML = show ? starters(tag).map((t) => `<button class="chip" type="button" data-start="${esc(t)}">${esc(t)}</button>`).join("") : "";
+      $("#chatSend", root).textContent = editing ? "Save" : "Send";
+      root.querySelector("[data-untag]")?.addEventListener("click", () => { tag = null; paintCompose(); ta.focus(); });
+      root.querySelector("[data-cancel]")?.addEventListener("click", () => { editing = null; ta.value = ""; paintCompose(); });
+      root.querySelectorAll("[data-start]").forEach((b) => (b.onclick = () => { ta.value = b.dataset.start; grow(); paintCompose(); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }));
+    }
+    function grow() { ta.style.height = "auto"; ta.style.height = Math.min(140, ta.scrollHeight) + "px"; }
+
+    function paint(stick) {
+      const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+      if (!msgs.length) {
+        list.innerHTML = `<div class="chat-empty"><strong>Nothing yet</strong>Start the back channel. Everyone in ${esc(circleName())} can see it, except ${esc(name)}.</div>`;
+      } else {
+        let day = "";
+        list.innerHTML = msgs.map((m) => {
+          const d = chatDay(m.at);
+          const divider = d !== day ? `<div class="chat-day">${esc((day = d))}</div>` : "";
+          if (m.deleted) return `${divider}<div class="msg gone${m.mine ? " mine" : ""}"><div class="msg-b"><p>Message removed</p></div></div>`;
+          const canAct = m.mine || admin;
+          const tagBtn = m.tag ? `<button class="msg-tag" type="button" data-goto="${esc(m.tag.kind)}:${esc(m.tag.id)}"${m.tag.title ? "" : " disabled"}>${esc(tagLabel(m.tag))}</button>` : "";
+          return `${divider}<div class="msg${m.mine ? " mine" : ""}">
+            ${m.mine ? "" : avatar(m.authorName, m.authorId)}
+            <div class="msg-b"${canAct ? ` role="button" tabindex="0" data-act="${esc(m.id)}" aria-label="Message options"` : ""}>
+              ${m.mine ? "" : `<span class="msg-who">${esc(m.authorName)}</span>`}${tagBtn}
+              <p>${esc(m.body)}</p><span class="msg-meta">${chatTime(m.at)}${m.edited ? " · edited" : ""}</span>
+            </div></div>
+            ${open === m.id ? `<div class="msg-acts${m.mine ? " mine" : ""}">${m.canEdit ? `<button class="btn small" type="button" data-edit="${esc(m.id)}">Edit</button>` : ""}<button class="btn small" type="button" data-del="${esc(m.id)}">Remove</button></div>` : ""}`;
+        }).join("");
+      }
+      if (stick || nearBottom) list.scrollTop = list.scrollHeight;
+      list.querySelectorAll("[data-act]").forEach((b) => {
+        const toggle = (e) => { if (e.target.closest("[data-goto]")) return; open = open === b.dataset.act ? null : b.dataset.act; paint(); };
+        b.onclick = toggle;
+        b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(e); } };
+      });
+      list.querySelectorAll("[data-goto]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); goTo(b.dataset.goto); }));
+      list.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => {
+        const m = msgs.find((x) => x.id === b.dataset.edit);
+        editing = m.id; open = null; ta.value = m.body; grow(); paint(); paintCompose(); ta.focus();
+      }));
+      list.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+        try {
+          await api("chat/delete", { id: b.dataset.del });
+          const m = msgs.find((x) => x.id === b.dataset.del);
+          if (m) Object.assign(m, { deleted: true, body: null, tag: null });
+          open = null; changed = true; paint();
+        } catch (e) { showErr(e.message); }
+      }));
+    }
+
+    function goTo(key) {
+      if (state.person !== personId) return;
+      const row = document.querySelector(`#view article[data-key="${CSS.escape(key)}"]`);
+      if (!row) return toast("That one isn't showing. Try clearing filters.");
+      closeSheet();
+      row.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" });
+      row.classList.remove("chat-flash"); void row.offsetWidth; row.classList.add("chat-flash");
+    }
+
+    // Adds or updates messages by id (polling also returns edits and removals).
+    function merge(list2) {
+      for (const m of list2) {
+        const i = msgs.findIndex((x) => x.id === m.id);
+        if (i >= 0) msgs[i] = m; else msgs.push(m);
+      }
+      msgs.sort((a, b) => a.at.localeCompare(b.at));
+    }
+
+    async function loadThread() {
+      showErr("");
+      msgs = []; after = null; open = null; editing = null;
+      paintCircles();
+      list.innerHTML = `<p class="chat-empty">Loading...</p>`;
+      try {
+        const r = await api(`chat?member=${encodeURIComponent(personId)}&group=${encodeURIComponent(gid)}`);
+        msgs = r.messages; admin = r.admin; after = r.now;
+        const me = circles.find((g) => g.id === gid)?.members.find((m) => m.id === personId);
+        if (me?.chatUnread) { me.chatUnread = 0; changed = true; }
+        paint(true); paintCompose();
+      } catch (e) { list.innerHTML = ""; showErr(e.message); }
+    }
+
+    async function poll() {
+      if (!sheet.open || !document.body.contains(list)) return stop();
+      if (document.visibilityState !== "visible" || !after) return;
+      try {
+        const r = await api(`chat?member=${encodeURIComponent(personId)}&group=${encodeURIComponent(gid)}&after=${encodeURIComponent(after)}`);
+        after = r.now;
+        if (r.messages.length) { merge(r.messages); paint(); paintCompose(); }
+      } catch {}
+    }
+    function stop() { clearInterval(timer); timer = null; sheet.removeEventListener("close", onClose); }
+    function onClose() {
+      stop();
+      // Refresh unread badges and the "Ask about this" counts on their page.
+      if (changed) refreshMe().then(() => { if (state.tab === "family") render(); }).catch(() => {});
+    }
+    timer = setInterval(poll, CHAT_POLL_MS);
+    sheet.addEventListener("close", onClose);
+
+    root.querySelectorAll("[data-circle]").forEach((b) => (b.onclick = () => { if (b.dataset.circle !== gid) { gid = b.dataset.circle; loadThread(); } }));
+    ta.addEventListener("input", () => { grow(); paintCompose(); });
+    // Enter sends on a computer; on phones Enter is a new line (the Send button is right there).
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && matchMedia("(pointer: fine)").matches) { e.preventDefault(); form.requestSubmit(); }
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = ta.value.trim();
+      if (!text) return;
+      showErr("");
+      const btn = $("#chatSend", root);
+      btn.disabled = true;
+      try {
+        if (editing) {
+          const r = await api("chat/edit", { id: editing, body: text });
+          merge([r.message]); editing = null;
+        } else {
+          const r = await api("chat/send", { group: gid, member: personId, body: text, itemId: tag?.kind === "item" ? tag.id : undefined, ideaId: tag?.kind === "idea" ? tag.id : undefined });
+          merge([r.message]); tag = null; buzz();
+        }
+        changed = true;
+        ta.value = ""; grow(); paint(true); paintCompose();
+      } catch (e2) { showErr(e2.message); }
+      finally { btn.disabled = false; }
+    });
+
+    loadThread();
+    if (tag) setTimeout(() => ta.focus(), 300);
+  });
 }
 
 // ---------- someone you look after ----------
@@ -4081,6 +4330,12 @@ function personRow(i, kind, n = 0) {
     foot = `${visit}<span class="spacer"></span>
       <button class="btn small primary" type="button" data-mark="${key}">${GIFT_SM} I'll get this</button>`;
   }
+  // Ask the circle about this one (opens the hidden chat with it tagged).
+  if (!i.removed) {
+    const n = state.chatCounts?.[key] || 0;
+    const ask = `<button class="btn small quiet ask-btn" type="button" data-ask="${key}" aria-label="${n ? `${n} ${n === 1 ? "message" : "messages"} about this. ` : ""}Ask the circle about this">${MSG}${n ? `<span>${n}</span>` : ""}</button>`;
+    foot += foot.includes('class="spacer"') ? ask : `<span class="spacer"></span>${ask}`;
+  }
   if (i.removed) foot = `<span class="taken-line">Removed by ${esc(personName(state.person))}</span><span class="spacer"></span>` + foot;
   else if (kind === "item" && state.manageList) foot += `<button class="btn small quiet" type="button" data-edit-wish="${esc(i.id)}" aria-label="Edit this wish">${PENCIL}</button>`;
   const top = kind === "item" && i.priority === "must" && !i.claim;
@@ -4095,7 +4350,7 @@ function personRow(i, kind, n = 0) {
     (i.claim || i.removed) && i.url ? `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : "",
   ].filter(Boolean).join('<span class="dot" aria-hidden="true"></span>');
   const whose = kind === "idea" ? `${esc(i.author_name)}'s note` : `${esc(personName(state.person))}'s note`;
-  return `<article class="row wish${cls}${top ? " is-top" : ""} ${fresh ? "" : "slide"}" style="animation-delay:${n * 0.05}s">
+  return `<article class="row wish${cls}${top ? " is-top" : ""} ${fresh ? "" : "slide"}" data-key="${esc(key)}" style="animation-delay:${n * 0.05}s">
     ${top ? `<span class="top-ribbon">${STAR} Top pick</span>` : ""}
     <div class="row-top">${tile(i, kind)}
       <div class="row-main">
