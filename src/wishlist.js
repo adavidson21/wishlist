@@ -1096,28 +1096,45 @@ const niceParam = (v) => {
   return /^[0-9]{3,}$/.test(t) || /^[A-Z0-9]{2,}-[A-Z0-9-]{2,}$/.test(t) ? "" : t.charAt(0).toUpperCase() + t.slice(1);
 };
 
-function optionsFromJsonLd(html) {
-  const sizes = [], colors = [];
-  let size = "", color = "";
+// Every JSON object in the page's JSON-LD blocks, breadth first (top-level things before what's nested in them).
+// Stores write messy JSON-LD: wrapped in CDATA or HTML comments, raw line breaks inside strings, trailing commas,
+// and the product nested under a WebPage's mainEntity. All of those still count.
+function parseLd(raw) {
+  let t = raw.trim().replace(/^\s*(\/\*\s*)?<!\[CDATA\[(\s*\*\/)?|(\/\*\s*)?\]\]>(\s*\*\/)?\s*$/g, "").replace(/^\s*<!--|-->\s*$/g, "").trim();
+  try { return JSON.parse(t); } catch {}
+  t = t.replace(/[\u0000-\u001f]+/g, " ").replace(/,\s*([}\]])/g, "$1");
+  try { return JSON.parse(t); } catch { return null; }
+}
+const LD_NEST = ["@graph", "mainEntity", "mainEntityOfPage", "itemListElement", "item", "about", "subjectOf"];
+function* ldNodes(html) {
   for (const m of html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
-    let data;
-    try { data = JSON.parse(m[1].trim()); } catch { continue; }
-    const queue = [data];
-    while (queue.length) {
+    const queue = [parseLd(m[1])];
+    let seen = 0;
+    while (queue.length && seen++ < 2000) {
       const node = queue.shift();
       if (!node || typeof node !== "object") continue;
       if (Array.isArray(node)) { queue.push(...node); continue; }
-      if (node["@graph"]) queue.push(node["@graph"]);
-      const type = [].concat(node["@type"] || []).join(" ");
-      if (!/Product/i.test(type)) continue;
-      for (const v of [].concat(node.hasVariant || [])) {
-        if (v?.size) sizes.push(typeof v.size === "object" ? v.size.name : v.size);
-        if (v?.color) colors.push(v.color);
-      }
-      if (!/ProductGroup/i.test(type)) {
-        if (node.size && !size) size = typeof node.size === "object" ? node.size.name : node.size;
-        if (node.color && !color) color = node.color;
-      }
+      yield node;
+      // Only where stores put the page's product, not variants, reviews or "similar products".
+      for (const k of LD_NEST) if (node[k] && typeof node[k] === "object") queue.push(node[k]);
+    }
+  }
+}
+const ldType = (node) => [].concat(node["@type"] || []).join(" ");
+
+function optionsFromJsonLd(html) {
+  const sizes = [], colors = [];
+  let size = "", color = "";
+  for (const node of ldNodes(html)) {
+    const type = ldType(node);
+    if (!/Product/i.test(type)) continue;
+    for (const v of [].concat(node.hasVariant || [])) {
+      if (v?.size) sizes.push(typeof v.size === "object" ? v.size.name : v.size);
+      if (v?.color) colors.push(v.color);
+    }
+    if (!/ProductGroup/i.test(type)) {
+      if (node.size && !size) size = typeof node.size === "object" ? node.size.name : node.size;
+      if (node.color && !color) color = node.color;
     }
   }
   return { sizes: uniq(sizes), colors: uniq(colors), size: tidyOption(size), color: tidyOption(color) };
@@ -1190,45 +1207,53 @@ function meta(html, ...names) {
   for (const n of names) {
     const re = new RegExp(`<meta[^>]+(?:property|name|itemprop)=["']${n}["'][^>]*>`, "i");
     const tag = html.match(re)?.[0];
-    const content = tag?.match(/content=["']([^"']*)["']/i)?.[1];
-    if (content) return decode(content);
+    const c = tag?.match(/content\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const content = c?.[1] ?? c?.[2];
+    if (content?.trim()) return decode(content);
   }
   return null;
 }
 
 const toPrice = (v) => {
-  if (v === null || v === undefined) return null;
-  const n = parseFloat(String(v).replace(/[^0-9.]/g, ""));
+  if (v === null || v === undefined || v === "") return null;
+  let n;
+  if (typeof v === "number") n = v;
+  else {
+    const m = String(v).match(/\d[\d.,]*/);
+    if (!m) return null;
+    let t = m[0].replace(/[.,]$/, "");
+    // 1.299,00 or 12,50: a comma before the last two digits is the decimal point.
+    if (/,\d{2}$/.test(t) && !/\.\d{2}$/.test(t)) t = t.replace(/\./g, "").replace(",", ".");
+    else t = t.replace(/,/g, "");
+    n = parseFloat(t);
+  }
   return Number.isFinite(n) && n > 0 && n < 1_000_000 ? Math.round(n * 100) / 100 : null;
 };
 
-// Finds a schema.org Product in JSON-LD blocks (most stores include one).
+// Finds a schema.org Product in JSON-LD blocks (most stores include one). The first one with a name wins.
+// Price: the first offer (or variant offer) with a real price, including prices tucked in priceSpecification.
+const offerPrice = (o) => o && typeof o === "object"
+  ? toPrice(o.price) ?? toPrice(o.lowPrice) ?? [].concat(o.priceSpecification || []).map((p) => toPrice(p?.price)).find((p) => p != null) ?? null
+  : null;
 function jsonLdProduct(html) {
-  for (const m of html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
-    let data;
-    try { data = JSON.parse(m[1].trim()); } catch { continue; }
-    const queue = [data];
-    while (queue.length) {
-      const node = queue.shift();
-      if (!node || typeof node !== "object") continue;
-      if (Array.isArray(node)) { queue.push(...node); continue; }
-      const type = [].concat(node["@type"] || []).join(" ");
-      if (/Product/i.test(type)) {
-        const offers = [].concat(node.offers || [].concat(node.hasVariant || [])[0]?.offers || []); // ProductGroup: first variant's offer
-        const offer = offers[0] || {};
-        const price = toPrice(offer.price ?? offer.lowPrice ?? offer.priceSpecification?.price ?? [].concat(offer.offers || [])[0]?.price);
-        const img = [].concat(node.image || [])[0];
-        const image = typeof img === "string" ? img : img?.url || img?.contentUrl || null;
-        const avail = String(offer.availability || [].concat(offer.offers || [])[0]?.availability || "");
-        const inStock = /InStock|LimitedAvailability|OnlineOnly|PreOrder|InStoreOnly/i.test(avail) ? true : /OutOfStock|SoldOut|Discontinued/i.test(avail) ? false : null;
-        const b = [].concat(node.brand || node.manufacturer || [])[0];
-        const brand = typeof b === "string" ? decode(b) : b?.name ? decode(b.name) : null;
-        return { title: node.name ? decode(node.name) : null, price, image, inStock, brand };
-      }
-      if (node["@graph"]) queue.push(node["@graph"]);
-    }
+  let unnamed = null;
+  for (const node of ldNodes(html)) {
+    if (!/Product/i.test(ldType(node))) continue;
+    const offers = [].concat(node.offers || [], ...[].concat(node.hasVariant || []).map((v) => [].concat(v?.offers || [])));
+    const flat = offers.flatMap((o) => [o, ...[].concat(o?.offers || [])]);
+    const price = flat.map(offerPrice).find((p) => p != null) ?? null;
+    const img = [].concat(node.image || [])[0];
+    const image = typeof img === "string" ? img : img?.url || img?.contentUrl || null;
+    const avail = String(flat.map((o) => o?.availability).find(Boolean) || "");
+    const inStock = /InStock|LimitedAvailability|OnlineOnly|PreOrder|InStoreOnly/i.test(avail) ? true : /OutOfStock|SoldOut|Discontinued/i.test(avail) ? false : null;
+    const b = [].concat(node.brand || node.manufacturer || [])[0];
+    const brand = typeof b === "string" ? decode(b) : b?.name ? decode(b.name) : null;
+    const name = typeof node.name === "string" ? decode(node.name) : null;
+    const out = { title: name || null, price, image, inStock, brand };
+    if (name) return unnamed ? { ...out, price: out.price ?? unnamed.price, image: out.image || unnamed.image } : out;
+    unnamed ||= out;
   }
-  return {};
+  return unnamed || {};
 }
 
 function cleanTitle(title, host, siteName) {
@@ -1811,6 +1836,11 @@ async function bestLink(x, grounded) {
 // only when empty, and the price is set from the store and synced from then on (price_auto), replacing a
 // typed price. A link that gives nothing is still stamped, so it's tried only once.
 const DETAILS_V = 1;
+// The app couldn't read the link when it was saved (store slow, offline, over the limit): try it again in the
+// background so the photo and price still show up without anyone typing them.
+async function markUnfilled(env, table, id, b, url) {
+  if (b.unfilled === true && url) await env.DB.prepare(`UPDATE ${table} SET details_v = 0 WHERE id = ?`).bind(id).run();
+}
 const REFRESH_BATCH = 3;
 async function refreshRow(env, table, row) {
   const p = await previewLink(env, row.url, { ai: true }).catch(() => null);
@@ -2608,6 +2638,7 @@ const handlers = {
       rows.push(env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), b.id));
       if (b.quantity !== undefined) rows.push(env.DB.prepare("UPDATE items SET quantity = ? WHERE id = ?").bind(quantityValue(b.quantity), b.id));
       if (rows.length) await env.DB.batch(rows);
+      await markUnfilled(env, "items", b.id, b, fields[1]);
       return { id: b.id };
     }
     const { n: itemCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL").bind(owner).first();
@@ -2622,6 +2653,7 @@ const handlers = {
       ...(await hideRows(id)()),
       ...sizeColorRows(env, id, b),
     ]);
+    await markUnfilled(env, "items", id, b, fields[1]);
     return { id };
   },
 
@@ -2879,6 +2911,7 @@ const handlers = {
         .run();
     }
     await env.DB.prepare("UPDATE private_ideas SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), id).run();
+    await markUnfilled(env, "private_ideas", id, b, fields[1]);
     // "I bought this" on your own idea is the same as marking it purchased.
     if (b.bought !== undefined) await setIdeaClaim(env, me, id, !!b.bought, b.paid, b.occasion);
     return { id };

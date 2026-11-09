@@ -2237,6 +2237,7 @@ function wireForm(form, submit) {
     const errEl = form.querySelector(".err");
     errEl.hidden = true;
     btns.forEach((b) => (b.disabled = true));
+    try { await form.beforeSubmit?.(); } catch {}
     // Forms with more than one submit button (Add to Maybe / Add to wish list) read which one in data.submitter.
     const data = { submitter: e.submitter?.value || "" };
     for (const el of form.elements) {
@@ -3965,7 +3966,7 @@ function editItem(item, opts = {}) {
     <h3>${asId ? (isNew ? `Add a wish for ${esc(asName)}` : `Edit ${esc(asName)}'s wish`) : isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser && !asId ? whoChips(state.me.id) : ""}
     ${draft && !isNew ? MAYBE_NOTE : ""}
-    <form id="itemForm" autocomplete="off"${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}>
+    <form id="itemForm" autocomplete="off"${isNew ? "" : ' data-editing="1"'}${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}>
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "What is it?"))}" required></label>
@@ -4011,7 +4012,8 @@ function editItem(item, opts = {}) {
       });
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), quantity: Number(d.quantity ?? 1), ...sc.values() };
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), quantity: Number(d.quantity ?? 1), ...sc.values(), unfilled: form.dataset.unfilled === "1" };
+        if (payload.unfilled) setTimeout(refreshDetails, 30000);
         if (multi() && !draft && !asId) payload.hiddenFrom = hiddenFromForm(form);
         if (asId) {
           payload.as = asId;
@@ -4267,6 +4269,30 @@ function shareHint(t) {
   return t.length >= 3 && t.length <= 150 && /[a-z]/i.test(t) ? t : "";
 }
 
+// A name from the link's own words ("/p/cozy-knit-throw/-/A-123" -> "Cozy knit throw"), for when the store can't be
+// read at all. Same idea as titleFromPath() in src/wishlist.js.
+function nameFromLink(raw) {
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { return ""; }
+  const parts = u.pathname.split("/").filter((p) => p && !/^(dp|p|product|products|ip|gp|item|itm|s)$/i.test(p) && !/^(?=.*\d)[a-z0-9]{8,}$/i.test(p));
+  const slug = parts.sort((a, b) => b.length - a.length)[0];
+  let words = "";
+  if (slug && slug.length >= 6 && !/^\d+$/.test(slug)) {
+    try { words = decodeURIComponent(slug); } catch { words = slug; }
+    words = words.replace(/\.\w+$/, "").replace(/[-_+]+/g, " ").trim();
+  }
+  const site = u.hostname.replace(/^www\./, "");
+  return (words ? words.charAt(0).toUpperCase() + words.slice(1) : `Something from ${site}`).slice(0, 200);
+}
+// Same link with tracking junk ignored, for spotting a wish that's already on your list.
+function linkKey(raw) {
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    const asin = /amazon\./i.test(u.hostname) && u.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)?.[1];
+    return (u.hostname.replace(/^www\./, "") + (asin ? `/dp/${asin}` : u.pathname.replace(/\/+$/, ""))).toLowerCase();
+  } catch { return ""; }
+}
+
 // The photo autofill found, if the link box still holds that link.
 const imageFor = (form) => (form.dataset.image && form.dataset.imageFor === form.elements.url.value.trim() ? form.dataset.image : undefined);
 
@@ -4305,7 +4331,22 @@ function wireAutofill(form) {
   };
   // seq: each lookup gets a number, and only the newest one may write to the form (a new link mid-lookup wins).
   // auto: what the current link put in each box, so the next link (or clearing) knows what's safe to replace.
-  let seq = 0, hint = "", last = "", slow, typing;
+  let seq = 0, hint = "", last = "", slow, typing, running = null;
+  // Saving while the lookup is still going waits for it, then names the wish from the link if nothing else did,
+  // so Add never fails with "give it a name" right after a paste.
+  form.beforeSubmit = async () => {
+    clearTimeout(typing);
+    const v = url.value.trim();
+    if (v && v !== last && looksLikeLink(v)) fill(false);
+    if (running) {
+      say("Finishing the lookup...");
+      await Promise.race([running, new Promise((r) => setTimeout(r, 12000))]);
+    }
+    if (!title.value.trim() && url.value.trim()) {
+      const g = hint || nameFromLink(url.value.trim());
+      if (g) { name.set(g); auto.title = g; form.dataset.unfilled = "1"; }
+    }
+  };
   const mineNow = (el, k) => !!el && !!el.value.trim() && el.value !== auto[k];
   // Keep just the link in the box; remember the shared words as a backup name.
   const tidy = (raw) => {
@@ -4314,12 +4355,19 @@ function wireAutofill(form) {
     if (s.hint) hint = s.hint;
   };
   const sync = () => { const has = !!url.value.trim(); paste.hidden = has; clear.hidden = !has; name.sync(); };
-  async function fill(force) {
+  function fill(force) {
+    const p = lookup(force);
+    running = p;
+    p.finally(() => { if (running === p) running = null; });
+    return p;
+  }
+  async function lookup(force) {
     clearTimeout(typing);
     tidy(url.value);
     const v = url.value.trim();
     if (!v) return;
     const mine = ++seq;
+    delete form.dataset.unfilled;
     last = v;
     sync();
     say("Looking it up...");
@@ -4327,11 +4375,16 @@ function wireAutofill(form) {
     // Blocked stores get looked up through Google Search, which takes a few seconds. Say so instead of looking stuck.
     slow = setTimeout(() => { if (mine === seq) say("Still looking. Some stores take a few seconds..."); }, 3500);
     try {
+      // A failed lookup (slow store, offline, too many links) still gives a name: the shared words or the link's own.
+      // The wish is marked so the photo and price are fetched again later in the background.
+      let failed = null;
       const r = await api("preview", { url: v, hint }).catch((e) => {
-        if (!hint) throw e;
-        return { site: "the link" };
+        failed = e;
+        const g = hint || nameFromLink(v);
+        return { site: "the store", title: g, guessed: !hint };
       });
       if (mine !== seq) return;
+      if (failed || r.guessed || !r.found) form.dataset.unfilled = "1";
       // Swap in the tidied link (no tracking junk) if the box still holds what we looked up.
       if (r.clean && r.clean !== v && url.value.trim() === v) { url.value = r.clean; last = r.clean; }
       // The store app's share text names the product better than words guessed from the link.
@@ -4349,7 +4402,14 @@ function wireAutofill(form) {
       if (r.image) filled.push("photo");
       const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : xs[0]);
       const replace = kept.length ? { label: `Use the link's ${and(kept)}`, fn: () => fill(true) } : null;
-      say(r.guessed && filled.length ? `${r.site} wouldn't let us read that page, so the name is a guess from the link. Fix it up, or snap a photo instead.`
+      // Already on your list? Say so (adding it again is still allowed, for a second size or color).
+      const dupe = form.id === "itemForm" && !form.dataset.editing && (state.myItems || []).find((i) => i.url && linkKey(i.url) === linkKey(url.value.trim()));
+      if (dupe) return say(`Heads up: "${dupe.title}" is already ${dupe.draft ? "in your Maybe list" : "on your wish list"} with this link.`, false, r.image);
+      const later = "The photo and price will fill in later.";
+      say(failed ? (!filled.includes("name") ? `Couldn't look that up right now. ${later}`
+          : failed.offline ? `You're offline, so we named it from the link. ${later}`
+          : `Couldn't look that up right now, so we named it from the link. ${later}`)
+        : r.guessed && filled.length ? `${r.site} wouldn't let us read that page, so the name is a guess from the link. Fix it up, or snap a photo instead.`
         : filled.length ? `Filled in the ${and(filled)} from ${r.site}.${kept.length ? ` Kept your ${and(kept)}.` : ""}`
         : kept.length ? `Kept what you typed.`
         : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0, r.image, replace);
@@ -4366,6 +4426,7 @@ function wireAutofill(form) {
     if (price && autoPrice(form)) { price.value = ""; setAutoPrice(form, ""); }
     auto.title = auto.brand = "";
     delete form.dataset.image;
+    delete form.dataset.unfilled;
     say("");
     sync();
     url.focus();
@@ -6643,7 +6704,8 @@ function editIdea(idea, subjectId, opts = {}) {
         // Filled in by a link without typing: show the heads up first, save on the next tap.
         const { hits, was } = checkNopes();
         if (hits.length && !was) return $("#nopeWarn", el).scrollIntoView({ block: "center", behavior: "smooth" });
-        const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), note: d.note, shared: d.shared, image: imageFor(form) };
+        const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), note: d.note, shared: d.shared, image: imageFor(form), unfilled: form.dataset.unfilled === "1" };
+        if (payload.unfilled) setTimeout(refreshDetails, 30000);
         if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; if (d.bought) payload.occasion = occasion(); }
         if (!payload.subjectId) throw new Error("Choose who it's for.");
         await api("idea/save", payload);
