@@ -861,15 +861,31 @@
   /* Add sheet: who it's for */
   fieldset.for { border: 0; padding: 0; margin: -4px 0 16px; min-width: 0; }
   fieldset.for legend { font-size: 16px; font-weight: 700; margin-bottom: 8px; padding: 0; }
-  .for-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .for-chip { position: relative; display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--line); background: var(--card);
-    border-radius: 999px; padding: 5px 14px 5px 5px; min-height: 44px; font-weight: 700; font-size: 15px; cursor: pointer; transition: transform .14s var(--spring); }
-  .for-chip:active { transform: scale(.97); }
-  .for-chip input { position: absolute; opacity: 0; pointer-events: none; }
-  .for-chip:has(input:checked) { border-color: var(--brand); background: var(--soft); color: var(--soft-ink); }
-  .for-chip:has(input:focus-visible) { outline: 3px solid var(--brand); outline-offset: 2px; }
+  .for-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; }
+  .for-opt { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 999px;
+    font-weight: 700; font-size: 15px; cursor: pointer; color: var(--muted); transition: background .2s, color .2s; }
+  .for-opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .for-opt:has(input:checked) { background: var(--soft); color: var(--soft-ink); box-shadow: inset 0 0 0 1.5px var(--brand); }
+  .for-opt:has(input:focus-visible) { outline: 3px solid var(--brand); outline-offset: 2px; }
+  .for-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-width: 0; }
+  .for-note { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
+  .for-note svg { flex: none; }
+  .for-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .for-who { display: inline-flex; min-width: 0; align-items: center; gap: 8px; max-width: 100%; border: 1.5px solid var(--brand); background: var(--soft);
+    color: var(--soft-ink); border-radius: 999px; padding: 5px 12px 5px 5px; min-height: 44px; font-weight: 700; font-size: 15px; transition: transform .14s var(--spring); }
+  .for-who:not(:has(.avatar)) { padding-left: 16px; }
+  .for-who:active { transform: scale(.97); }
+  .for-who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .for-who .chev-d { flex: none; transition: transform .3s var(--spring); }
+  .for-who[aria-expanded="true"] .chev-d { transform: rotate(180deg); }
+  .for-pick { margin-top: 8px; border: 1.5px solid var(--line); background: var(--card); border-radius: 16px; padding: 6px; }
+  .for-pick .for-search { margin-bottom: 6px; }
+  .for-pick ul { list-style: none; margin: 0; padding: 0; max-height: 264px; overflow-y: auto; overscroll-behavior: contain; }
+  .for-pick li button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; border: 0; background: none;
+    border-radius: 12px; font-weight: 600; font-size: 16px; text-align: left; }
+  .for-pick li button:active, .for-pick li button[aria-current] { background: var(--soft); color: var(--soft-ink); }
+  .for-pick .for-none { padding: 10px; color: var(--muted); font-size: 15px; }
   .avatar.sm { width: 32px; height: 32px; font-size: 14px; }
-  fieldset.for + form .what { margin-top: 0; font-size: 14px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 
   .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); translate: -50% 0; z-index: 30;
     background: var(--ink); color: var(--bg); border-radius: 16px; padding: 6px 8px 6px 16px; min-height: 52px; font-size: 15px; font-weight: 600;
@@ -3273,20 +3289,61 @@ function addThing(target, opts = {}) {
   if (target === undefined) target = me;
   return target && target === me ? editItem(null, { ...opts, chooser: true }) : editIdea(null, target, { ...opts, chooser: true });
 }
+// "Me" or "Someone else". Someone else shows who's picked (tap to change) and a list to pick from, with search
+// once the family gets big. The last person you picked is remembered until the app reloads, so adding a few ideas
+// for the same person doesn't mean picking them every time.
+let lastWho = null;
 function whoChips(selected) {
   const people = others();
   if (!people.length) return "";
-  return `<fieldset class="for"><legend>Who's it for?</legend><div class="for-chips">
-    ${[{ id: state.me.id, name: "Me", av: state.me.name }, ...people].map((p) => `<label class="for-chip"><input type="radio" name="forWho" value="${esc(p.id)}"${p.id === selected ? " checked" : ""}>${avatar(p.av || p.name, p.id, "sm")}<span>${esc(p.name)}</span></label>`).join("")}
-  </div></fieldset>`;
+  const mine = selected === state.me.id;
+  const who = !mine && selected ? people.find((p) => p.id === selected) : null;
+  return `<fieldset class="for"><legend>Who's it for?</legend>
+    <div class="for-seg">
+      <label class="for-opt"><input type="radio" name="forMode" value="me"${mine ? " checked" : ""}><span>Me</span></label>
+      <label class="for-opt"><input type="radio" name="forMode" value="other"${mine ? "" : " checked"}><span>Someone else</span></label>
+    </div>
+    ${mine ? "" : `<div class="for-row"><button class="for-who" type="button" aria-expanded="${who ? "false" : "true"}" aria-controls="forPick">${who ? `${avatar(who.name, who.id, "sm")}<span>${esc(who.name)}</span>` : "<span>Choose someone</span>"}${CHEV_D}</button>${who ? `<span class="for-note">${LOCK}<span>${esc(who.name)} never sees this</span></span>` : ""}</div>
+    <div class="for-pick" id="forPick"${who ? " hidden" : ""}>
+      ${people.length > 8 ? '<input class="input for-search" type="search" placeholder="Search" aria-label="Search people" autocomplete="off" enterkeyhint="search">' : ""}
+      <ul>${people.map((p) => `<li><button type="button" data-who="${esc(p.id)}"${p.id === selected ? ' aria-current="true"' : ""}>${avatar(p.name, p.id, "sm")}<span>${esc(p.name)}</span></button></li>`).join("")}</ul>
+      <p class="for-none" hidden>No one by that name.</p>
+    </div>`}
+  </fieldset>`;
 }
 const toCents = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? Math.round(n * 100) : null; };
-// Picking someone else reopens the sheet as the right form, carrying over the name, link, price, notes and photo.
+// Switching reopens the sheet as the right form, carrying over the name, link, price, notes and photo.
 function wireWhoChips(root) {
-  root.querySelectorAll('[name="forWho"]').forEach((r) => r.addEventListener("change", () => {
+  const fs = root.querySelector("fieldset.for");
+  if (!fs) return;
+  const go = (id) => {
     const form = root.querySelector("form"), f = form.elements;
-    addThing(r.value, { carry: { title: f.title.value, url: f.url.value, price: f.price?.value, priceAuto: autoPrice(form), notes: (f.notes || f.note)?.value, image: form.dataset.image, imageFor: form.dataset.imageFor } });
+    if (id && id !== state.me.id) lastWho = id;
+    addThing(id, { carry: { title: f.title.value, url: f.url.value, price: f.price?.value, priceAuto: autoPrice(form), notes: (f.notes || f.note)?.value, image: form.dataset.image, imageFor: form.dataset.imageFor } });
+  };
+  fs.querySelectorAll('[name="forMode"]').forEach((r) => r.addEventListener("change", () => {
+    if (r.value === "me") return go(state.me.id);
+    go(lastWho && others().some((p) => p.id === lastWho) ? lastWho : null);
   }));
+  const btn = fs.querySelector(".for-who"), pick = fs.querySelector(".for-pick"), search = fs.querySelector(".for-search");
+  btn?.addEventListener("click", () => {
+    pick.hidden = !pick.hidden;
+    btn.setAttribute("aria-expanded", String(!pick.hidden));
+    // Search gets focus only with a mouse; on a phone the keyboard would cover the list.
+    if (!pick.hidden) ((matchMedia("(pointer: fine)").matches && search) || pick.querySelector("[aria-current]") || pick.querySelector("[data-who]"))?.focus();
+  });
+  search?.addEventListener("input", () => {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    pick.querySelectorAll("li").forEach((li) => { const hit = li.textContent.toLowerCase().includes(q); li.hidden = !hit; shown += hit; });
+    pick.querySelector(".for-none").hidden = shown > 0;
+  });
+  search?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    pick.querySelector("li:not([hidden]) button")?.click();
+  });
+  pick?.querySelectorAll("[data-who]").forEach((b) => b.addEventListener("click", () => go(b.dataset.who)));
 }
 function restoreImage(form, carry) {
   if (carry?.image) { form.dataset.image = carry.image; form.dataset.imageFor = carry.imageFor || ""; }
@@ -5519,7 +5576,7 @@ function editIdea(idea, subjectId, opts = {}) {
     ${isNew && !purchase && subjectId && canManageId(subjectId) ? `<p class="hint" style="margin-top:0">You look after ${esc(personName(subjectId))}'s list. <button class="linkbtn" type="button" id="toTheirList">Add it to their wish list instead</button></p>` : ""}
     <form id="ideaForm" autocomplete="off"${idea.price_auto ? ` data-price-auto="${esc(priceIn(idea.price_cents))}"` : ""}>
       <div class="err" hidden></div>
-      ${chips ? (subjectId ? `<p class="what">For ${esc(personName(subjectId))}${lockTip(`${personName(subjectId)} never sees this.`)}</p>` : "") : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
+      ${chips ? "" : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
           <option value="">Choose someone</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`
         : `<p class="what">For ${esc(personName(idea.subject_id))}</p>`}
       ${isNew ? linkField(idea.url, true) : ""}
@@ -5548,7 +5605,8 @@ function editIdea(idea, subjectId, opts = {}) {
         const f = form.elements;
         editItem(null, { as: subjectId, carry: { title: f.title.value, url: f.url.value, price: f.price.value, priceAuto: autoPrice(form), notes: f.note.value, image: form.dataset.image, imageFor: form.dataset.imageFor } });
       });
-      if (isNew && !form.elements.title.value && !form.elements.url.value) setTimeout(() => form.elements.url.focus(), 300);
+      // Not while the people picker is open: the keyboard would cover it.
+      if (isNew && (subjectId || !chips) && !form.elements.title.value && !form.elements.url.value) setTimeout(() => form.elements.url.focus(), 300);
       if (opts.fill) form.fillFromLink?.();
       // Which occasion it's for: shown when you're getting it and the person has a birthday too.
       let occSubject = null, occasion = () => undefined;
