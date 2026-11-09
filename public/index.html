@@ -4987,6 +4987,14 @@ function openCircleManage(gid) {
     <h4>Households${tip("People who live or gift together, like Mom & Dad. Everyone can manage their own; you can manage any of them here.")}</h4>
     <button class="btn wide" type="button" id="cmHh" style="margin-top:8px">Manage households</button>
     <hr class="set-div">
+    <h4>People${tip("Taking someone out stops them seeing this circle's lists, and this circle seeing theirs. They can come back with the invite code.")}</h4>
+    <div style="margin-top:6px">${others.map((m) => {
+      const viaHh = m.householdId && state.households[m.householdId]?.circles.includes(g.id);
+      return `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${viaHh ? `<br><small>In with ${esc(householdLabel(m.householdId))}</small>` : ""}</strong>
+        ${viaHh ? "" : `<button class="btn small quiet danger" type="button" data-kick="${esc(m.id)}">Remove</button>`}</div>`;
+    }).join("") || `<p class="subtle">Just you so far.</p>`}</div>
+    ${others.some((m) => m.householdId && state.households[m.householdId]?.circles.includes(g.id)) ? `<p class="subtle" style="margin-top:6px">People who came in with their household come out through Manage households.</p>` : ""}
+    <hr class="set-div">
     <h4>Admin${tip("The admin manages the circle's name, photo and households. There's one at a time.")}</h4>
     <p class="subtle" style="margin-top:4px">You're the admin. Hand it to someone else and you'll be a regular member.</p>
     ${others.length ? `<form id="adminForm" autocomplete="off"><div class="err" hidden></div>
@@ -4997,6 +5005,13 @@ function openCircleManage(gid) {
     wirePhotoRow(el, async (photo) => { await api("family/edit", { groupId: gid, photo }); await reload(photo ? "Circle photo saved" : "Circle photo removed"); });
     wireForm($("#circleForm", el), async ({ name }) => { await api("family/edit", { groupId: gid, name }); await reload("Circle renamed"); });
     $("#cmHh", el).onclick = () => openHouseholds(gid);
+    el.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = async () => {
+      const who = personName(b.dataset.kick);
+      if (!window.confirm(`Take ${who} out of ${g.name}? They won't see anyone's lists here, and nobody here will see theirs. They can rejoin with the invite code.`)) return;
+      b.disabled = true;
+      try { await api("family/remove", { groupId: gid, memberId: b.dataset.kick }); await reload(`${who} is out of ${g.name}`); }
+      catch (e) { toast(e.message); b.disabled = false; }
+    }));
     const af = $("#adminForm", el);
     if (af) wireForm(af, async ({ memberId }) => {
       const who = personName(memberId);

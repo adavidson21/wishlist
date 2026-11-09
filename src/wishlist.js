@@ -1989,6 +1989,32 @@ const handlers = {
     return { ok: true };
   },
 
+  // Take someone out of a circle. Only the circle's admin, and not themselves (they use Leave).
+  // Someone whose household is in the circle comes out with the household instead (Manage households).
+  // If it was their only circle they're signed out everywhere, since there'd be nothing left to show them.
+  async "POST family/remove"(req, env) {
+    const me = await auth(req, env);
+    const { groupId, memberId } = await body(req);
+    if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can take people out.");
+    if (!memberId || memberId === me.id) fail(400, "To take yourself out, leave the circle instead.");
+    const them = await env.DB.prepare(
+      "SELECT m.name, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
+    ).bind(groupId, String(memberId)).first();
+    if (!them) fail(404, "They aren't in this circle.");
+    if (them.household_id) {
+      const viaHousehold = await env.DB.prepare("SELECT 1 FROM group_households WHERE group_id = ? AND household_id = ?").bind(groupId, them.household_id).first();
+      if (viaHousehold) fail(409, `${them.name}'s household is in this circle. Take them out of the household first, or take the whole household out.`);
+    }
+    const others = await env.DB.prepare("SELECT COUNT(*) AS n FROM group_members WHERE member_id = ? AND group_id != ?").bind(memberId, groupId).first();
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, memberId),
+      env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(groupId, memberId),
+      ...(others.n ? [] : [env.DB.prepare("DELETE FROM devices WHERE member_id = ?").bind(memberId)]),
+    ]);
+    return { ok: true };
+  },
+
   // Leave one of your families (not your last one). Your list stays; that family just stops seeing it.
   async "POST family/leave"(req, env) {
     const me = await auth(req, env);
