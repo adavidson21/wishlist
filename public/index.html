@@ -890,13 +890,23 @@
   /* Editing Loves and Nopes */
   .tag-add { display: flex; gap: 8px; margin: 12px 0 14px; }
   .tag-add .input { flex: 1; min-width: 0; }
-  .tag-cols { display: grid; gap: 14px; }
-  .tag-col { border-radius: 16px; padding: 12px; background: var(--bg); min-height: 64px; }
-  .tag-col .flabel { display: flex; align-items: center; gap: 6px; font-size: 15px; margin-bottom: 9px; }
-  .tag-col.on { box-shadow: 0 0 0 2px var(--brand) inset; }
+  /* Two plain lists, no boxes. Stacked on phones with a line between, side by side on computers.
+     The heading is a button too: tapping it picks where Add puts things, same as the switch above. */
+  .tag-cols { display: grid; }
+  .tag-col { padding: 14px 0 2px; border-top: 1px solid var(--line); min-width: 0; }
+  .tag-col:first-child { border-top: 0; padding-top: 2px; }
+  .tag-col-h { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 36px; margin-bottom: 8px; padding: 0; border: 0; background: none;
+    font: inherit; font-size: 15px; font-weight: 800; color: var(--muted); text-align: left; cursor: pointer; }
+  .tag-col-h em { font-style: normal; font-weight: 700; color: var(--faint); }
+  .tag-col-h .here { margin-left: auto; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: var(--soft); color: var(--soft-ink); visibility: hidden; }
+  .tag-col.on .tag-col-h { color: var(--ink); }
+  .tag-col.on .tag-col-h .here { visibility: visible; }
+  .tag-col[data-col="dislikes"].on .tag-col-h .here { background: var(--panel); color: var(--muted); }
+  .tag-col-h:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; border-radius: 8px; }
+  .tag-col .tags-empty { padding: 4px 0 8px; }
   .tags.edit .tag { padding-right: 2px; cursor: pointer; }
   .tags.edit .tag button { border: 0; background: none; color: inherit; font-size: 20px; line-height: 1; min-width: 34px; min-height: 34px; padding: 0; cursor: pointer; }
-  .tag-ideas { margin-top: 16px; }
+  .tag-ideas { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
   .tag-ideas-h { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
   .tag-ideas-h .linkbtn { margin-left: auto; }
   .tag-ideas .tags .tag { background: var(--card); border: 1.5px solid var(--line); color: var(--ink); cursor: pointer; font: inherit; font-weight: 700; font-size: 14px; min-height: 36px; }
@@ -914,6 +924,9 @@
     .pf-layout > .pf { position: sticky; top: 24px; grid-row: 1 / span 4; }
     .pf-main { display: grid; gap: 16px; }
     .tag-cols { grid-template-columns: 1fr 1fr; }
+    .tag-col, .tag-col:first-child { border-top: 0; padding-top: 2px; }
+    .tag-col:first-child { padding-right: 20px; }
+    .tag-col + .tag-col { padding-left: 20px; border-left: 1px solid var(--line); }
     .save-bar { bottom: 20px; }
   }
 
@@ -7380,14 +7393,14 @@ async function renderProfileEdit() {
     <div class="set-card" id="ed-tags">
       <h4>Loves and nopes</h4>
       <p>Big or small, anything that helps someone pick a gift. Tap one to move it to the other side.</p>
-      ${seg("Add to", [["likes", `<span aria-hidden="true">♥</span> Loves`], ["dislikes", "Nopes"]], focus === "tags-nope" ? "dislikes" : "likes", "lovenope")}
+      ${seg("Add to", [["likes", `<span aria-hidden="true">♥</span> Loves`], ["dislikes", "Nopes"]], focus === "tags-nope" ? "dislikes" : "likes", "two lovenope")}
       <div class="tag-add">
         <input class="input" id="tagIn" maxlength="40" enterkeyhint="done" autocomplete="off" aria-label="Add a love or nope">
         <button class="btn small" type="button" id="tagAdd">${PLUS} Add</button>
       </div>
       <div class="tag-cols">
-        <div class="tag-col" data-col="likes"><span class="flabel"><span class="ico" style="color:var(--brand);display:inline-flex">${HEART_I}</span>Loves <em id="likeN"></em></span><div class="tags edit" id="likeTags"></div></div>
-        <div class="tag-col" data-col="dislikes"><span class="flabel"><span style="color:var(--muted);display:inline-flex">${NOPE_I}</span>Nopes <em id="nopeN"></em></span><div class="tags edit" id="nopeTags"></div></div>
+        <div class="tag-col" data-col="likes"><button class="tag-col-h" type="button" data-mode="likes"><span style="color:var(--brand);display:inline-flex" aria-hidden="true">${HEART_I}</span>Loves <em id="likeN"></em><span class="here" aria-hidden="true">Adding here</span></button><div class="tags edit" id="likeTags"></div></div>
+        <div class="tag-col" data-col="dislikes"><button class="tag-col-h" type="button" data-mode="dislikes"><span style="display:inline-flex" aria-hidden="true">${NOPE_I}</span>Nopes <em id="nopeN"></em><span class="here" aria-hidden="true">Adding here</span></button><div class="tags edit" id="nopeTags"></div></div>
       </div>
       <div class="tag-ideas">
         <div class="tag-ideas-h"><span>Need ideas? Tap to add</span><button class="linkbtn" type="button" id="moreIdeas">More ideas</button></div>
@@ -7506,7 +7519,9 @@ async function renderProfileEdit() {
       $(n, v).textContent = lists[m].length ? `(${lists[m].length})` : "";
     }
     v.querySelectorAll(".tag-col").forEach((c) => c.classList.toggle("on", c.dataset.col === mode));
-    tagIn.placeholder = mode === "likes" ? "Something you love" : "Something you'd rather not get";
+    v.querySelectorAll(".tag-col-h").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+    v.querySelectorAll(".seg.lovenope button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.v === mode)));
+    tagIn.placeholder = mode === "likes" ? "Something you love" : "Something to skip";
     const used = new Set([...lists.likes, ...lists.dislikes].map((t) => t.toLowerCase()));
     const ideas = TAG_IDEAS.filter((t) => !used.has(t.toLowerCase()));
     const start = ideas.length ? (ideaAt * 12) % ideas.length : 0;
@@ -7540,8 +7555,9 @@ async function renderProfileEdit() {
     toast(`Moved ${t} to ${m === "likes" ? "Nopes" : "Loves"}`);
   };
   v.querySelector("#ed-tags").addEventListener("click", (e) => {
-    const drop = e.target.closest("[data-drop]"), move = e.target.closest("[data-move]"), idea = e.target.closest("[data-idea]");
-    if (drop) { const [m, k] = drop.dataset.drop.split(":"); lists[m].splice(+k, 1); paint(); }
+    const drop = e.target.closest("[data-drop]"), move = e.target.closest("[data-move]"), idea = e.target.closest("[data-idea]"), pick = e.target.closest("[data-mode]");
+    if (pick) { mode = pick.dataset.mode; paint(); }
+    else if (drop) { const [m, k] = drop.dataset.drop.split(":"); lists[m].splice(+k, 1); paint(); }
     else if (move) moveTo(move);
     else if (idea) add(idea.dataset.idea);
   });
