@@ -905,6 +905,27 @@
   dialog.sheet::backdrop { background: rgba(30, 15, 20, .45); animation: fade .25s ease both; }
   .sheet-in { padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 22px); }
   .sheet-close { position: absolute; top: 14px; right: 14px; font-size: 26px; line-height: 1; }
+  /* Photo cropper: drag to move, pinch / scroll / slider to zoom. Always dark so the photo stands out. */
+  dialog.crop { border: 0; padding: 0; margin: 0; width: 100%; height: 100%; max-width: none; max-height: none; background: #120A0D; color: #FFF8F2;
+    display: none; flex-direction: column; overscroll-behavior: contain; }
+  dialog.crop[open] { display: flex; animation: fade .2s ease both; }
+  dialog.crop::backdrop { background: #120A0D; }
+  .crop-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 8px; }
+  .crop-top h2 { margin: 0; font: 700 18px/1.2 var(--display); }
+  .crop-top .linkbtn { background: none; border: 0; color: inherit; font: 700 16px var(--sans); padding: 10px 6px; cursor: pointer; }
+  .crop-stage { position: relative; flex: 1; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+  .crop-stage.dragging { cursor: grabbing; }
+  .crop-stage:focus { outline: none; }
+  .crop-stage:focus-visible .crop-mask { outline: 3px solid var(--gold); }
+  .crop-frame { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  .crop-frame img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; pointer-events: none; -webkit-user-drag: none; }
+  .crop-mask { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 200vmax rgba(18, 10, 13, .72); outline: 2px solid rgba(255, 248, 242, .9);
+    pointer-events: none; }
+  .crop-mask.tile { border-radius: 30%; }
+  .crop-bottom { padding: 12px 20px calc(env(safe-area-inset-bottom, 0px) + 18px); display: grid; gap: 14px; max-width: 480px; width: 100%; margin: 0 auto; }
+  .crop-zoom { display: flex; align-items: center; gap: 12px; color: #E8C3CD; font-size: 20px; }
+  .crop-zoom input { flex: 1; accent-color: var(--gold); min-height: 32px; }
+  .crop-bottom .hint { margin: 0; text-align: center; color: #E8C3CD; font-size: 14px; }
   /* In-app confirm, used in place of window.confirm (which shows the site's address as its title). */
   dialog.ask { border: 0; padding: 0; margin: auto; width: calc(100% - 40px); max-width: 400px; background: var(--card); color: var(--ink);
     border-radius: 22px; box-shadow: 0 18px 50px rgba(30, 15, 20, .28); }
@@ -1607,6 +1628,7 @@
 <dialog class="tour" id="tour" aria-label="Welcome tour"></dialog>
 <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetBody"></div></dialog>
 <dialog class="ask" id="ask" aria-labelledby="askTitle"><div class="ask-in" id="askBody"></div></dialog>
+<dialog class="crop" id="crop" aria-labelledby="cropTitle"></dialog>
 <div class="toast" id="toast" role="status" popover="manual" hidden></div>
 <div class="toast" id="update" role="status" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg><span>A new version of Hints is ready</span><button type="button">Refresh</button></div>
 
@@ -1664,15 +1686,17 @@ const photoRowHtml = (name, key) => `<div class="photo-row">${tileAvatar(name, k
   <button class="btn small" type="button" data-pick-photo>${CAMERA} ${PHOTOS.has(key) ? "Change photo" : "Add a photo"}</button>
   ${PHOTOS.has(key) ? '<button class="btn small quiet danger" type="button" data-drop-photo>Remove</button>' : ""}</div>
   <input type="file" accept="image/*" data-photo-file hidden></div>`;
-function wirePhotoRow(el, save) {
+function wirePhotoRow(el, save, { tile = true } = {}) {
   const file = el.querySelector("[data-photo-file]"), pick = el.querySelector("[data-pick-photo]");
   if (!pick) return;
   pick.onclick = () => file.click();
   file.onchange = async () => {
     const f = file.files[0];
+    file.value = "";
     if (!f) return;
     pick.disabled = true;
-    try { await save(await squarePhoto(f)); } catch (e) { oops(e.message); pick.disabled = false; }
+    try { const photo = await squarePhoto(f, { tile }); if (photo) await save(photo); else pick.disabled = false; }
+    catch (e) { oops(e.message); pick.disabled = false; }
   };
   el.querySelector("[data-drop-photo]")?.addEventListener("click", async () => { try { await save(""); } catch (e) { oops(e.message); } });
 }
@@ -3840,21 +3864,111 @@ function shrinkPhoto(file, maxSide = 1024, quality = 0.8) {
   });
 }
 
-// Profile photo: center crop to a small square JPEG (about 10 to 20 KB).
-function squarePhoto(file, side = 256) {
+// Profile photo: opens the cropper so the person can move and zoom the photo in the frame, then saves a small
+// square JPEG (about 10 to 20 KB). Resolves null if they cancel. tile: true for circles and households (rounded square).
+function squarePhoto(file, { tile = false, side = 256 } = {}) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => {
-      const s = Math.min(img.naturalWidth, img.naturalHeight);
-      const c = document.createElement("canvas");
-      c.width = c.height = Math.min(side, s);
-      c.getContext("2d").drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      resolve(c.toDataURL("image/jpeg", 0.82));
-    };
+    img.onload = () => cropPhoto(img, { tile, side }).then((r) => { URL.revokeObjectURL(url); resolve(r); });
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't open that photo. Try another one.")); };
     img.src = url;
+  });
+}
+
+// Full screen "Move and zoom" step. Drag to move, pinch, scroll or the slider to zoom. The photo always fills the frame.
+function cropPhoto(img, { tile, side }) {
+  const dlg = $("#crop");
+  dlg.innerHTML = `<div class="crop-top"><button class="linkbtn" type="button" data-cancel>Cancel</button>
+      <h2 id="cropTitle">Move and zoom</h2><span class="linkbtn" aria-hidden="true" style="visibility:hidden">Cancel</span></div>
+    <div class="crop-stage" tabindex="0" aria-label="Photo. Drag or use arrow keys to move, plus and minus to zoom."><div class="crop-frame"><img alt="" src="${img.src}"><div class="crop-mask${tile ? " tile" : ""}"></div></div></div>
+    <div class="crop-bottom"><label class="crop-zoom"><span aria-hidden="true">&minus;</span><input type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom"><span aria-hidden="true">+</span></label>
+      <button class="btn primary wide" type="button" data-use>Use photo</button></div>`;
+  const stage = dlg.querySelector(".crop-stage"), frame = dlg.querySelector(".crop-frame"), pic = frame.querySelector("img");
+  const slider = dlg.querySelector("input[type=range]");
+  const W = img.naturalWidth, H = img.naturalHeight;
+  let F = 0, base = 1, z = 1, x = 0, y = 0;
+  const scale = () => base * z;
+  const clamp = () => {
+    x = Math.min(0, Math.max(F - W * scale(), x));
+    y = Math.min(0, Math.max(F - H * scale(), y));
+  };
+  const draw = () => { clamp(); pic.style.transform = `translate(${x}px, ${y}px) scale(${scale()})`; slider.value = z; };
+  // Zoom to z2 keeping the point (px, py) in the frame still.
+  const zoomTo = (z2, px = F / 2, py = F / 2) => {
+    z2 = Math.min(4, Math.max(1, z2));
+    const k = z2 / z;
+    x = px - (px - x) * k; y = py - (py - y) * k; z = z2; draw();
+  };
+  // Frame size follows the screen; keep the same part of the photo centered when it changes (rotation, resize).
+  const layout = () => {
+    const r = stage.getBoundingClientRect();
+    const F2 = Math.max(120, Math.min(r.width - 40, r.height - 40, 420));
+    const cx = F ? (F / 2 - x) / scale() : W / 2, cy = F ? (F / 2 - y) / scale() : H / 2;
+    F = F2; base = F / Math.min(W, H);
+    frame.style.width = frame.style.height = F + "px";
+    pic.style.width = W + "px"; pic.style.height = H + "px";
+    x = F / 2 - cx * scale(); y = F / 2 - cy * scale(); draw();
+  };
+  const local = (e) => { const r = frame.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+
+  // Pointers: one finger moves, two fingers pinch.
+  const pts = new Map();
+  let last = null;
+  const pinch = () => { const [a, b] = [...pts.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 }; };
+  stage.addEventListener("pointerdown", (e) => {
+    stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    stage.classList.add("dragging"); last = pts.size === 2 ? pinch() : null;
+  });
+  stage.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 1) { x += dx; y += dy; draw(); }
+    else if (pts.size === 2) {
+      const now = pinch();
+      if (last) {
+        const [lx, ly] = local({ clientX: now.cx, clientY: now.cy });
+        x += now.cx - last.cx; y += now.cy - last.cy;
+        zoomTo(z * now.d / last.d, lx, ly);
+      }
+      last = now;
+    }
+  });
+  const up = (e) => { pts.delete(e.pointerId); last = pts.size === 2 ? pinch() : null; if (!pts.size) stage.classList.remove("dragging"); };
+  stage.addEventListener("pointerup", up);
+  stage.addEventListener("pointercancel", up);
+  stage.addEventListener("wheel", (e) => { e.preventDefault(); const [px, py] = local(e); zoomTo(z * Math.exp(-e.deltaY / 400), px, py); }, { passive: false });
+  slider.addEventListener("input", () => zoomTo(+slider.value));
+  stage.addEventListener("keydown", (e) => {
+    const step = 12, keys = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+    if (keys[e.key]) { x += keys[e.key][0]; y += keys[e.key][1]; draw(); }
+    else if (e.key === "+" || e.key === "=") zoomTo(z * 1.1);
+    else if (e.key === "-") zoomTo(z / 1.1);
+    else return;
+    e.preventDefault();
+  });
+
+  return new Promise((resolve) => {
+    let result = null;
+    const ro = new ResizeObserver(layout);
+    const finish = (r) => { result = r; dlg.close(); };
+    dlg.querySelector("[data-cancel]").onclick = () => finish(null);
+    dlg.querySelectorAll("[data-use]").forEach((b) => (b.onclick = () => {
+      const s = F / scale(), out = Math.round(Math.min(side, s));
+      const c = document.createElement("canvas");
+      c.width = c.height = out;
+      const g = c.getContext("2d");
+      g.imageSmoothingQuality = "high";
+      g.drawImage(img, -x / scale(), -y / scale(), s, s, 0, 0, out, out);
+      finish(c.toDataURL("image/jpeg", 0.82));
+    }));
+    dlg.addEventListener("close", () => { ro.disconnect(); dlg.innerHTML = ""; resolve(result); }, { once: true });
+    dlg.showModal();
+    ro.observe(stage);
+    layout();
+    stage.focus({ preventScroll: true });
   });
 }
 
@@ -5102,7 +5216,7 @@ function editManagedProfile(member, name) {
       <label class="field"><span>Allergies and hard nos</span><textarea class="input" name="avoid" maxlength="300">${esc(p.avoid || "")}</textarea></label>
       <button class="btn primary wide" type="submit">Save</button>
     </form>`, (el) => {
-      wirePhotoRow($("#mgPhoto", el), async (photo) => { await api("profile", { as: member.id, photo }); closeSheet(); toast(photo ? "Photo saved" : "Photo removed"); state.stale = true; render(); });
+      wirePhotoRow($("#mgPhoto", el), async (photo) => { await api("profile", { as: member.id, photo }); closeSheet(); toast(photo ? "Photo saved" : "Photo removed"); state.stale = true; render(); }, { tile: false });
       wireForm($("#mgProfileForm", el), async (d) => {
         if ((d.bm && !d.bd) || (!d.bm && d.bd)) throw new Error("Pick both the month and the day, or neither.");
         const tags = (v) => v.split(",").map((x) => x.trim()).filter(Boolean);
@@ -6694,10 +6808,14 @@ async function renderProfileEdit() {
   $("#pickPhoto", v).onclick = () => file.click();
   file.onchange = async () => {
     const f = file.files[0];
+    file.value = "";
     if (!f) return;
     const btn = $("#pickPhoto", v);
     btn.disabled = true;
-    try { await api("profile", { photo: await squarePhoto(f) }); state.stale = true; toast("Photo saved"); $("#mePhoto", v).innerHTML = avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"'); }
+    try {
+      const photo = await squarePhoto(f);
+      if (!photo) { btn.disabled = false; return; }
+      await api("profile", { photo }); state.stale = true; toast("Photo saved"); $("#mePhoto", v).innerHTML = avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"'); }
     catch (e) { oops(e.message); }
     btn.disabled = false;
   };
