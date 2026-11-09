@@ -1,6 +1,6 @@
 # Plan: Notifications
 
-Status: building (Nov 2026).
+Status: shipped (Nov 2026).
 
 ## Problem
 
@@ -31,7 +31,7 @@ Apple only allows web notifications from an app on the home screen (iOS 16.4 or 
 
 ## Data
 
-Migration `0024_push.sql`: `push_subs` (endpoint, member, keys), `app_keys`, `push_sent`, and `members.notify` (JSON switches; missing = all on).
+Migration `0026_push.sql`: `push_subs` (endpoint, member, keys), `app_keys`, `push_sent`, and `members.notify` (JSON switches; missing = all on).
 
 ## API
 

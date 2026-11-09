@@ -5565,6 +5565,81 @@ function setMotion(on) {
   if (on) delete root.dataset.motion; else root.dataset.motion = "off";
 }
 
+// ---------- notifications ----------
+// Web Push, per device. iPhones only allow it from the home screen app (iOS 16.4+). The server side is src/push.js.
+const PUSH_KINDS = [["wishes", "New wishes", "When someone adds to their list (at most once an hour)"],
+  ["birthdays", "Birthdays and Christmas", "Two weeks and three days before, and in December if you still need gifts"],
+  ["groupGifts", "Group gifts", "When someone starts one you can chip in on"]];
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+function keyBytes(b64) {
+  const t = b64.replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(t + "===".slice((t.length + 3) % 4)), (c) => c.charCodeAt(0));
+}
+async function pushSub() {
+  const reg = await navigator.serviceWorker.ready;
+  return { reg, sub: await reg.pushManager.getSubscription() };
+}
+async function paintPush(card) {
+  if (!card) return;
+  const iOS = isAppleMobile();
+  if (!pushSupported()) {
+    card.innerHTML = iOS && !isStandalone()
+      ? `<p class="sub">On iPhone and iPad, notifications work from the Hints app on your home screen. Add it there, open it, and turn them on here.</p>
+        <button class="btn wide" type="button" id="pushInstall">Show me how</button>`
+      : `<p class="sub">This browser can't show notifications. Try Chrome, or Safari on a newer iPhone.</p>`;
+    $("#pushInstall", card)?.addEventListener("click", () => startInstall());
+    return;
+  }
+  if (Notification.permission === "denied") {
+    card.innerHTML = `<p class="sub">Notifications are blocked for Hints on this device. Turn them on in your ${iOS ? "iPhone's Settings > Notifications > Hints" : "browser or phone settings"}, then come back.</p>`;
+    return;
+  }
+  let sub = null, reg = null;
+  try { ({ reg, sub } = await pushSub()); } catch {}
+  if (!sub) {
+    card.innerHTML = `<p class="sub">Get a heads up when someone adds wishes, a birthday is coming, or a group gift starts.</p>
+      <button class="btn primary wide" type="button" id="pushOn">Turn on notifications</button>`;
+    $("#pushOn", card).onclick = async (e) => {
+      const b = e.currentTarget;
+      b.disabled = true;
+      try {
+        if ((await Notification.requestPermission()) !== "granted") { paintPush(card); return; }
+        const { key } = await api("push/key");
+        const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+        await api("push/subscribe", { subscription: s.toJSON() });
+        buzz();
+        toast("Notifications are on");
+        paintPush(card);
+      } catch (err) { toast(err.message || "That didn't work. Try again."); b.disabled = false; }
+    };
+    return;
+  }
+  // Keep the server's copy current (it drops ones the push service says are gone).
+  api("push/subscribe", { subscription: sub.toJSON() }).catch(() => {});
+  const prefs = state.me.notify || {};
+  card.innerHTML = `<p class="sub">On for this device.</p>
+    ${PUSH_KINDS.map(([k, t, d]) => swRow(`push_${k}`, t, d, prefs[k] !== false).replace('type="button"', `type="button" data-push-kind="${k}"`)).join("")}
+    <div class="actions"><button class="btn" type="button" id="pushTest">Send a test</button><button class="btn quiet danger" type="button" id="pushOff">Turn off here</button></div>`;
+  card.querySelectorAll("[data-push-kind]").forEach((b) => (b.onclick = async () => {
+    const on = b.getAttribute("aria-checked") !== "true";
+    b.setAttribute("aria-checked", String(on));
+    buzz();
+    try { const r = await api("push/prefs", { [b.dataset.pushKind]: on }); state.me.notify = r.notify; }
+    catch (err) { b.setAttribute("aria-checked", String(!on)); toast(err.message); }
+  }));
+  $("#pushTest", card).onclick = async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try { await api("push/test", {}); toast("Sent. It should pop up in a moment."); } catch (err) { toast(err.message); }
+    finally { b.disabled = false; }
+  };
+  $("#pushOff", card).onclick = async () => {
+    try { await api("push/unsubscribe", { endpoint: sub.endpoint }); await sub.unsubscribe(); toast("Notifications are off on this device"); }
+    catch (err) { toast(err.message); }
+    paintPush(card);
+  };
+}
+
 async function renderSettings() {
   const iOS = isAppleMobile();
   const root = document.documentElement;
@@ -5608,6 +5683,9 @@ async function renderSettings() {
         </div>
       </form>
     </div>
+
+    <div class="label">Notifications${tip("New wishes, birthday reminders and group gifts. Turned on per phone or computer.")}</div>
+    <div class="set-card" id="pushCard"><p class="sub">Checking this device...</p></div>
 
     <div class="label">The app</div>
     <div class="set-card">
@@ -5705,6 +5783,7 @@ async function renderSettings() {
       finally { b.disabled = false; }
     }));
     $("#installSettings", v)?.addEventListener("click", () => startInstall());
+    paintPush($("#pushCard", v));
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
     $("#removePin", v)?.addEventListener("click", async () => {
       try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { toast(e.message); }

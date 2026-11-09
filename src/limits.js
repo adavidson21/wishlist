@@ -37,6 +37,10 @@ export const LIMITS = {
   imagePerMember: [[400, 3600]],
   // Hidden chat about a person.
   chatSendsPerMember: [[60, 3600], [300, 86400]],
+  // Notifications: devices per person (the oldest is dropped past this), test pushes, and group gift alerts started.
+  pushSubsPerMember: 15,
+  pushTestPerMember: [[10, 3600]],
+  groupAlertsPerMemberDay: [10, 86400],
   // Whole app: Gemini calls per day (UTC). GEMINI_DAILY_CAP in wrangler.jsonc vars overrides it.
   geminiPerDay: 1500,
   // Request bodies.
