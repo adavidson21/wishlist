@@ -1589,6 +1589,80 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
   return { ...out, clean };
 }
 
+// ---------- Add to Hints from the iPhone Share button (POST quickadd) ----------
+
+// Turn "Check out Lip Oil on Ulta Beauty!" into "Lip Oil". Must match shareHint() in public/index.html.
+function shareHint(t) {
+  t = t.replace(/\s+/g, " ").trim()
+    .replace(/^(hey[,!]?\s*)?(check (this|it) out|check out( this( product| item)?)?|look (at )?(what|this)( i found)?|i found this|found this|shop( now)?|buy( now)?)\s*(on|at|from)?\s*[:!.\-]*\s*/i, "")
+    .replace(/(\s+(on|at|from|via)\s+|\s+[|\-–]\s+)[\w&'. ]{2,30}[!.]*$/i, (x) => (/\b(app|beauty|store|shop|amazon|target|walmart|sephora|ulta|etsy)\b/i.test(x) ? "" : x))
+    .replace(/^[\w&'. ]{2,30}:\s*/, (x) => (/\b(app|beauty|store|shop|amazon|target|walmart|sephora|ulta|etsy)\b/i.test(x) ? "" : x))
+    .replace(/^["'\s:!.\-([]+|["'\s:!.\-([]+$/g, "");
+  return t.length >= 3 && t.length <= 150 && /[a-z]/i.test(t) ? t : "";
+}
+
+// What a Shortcut sends: JSON ({ text } or { url }), a form, or the shared text as the whole body.
+async function sharedInput(req) {
+  if (Number(req.headers.get("content-length") || 0) > 20_000) fail(413, "That's too much to send at once.");
+  const raw = (await req.text().catch(() => "")).slice(0, 20_000);
+  let b = {};
+  try { const j = JSON.parse(raw); if (j && typeof j === "object") b = j; } catch {
+    const form = new URLSearchParams(raw);
+    b = form.has("text") || form.has("url") ? Object.fromEntries(form) : { text: raw };
+  }
+  const str = (v) => (typeof v === "string" ? v : Array.isArray(v) ? v.filter((x) => typeof x === "string").join(" ") : "");
+  return { key: str(b.key), text: [str(b.url), str(b.text)].join(" ").replace(/\s+/g, " ").trim() };
+}
+
+async function quickAdd(req, env) {
+  const input = await sharedInput(req);
+  const key = (req.headers.get("x-hints-key") || input.key || "").trim();
+  if (!/^hk_[A-Za-z0-9]{40}$/.test(key)) fail(401, "This Shortcut needs your add key. Get one in Hints: Settings > Add from the Share button.");
+  const me = await env.DB.prepare("SELECT id FROM members WHERE add_key_hash = ?").bind(await sha256(key)).first();
+  if (!me) fail(401, "That add key doesn't work anymore. Make a new one in Hints: Settings > Add from the Share button.");
+  await rateLimit(env, `quickadd:${me.id}`, ABUSE.quickAddPerMember, "That's a lot of links for now. Try again in a bit.");
+
+  const shared = input.text.slice(0, LIMITS.url + 300);
+  if (!/(https?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\/)/i.test(shared)) fail(400, "No link in what you shared. Try sharing the product page.");
+  const url = link(sharedUrl(shared).slice(0, LIMITS.url));
+  const at = shared.indexOf(sharedUrl(shared));
+  const hint = shareHint(at >= 0 ? `${shared.slice(0, at)} ${shared.slice(at + sharedUrl(shared).length)}` : "");
+
+  const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL").bind(me.id).first();
+  if (n >= ABUSE.itemsPerMember) fail(409, `Your list is full (${ABUSE.itemsPerMember} wishes). Remove a few in Hints to add more.`);
+
+  // Fill it in like the Fill button. Over the autofill limit (or if the store fights back), save the link with a guess.
+  let p = null;
+  try {
+    const ai = await underLimit(env, `preview:${me.id}`, ABUSE.previewPerMember);
+    p = await previewLink(env, url, { ai, hint: hint.slice(0, 150) });
+  } catch (err) {
+    console.log("quickadd preview failed", String(err?.message || err));
+  }
+  const saveUrl = p?.clean || url;
+  const dupe = await env.DB.prepare("SELECT title, draft FROM items WHERE owner_id = ? AND url = ? AND removed_at IS NULL").bind(me.id, saveUrl).first();
+  if (dupe) return `Already in Hints${dupe.draft ? " (in Maybe)" : ""}: ${dupe.title}`;
+
+  const site = new URL(saveUrl).hostname.replace(/^www\./, "");
+  // Share text beats a name guessed from the link, same as in the app.
+  const title = ((p?.found && p.title) || hint || p?.title || `Something from ${site}`).replace(/\s+/g, " ").trim().slice(0, LIMITS.title);
+  const price = p?.price != null ? cents(p.price) : null;
+  const image = p?.image ? imageLink(p.image) : null;
+  const t = now();
+  const id = newId();
+  const str = (v, max) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft, details_v) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, NULL, 1, ?)`,
+    // Not filled now (store blocked us, or over the limit): details_v 0 lets the app's details refresh try once more.
+    ).bind(id, me.id, title, saveUrl, price, t, t, image, image ? t : null, p?.found ? DETAILS_V : 0),
+    env.DB.prepare("UPDATE items SET price_auto = ?, quantity = 1, brand = ?, size = ?, color = ? WHERE id = ?")
+      .bind(price != null ? 1 : 0, str(p?.brand, LIMITS.brand), str(p?.size, LIMITS.size), str(p?.color, LIMITS.color), id),
+  ]);
+  console.log(`quickadd ${site} -> ${p?.found ? "filled" : "guess"}`);
+  return `Added to your Maybe list in Hints: ${title}`;
+}
+
 // ---------- clean up a wish name (the ✨ button) ----------
 
 const NAME_PROMPT = `You tidy up the name of one item on a gift wish list so family can tell at a glance what it is.
@@ -2284,7 +2358,7 @@ const handlers = {
     const solo = [...new Set([...people.filter((p) => !p.household_id).map((p) => p.id), ...(myHh ? [] : [me.id])])];
     const pets = await petsFor(env, Object.keys(households), solo);
     let pinCleared = null;
-    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, claim_hash IS NOT NULL AS has_link FROM members WHERE id = ?").bind(me.id).first();
+    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, claim_hash IS NOT NULL AS has_link, add_key_hash IS NOT NULL AS has_add_key FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
     if (me.pinClearedAt) {
       const by = me.pinClearedBy && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(me.pinClearedBy).first());
@@ -2303,6 +2377,8 @@ const handlers = {
         shareToken: prefsRow?.share_token || null,
         // You have a personal sign-in link (it can't be shown again, only replaced or turned off).
         hasLink: !!prefsRow?.has_link,
+        // You have an add key for the iPhone Shortcut (also can't be shown again).
+        hasAddKey: !!prefsRow?.has_add_key,
       },
       // How many wishes each person's list had when you last opened it, for the "N new" badges (any device).
       seen: Object.fromEntries(seenRows.map((r) => [r.owner_id, r.seen_count])),
@@ -4115,6 +4191,33 @@ const handlers = {
     const token = b.on ? shareToken() : null;
     await env.DB.prepare("UPDATE members SET share_token = ? WHERE id = ?").bind(token, owner).run();
     return { token };
+  },
+
+  // The add key for the "Add to Hints" iPhone Shortcut (on: true makes a new one, the old one stops working;
+  // false turns it off). Shown once; only its hash is kept.
+  async "POST addkey"(req, env) {
+    const me = await auth(req, env);
+    const { on } = await body(req);
+    if (on) await rateLimit(env, `addkey:m:${me.id}`, ABUSE.addKeysPerMemberDay, "That's a lot of new keys today. Try again tomorrow.");
+    const key = on ? `hk_${newToken()}` : null;
+    await env.DB.prepare("UPDATE members SET add_key_hash = ? WHERE id = ?").bind(key ? await sha256(key) : null, me.id).run();
+    return { key };
+  },
+
+  // The iPhone Share button, through the "Add to Hints" Shortcut (iPhones don't let web apps into the Share menu;
+  // Android uses share_target in the manifest instead). No device sign-in: the x-hints-key header (or "key" in the
+  // body) is the person's add key. Body: { text } with the shared link, alone or inside text ("Check out X!
+  // https://..."), or { url }. The link is filled in like the Fill button and saved to Maybe, so nobody sees it
+  // until it's published. Answers with one plain sentence that the Shortcut shows as a notification.
+  async "POST quickadd"(req, env) {
+    const say = (msg, status = 200) => new Response(msg, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+    try {
+      return say(await quickAdd(req, env));
+    } catch (err) {
+      if (err instanceof HttpError) return say(err.message, err.status);
+      console.error("quickadd", err);
+      return say("Something went wrong. Try again.", 500);
+    }
   },
 
   async "POST signout"(req, env) {

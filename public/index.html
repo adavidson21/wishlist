@@ -7472,6 +7472,48 @@ function paintMyLink(card, fresh = null) {
   });
 }
 
+// ---------- Add to Hints from the iPhone Share button ----------
+// iPhones don't let web apps into the Share menu (Android gets share_target in the manifest), so a Shortcut does it:
+// it sends the shared link with the person's add key to POST /api/quickadd, which saves it to Maybe.
+// SHORTCUT_URL: the iCloud link to the shared "Add to Hints" Shortcut (empty = show how to build it instead).
+// How to make and share it: docs/plans/native-app.md.
+const SHORTCUT_URL = "";
+function paintAddKey(card, fresh = null) {
+  if (!card) return;
+  const build = `<details class="more" style="margin-top:10px"><summary>Build the Shortcut yourself</summary>
+      <ol class="steps-mini">
+        <li><b>1</b><span>Open the Shortcuts app, tap +, and name it <strong>Add to Hints</strong>.</span></li>
+        <li><b>2</b><span>Tap the (i) button and turn on <strong>Show in Share Sheet</strong>.</span></li>
+        <li><b>3</b><span>Add <strong>Get Contents of URL</strong>: <span style="user-select:all;overflow-wrap:anywhere">${esc(location.origin)}/api/quickadd</span>, Method POST, Header <strong>x-hints-key</strong> = your key, Request Body JSON with <strong>text</strong> = Shortcut Input.</span></li>
+        <li><b>4</b><span>Add <strong>Show Notification</strong> with <strong>Contents of URL</strong>.</span></li>
+      </ol></details>`;
+  card.innerHTML = fresh ? `<ol class="steps-mini" style="margin-top:0">
+        <li><b>1</b><span>Copy your add key. It won't be shown again.</span></li>
+        <li><b>2</b><span>${SHORTCUT_URL ? "Get the Shortcut and paste the key when it asks." : "Make the Shortcut (below) and paste the key into it."}</span></li>
+        <li><b>3</b><span>Share any product and pick <strong>Add to Hints</strong>. It lands in Maybe.</span></li>
+      </ol>
+      <div class="input" style="font-size:14px;overflow-wrap:anywhere;user-select:all;margin-top:12px">${esc(fresh)}</div>
+      <div class="actions" style="margin-top:12px"><button class="btn${SHORTCUT_URL ? "" : " primary"}" type="button" id="addKeyCopy">${COPY} Copy key</button>${SHORTCUT_URL ? `<a class="btn primary" href="${esc(SHORTCUT_URL)}" target="_blank" rel="noopener">Get the Shortcut</a>` : ""}</div>
+      ${SHORTCUT_URL ? "" : build}`
+    : state.me.hasAddKey ? `<p class="sub">Add to Hints is set up. New phone or lost the key? Make a new one and the old one stops working.</p>
+      <div class="actions"><button class="btn quiet danger" type="button" id="addKeyOff">Turn off</button><button class="btn" type="button" id="addKeyNew">Make a new key</button></div>`
+    : `<p class="sub">Share a product from Safari, Amazon or any app and it lands in your Maybe list. Takes a minute to set up.</p>
+      <button class="btn wide" type="button" id="addKeyNew">Set it up</button>`;
+  const set = async (on) => {
+    try {
+      const { key } = await api("addkey", { on });
+      state.me.hasAddKey = !!key;
+      paintAddKey(card, key);
+      if (!on) toast("Add to Hints turned off");
+    } catch (e) { toast(e.message); }
+  };
+  $("#addKeyNew", card)?.addEventListener("click", () => set(true));
+  $("#addKeyOff", card)?.addEventListener("click", () => set(false));
+  $("#addKeyCopy", card)?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(fresh); buzz(); toast("Key copied"); } catch { toast("Press and hold the key to copy it"); }
+  });
+}
+
 async function renderSettings() {
   const iOS = isAppleMobile();
   const root = document.documentElement;
@@ -7518,6 +7560,9 @@ async function renderSettings() {
 
     <div class="label">Sign-in link${tip("A link that signs you in on a new phone or computer. Keep it to yourself.")}</div>
     <div class="set-card" id="linkCard"></div>
+
+    ${iOS ? `<div class="label">Add from the Share button${tip("Share a product from Safari, Amazon or any app straight to your Maybe list.")}</div>
+    <div class="set-card" id="addKeyCard"></div>` : ""}
 
     <div class="label">Notifications${tip("New wishes, birthday reminders and group gifts. Turned on per phone or computer.")}</div>
     <div class="set-card" id="pushCard"><p class="sub">Checking this device...</p></div>
@@ -7620,6 +7665,7 @@ async function renderSettings() {
     $("#installSettings", v)?.addEventListener("click", () => startInstall());
     paintPush($("#pushCard", v));
     paintMyLink($("#linkCard", v));
+    paintAddKey($("#addKeyCard", v));
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
     $("#removePin", v)?.addEventListener("click", async () => {
       try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { oops(e.message); }
