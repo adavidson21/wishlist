@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 652" width="1200" height="652" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<rect width="1200" height="652" rx="24" fill="#FAF6F1"/>
+<text x="44" y="64" font-size="32" font-weight="800" fill="#2A1E22">Who sees what</text>
+<text x="44" y="98" font-size="19" fill="#6E5A60">Hints enforces this behind the scenes, not just by hiding things on screen. The person a gift is for can never see it.</text>
+<text x="720" y="136" font-size="17" font-weight="800" fill="#2A1E22" text-anchor="middle">You</text>
+<text x="880" y="136" font-size="17" font-weight="800" fill="#2A1E22" text-anchor="middle">Your circle</text>
+<text x="1060" y="136" font-size="17" font-weight="800" fill="#2A1E22" text-anchor="middle">The person it’s for</text>
+<rect x="28" y="150" width="1144" height="62" rx="16" fill="#fff" stroke="#E8DED6" stroke-width="1.5"/>
+<text x="52" y="178" font-size="20" font-weight="700" fill="#2A1E22">Wishes on your list</text>
+<text x="52" y="201" font-size="15.5" fill="#6E5A60">You choose which circles</text>
+<circle cx="720" cy="181.0" r="17" fill="#E3EFE8"/><path d="M713 181.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="880" cy="181.0" r="17" fill="#E3EFE8"/><path d="M873 181.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1060" y="187.0" font-size="15" fill="#6E5A60" text-anchor="middle">That’s you</text>
+<rect x="28" y="222" width="1144" height="62" rx="16" fill="#fff" stroke="#E8DED6" stroke-width="1.5"/>
+<text x="52" y="250" font-size="20" font-weight="700" fill="#2A1E22">Wishes still in “Maybe”</text>
+<text x="52" y="273" font-size="15.5" fill="#6E5A60">Drafts, just for you</text>
+<circle cx="720" cy="253.0" r="17" fill="#E3EFE8"/><path d="M713 253.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="880" cy="253.0" r="17" fill="#F6E1E6"/><path d="M874 247.0 l12 12 M886 247.0 l-12 12" stroke="#82263C" stroke-width="3.5" stroke-linecap="round"/>
+<text x="1060" y="259.0" font-size="15" fill="#6E5A60" text-anchor="middle">That’s you</text>
+<rect x="28" y="294" width="1144" height="62" rx="16" fill="#fff" stroke="#E8DED6" stroke-width="1.5"/>
+<text x="52" y="322" font-size="20" font-weight="700" fill="#2A1E22">What you’re getting someone</text>
+<text x="52" y="345" font-size="15.5" fill="#6E5A60">Others see “taken” so no doubles</text>
+<circle cx="720" cy="325.0" r="17" fill="#E3EFE8"/><path d="M713 325.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="880" cy="325.0" r="17" fill="#E3EFE8"/><path d="M873 325.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1060" cy="325.0" r="17" fill="#F6E1E6"/><path d="M1054 319.0 l12 12 M1066 319.0 l-12 12" stroke="#82263C" stroke-width="3.5" stroke-linecap="round"/>
+<rect x="28" y="366" width="1144" height="62" rx="16" fill="#fff" stroke="#E8DED6" stroke-width="1.5"/>
+<text x="52" y="394" font-size="20" font-weight="700" fill="#2A1E22">Your private gift ideas</text>
+<text x="52" y="417" font-size="15.5" fill="#6E5A60">Notes to yourself</text>
+<circle cx="720" cy="397.0" r="17" fill="#E3EFE8"/><path d="M713 397.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="880" cy="397.0" r="17" fill="#F6E1E6"/><path d="M874 391.0 l12 12 M886 391.0 l-12 12" stroke="#82263C" stroke-width="3.5" stroke-linecap="round"/>
+<circle cx="1060" cy="397.0" r="17" fill="#F6E1E6"/><path d="M1054 391.0 l12 12 M1066 391.0 l-12 12" stroke="#82263C" stroke-width="3.5" stroke-linecap="round"/>
+<rect x="28" y="438" width="1144" height="62" rx="16" fill="#fff" stroke="#E8DED6" stroke-width="1.5"/>
+<text x="52" y="466" font-size="20" font-weight="700" fill="#2A1E22">Suggestions you share</text>
+<text x="52" y="489" font-size="15.5" fill="#6E5A60">Ideas for the rest of the circle</text>
+<circle cx="720" cy="469.0" r="17" fill="#E3EFE8"/><path d="M713 469.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="880" cy="469.0" r="17" fill="#E3EFE8"/><path d="M873 469.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1060" cy="469.0" r="17" fill="#F6E1E6"/><path d="M1054 463.0 l12 12 M1066 463.0 l-12 12" stroke="#82263C" stroke-width="3.5" stroke-linecap="round"/>
+<rect x="28" y="510" width="1144" height="62" rx="16" fill="#fff" stroke="#E8DED6" stroke-width="1.5"/>
+<text x="52" y="538" font-size="20" font-weight="700" fill="#2A1E22">The chat about someone</text>
+<text x="52" y="561" font-size="15.5" fill="#6E5A60">The back channel</text>
+<circle cx="720" cy="541.0" r="17" fill="#E3EFE8"/><path d="M713 541.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="880" cy="541.0" r="17" fill="#E3EFE8"/><path d="M873 541.0 l5 5 9-10" fill="none" stroke="#2F5D4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1060" cy="541.0" r="17" fill="#F6E1E6"/><path d="M1054 535.0 l12 12 M1066 535.0 l-12 12" stroke="#82263C" stroke-width="3.5" stroke-linecap="round"/>
+<text x="44" y="626" font-size="15.5" fill="#6E5A60">Your circle means the people you share a circle with (like “Family Christmas”). People outside your circles see nothing.</text>
+</svg>

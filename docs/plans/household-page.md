@@ -1,6 +1,6 @@
 # Plan: Household page and pets
 
-Status: shipped (Nov 9, 2026). README "Household pages and pets" is the source of truth now.
+Status: shipped (Nov 9, 2026). `docs/DEVELOPERS.md` ("Household pages and pets") is the source of truth now.
 
 ## Decisions (Nov 9, 2026)
 
