@@ -75,7 +75,7 @@
   :root[data-text="sm"] { --z: .84; }
   :root[data-text="lg"] { --z: 1.03; }
   :root[data-text="xl"] { --z: 1.15; }
-  :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: var(--z); }
+  :is(main, .hero, dialog.sheet, dialog.ask, nav.tabs, .toast) { zoom: var(--z); }
   :root[data-text="xl"] nav.tabs { zoom: 1.03; }
   /* iPhones zoom the page when a box under 16px is tapped, so boxes stay at 16px or more on screen. */
   :is(input, textarea, select):not([type="checkbox"]):not([type="radio"]) { font-size: max(1em, calc(16px / var(--z))); }
@@ -852,6 +852,17 @@
   dialog.sheet::backdrop { background: rgba(30, 15, 20, .45); animation: fade .25s ease both; }
   .sheet-in { padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 22px); }
   .sheet-close { position: absolute; top: 14px; right: 14px; font-size: 26px; line-height: 1; }
+  /* In-app confirm, used in place of window.confirm (which shows the site's address as its title). */
+  dialog.ask { border: 0; padding: 0; margin: auto; width: calc(100% - 40px); max-width: 400px; background: var(--card); color: var(--ink);
+    border-radius: 22px; box-shadow: 0 18px 50px rgba(30, 15, 20, .28); }
+  dialog.ask[open] { animation: sheetPop .32s cubic-bezier(.2, 1.2, .4, 1) both; }
+  dialog.ask::backdrop { background: rgba(30, 15, 20, .5); animation: fade .2s ease both; }
+  .ask-in { padding: 22px 22px 18px; }
+  .ask-in h3 { font-family: var(--display); font-size: 21px; font-weight: 600; line-height: 1.25; margin: 0 0 8px; }
+  .ask-in p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.45; }
+  .ask-btns { display: flex; gap: 10px; margin-top: 20px; }
+  .ask-btns .btn { flex: 1; }
+  .ask-btns .btn.primary.danger { background: var(--err); border-color: var(--err); color: var(--card); }
   .grab { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
   .sheet h3 { font-family: var(--display); font-size: 25px; font-weight: 600; line-height: 1.2; margin: 0 52px 16px 0; }
   .sheet-sec { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 20px; }
@@ -1505,6 +1516,7 @@
 
 <dialog class="tour" id="tour" aria-label="Welcome tour"></dialog>
 <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetBody"></div></dialog>
+<dialog class="ask" id="ask" aria-labelledby="askTitle"><div class="ask-in" id="askBody"></div></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 <div class="toast" id="update" role="status" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg><span>A new version of Hints is ready</span><button type="button">Refresh</button></div>
 
@@ -1910,6 +1922,29 @@ function openSheet(html, onReady) {
 }
 function closeSheet() { if (sheet.open) sheet.close(); }
 sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
+
+// ---------- confirm (in-app, replaces window.confirm) ----------
+// ask("Remove Sam? They'll leave the circle.", { yes: "Remove", danger: true }) resolves true or false.
+// The first question becomes the heading and the rest the explanation.
+const askBox = $("#ask");
+function ask(msg, { yes = "OK", no = "Cancel", danger = false } = {}) {
+  const cut = msg.indexOf("? ");
+  const title = cut === -1 ? msg : msg.slice(0, cut + 1), body = cut === -1 ? "" : msg.slice(cut + 2);
+  $("#askBody").innerHTML = `<h3 id="askTitle">${esc(title)}</h3>${body ? `<p>${esc(body)}</p>` : ""}`
+    + `<div class="ask-btns"><button class="btn" type="button" data-ask="no">${esc(no)}</button>`
+    + `<button class="btn primary${danger ? " danger" : ""}" type="button" data-ask="yes">${esc(yes)}</button></div>`;
+  return new Promise((resolve) => {
+    const done = (v) => { askBox.onclick = askBox.oncancel = null; if (askBox.open) askBox.close(); resolve(v); };
+    askBox.onclick = (e) => {
+      if (e.target === askBox) return done(false);
+      const b = e.target.closest("[data-ask]");
+      if (b) done(b.dataset.ask === "yes");
+    };
+    askBox.oncancel = (e) => { e.preventDefault(); done(false); };
+    askBox.showModal();
+    askBox.querySelector('[data-ask="no"]').focus();
+  });
+}
 
 // Wires a form: collects named fields, runs submit, shows errors inline.
 function wireForm(form, submit) {
@@ -3604,7 +3639,7 @@ function editItem(item, opts = {}) {
       });
       $("#publishItem", el)?.addEventListener("click", () => confirmPublish(item));
       $("#removeItem", el)?.addEventListener("click", async () => {
-        if (!confirmRemove()) return;
+        if (!(await confirmRemove())) return;
         try { await api("item/remove", { id: item.id, as: asId || undefined }); closeSheet(); toast("Removed"); state.stale = true; render(); }
         catch (e) { toast(e.message); }
       });
@@ -3935,8 +3970,7 @@ function wireName(form, onRename = () => {}) {
   return { sync, set };
 }
 
-// Native confirm() is fine here: one tap, rare action.
-const confirmRemove = () => window.confirm("Remove this from your list?");
+const confirmRemove = () => ask("Remove this from your list?", { yes: "Remove", danger: true });
 
 // ---------- family ----------
 // "2 new" on a Family row: wishes added since you last opened that person's list. Kept on the server (GET me
@@ -4122,7 +4156,7 @@ function openHouseholds(gid) {
     });
     el.querySelectorAll("[data-out]").forEach((b) => (b.onclick = async () => {
       const name = b.dataset.out === state.me.id ? "yourself" : personName(b.dataset.out);
-      if (!window.confirm(`Take ${name} out of ${householdLabel(b.dataset.hh)}?`)) return;
+      if (!(await ask(`Take ${name} out of ${householdLabel(b.dataset.hh)}?`, { yes: "Take out", danger: true }))) return;
       b.disabled = true;
       try { await api("household/remove", { householdId: b.dataset.hh, memberId: b.dataset.out }); await back(b.dataset.out === state.me.id ? "You left that household" : `${name} is out`); }
       catch (e) { showErr(el, e); b.disabled = false; }
@@ -4712,7 +4746,7 @@ function wireManageCard(v, list, name, id) {
     if (item) editItem(item, { as: id });
   }));
   $("#mgOut", v)?.addEventListener("click", async () => {
-    if (!window.confirm(`Take ${name} out of your household? They stay in the same circles, and you still look after their list.`)) return;
+    if (!(await ask(`Take ${name} out of your household? They stay in the same circles, and you still look after their list.`, { yes: "Take out", danger: true }))) return;
     try { await api("household/remove", { memberId: id }); toast(`${name} is out of your household`); state.stale = true; render(); } catch (e) { toast(e.message); }
   });
   $("#mgMore", v).onclick = () => {
@@ -4728,11 +4762,11 @@ function wireManageCard(v, list, name, id) {
     });
   };
   const release = async () => {
-    if (!window.confirm(`Let ${name} sign in? They'll pick their name on the sign-in screen with your circle's code. From then on it's their own list: they won't see what's been bought, and you won't be able to edit it.`)) return;
+    if (!(await ask(`Let ${name} sign in? They'll pick their name on the sign-in screen with your circle's code. From then on it's their own list: they won't see what's been bought, and you won't be able to edit it.`, { yes: "Let them sign in" }))) return;
     try { await api("managed/release", { memberId: id }); toast(`${name} can sign in now`); state.stale = true; render(); } catch (e) { toast(e.message); }
   };
   const remove = async () => {
-    if (!window.confirm(`Remove ${name}? They'll leave every circle and nobody will see their list anymore.`)) return;
+    if (!(await ask(`Remove ${name}? They'll leave every circle and nobody will see their list anymore.`, { yes: "Remove", danger: true }))) return;
     try { await api("managed/remove", { memberId: id }); toast(`Removed ${name}`); state.stale = true; setTab("family"); } catch (e) { toast(e.message); }
   };
 }
@@ -4756,7 +4790,7 @@ function handOff(id, name) {
     el.querySelectorAll("[data-to]").forEach((b) => (b.onclick = async () => {
       const to = seen.get(b.dataset.to);
       const moves = hhName(to) && to.householdId !== baby?.householdId ? ` ${name} will move into ${hhName(to)}.` : "";
-      if (!window.confirm(`Hand ${name}'s list to ${to.name}? ${to.name} will look after it from now on.${moves}`)) return;
+      if (!(await ask(`Hand ${name}'s list to ${to.name}? ${to.name} will look after it from now on.${moves}`, { yes: "Hand it over" }))) return;
       b.disabled = true;
       try {
         const r = await api("managed/handoff", { memberId: id, toId: to.id });
@@ -5314,7 +5348,7 @@ function editPurchase(x, p, o) {
         render();
       });
       $("#unbuy", el)?.addEventListener("click", async () => {
-        if (!window.confirm(`Take back "${x.title}"? It won't count as purchased anymore.`)) return;
+        if (!(await ask(`Take back "${x.title}"? It won't count as purchased anymore.`, { yes: "Take back", danger: true }))) return;
         try { await setPurchase(x, p, o, false); closeSheet(); toast("Taken back"); render(); } catch (e) { toast(e.message); }
       });
     });
@@ -5700,7 +5734,7 @@ function editIdea(idea, subjectId, opts = {}) {
         render();
       });
       $("#removeIdea", el)?.addEventListener("click", async () => {
-        if (!window.confirm("Delete this idea?")) return;
+        if (!(await ask("Delete this idea?", { yes: "Delete", danger: true }))) return;
         try { await api("idea/remove", { id: idea.id }); closeSheet(); toast("Deleted"); render(); }
         catch (e) { toast(e.message); }
       });
@@ -6706,7 +6740,7 @@ async function renderSettings() {
     v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
       const name = groupName(b.dataset.leave);
       const admin = isAdmin(state.groups.find((g) => g.id === b.dataset.leave)) ? " You're its admin, so that passes to whoever has been in it longest. To pick who, use Manage on the Circles tab first." : "";
-      if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.${admin}`)) return;
+      if (!(await ask(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.${admin}`, { yes: "Leave", danger: true }))) return;
       try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
     }));
     wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
@@ -6730,7 +6764,7 @@ const isAdmin = (g) => !!g && g.createdBy === state.me.id;
 function wireClearPin(el, reload) {
   el.querySelectorAll("[data-clear-pin]").forEach((b) => (b.onclick = async () => {
     const who = personName(b.dataset.clearPin);
-    if (!window.confirm(`Clear ${who}'s PIN? Only do this if they forgot it. Anyone could then sign in as them until they set a new one, and they'll see that you cleared it.`)) return;
+    if (!(await ask(`Clear ${who}'s PIN? Only do this if they forgot it. Anyone could then sign in as them until they set a new one, and they'll see that you cleared it.`, { yes: "Clear PIN", danger: true }))) return;
     b.disabled = true;
     try { await api("pin/clear", { memberId: b.dataset.clearPin }); await reload(`${who}'s PIN is cleared. They can sign in and set a new one.`); }
     catch (e) { toast(e.message); b.disabled = false; }
@@ -6775,7 +6809,7 @@ function openCircleManage(gid) {
     wireClearPin(el, reload);
     el.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = async () => {
       const who = personName(b.dataset.kick);
-      if (!window.confirm(`Take ${who} out of ${g.name}? They won't see anyone's lists here, and nobody here will see theirs. They can rejoin with the invite code.`)) return;
+      if (!(await ask(`Take ${who} out of ${g.name}? They won't see anyone's lists here, and nobody here will see theirs. They can rejoin with the invite code.`, { yes: "Take out", danger: true }))) return;
       b.disabled = true;
       try { await api("family/remove", { groupId: gid, memberId: b.dataset.kick }); await reload(`${who} is out of ${g.name}`); }
       catch (e) { toast(e.message); b.disabled = false; }
@@ -6783,7 +6817,7 @@ function openCircleManage(gid) {
     const af = $("#adminForm", el);
     if (af) wireForm(af, async ({ memberId }) => {
       const who = personName(memberId);
-      if (!window.confirm(`Make ${who} the admin of ${g.name}? You won't be able to manage it anymore unless they hand it back.`)) return;
+      if (!(await ask(`Make ${who} the admin of ${g.name}? You won't be able to manage it anymore unless they hand it back.`, { yes: "Make admin" }))) return;
       await api("family/admin", { groupId: gid, memberId });
       await reload(`${who} is now the admin`);
     });
@@ -6840,20 +6874,20 @@ function wireHousehold(v, reload) {
   wireClearPin(v, reload);
   v.querySelectorAll("[data-hh-out]").forEach((b) => (b.onclick = async () => {
     const name = hh.members.find((m) => m.id === b.dataset.hhOut)?.name || "them";
-    if (!window.confirm(`Take ${name} out of your household? They'll leave any circle they were only in through it.`)) return;
+    if (!(await ask(`Take ${name} out of your household? They'll leave any circle they were only in through it.`, { yes: "Take out", danger: true }))) return;
     try { await api("household/remove", { memberId: b.dataset.hhOut }); reload(`${name} is out of your household`); } catch (e) { toast(e.message); }
   }));
   wireForm($("#hhNameForm", v), async ({ name }) => { await api("household/rename", { name }); reload("Household name saved"); });
   v.querySelectorAll("[data-hh-circle]").forEach((b) => (b.onclick = async () => {
     const on = b.getAttribute("aria-checked") !== "true";
     const g = groupName(b.dataset.hhCircle);
-    if (!on && !window.confirm(`Take your household out of ${g}? Anyone who's only in ${g} through your household will leave it.`)) return;
+    if (!on && !(await ask(`Take your household out of ${g}? Anyone who's only in ${g} through your household will leave it.`, { yes: "Take out", danger: true }))) return;
     b.disabled = true;
     try { await api("household/circle", { groupId: b.dataset.hhCircle, on }); buzz(); reload(on ? `Your household is in ${g}` : `Your household is out of ${g}`); }
     catch (e) { toast(e.message); b.disabled = false; }
   }));
   $("#hhLeave", v).onclick = async () => {
-    if (!window.confirm("Leave your household? You'll leave any circle you were only in through it. Your list stays the same.")) return;
+    if (!(await ask("Leave your household? You'll leave any circle you were only in through it. Your list stays the same.", { yes: "Leave", danger: true }))) return;
     try { await api("household/remove", { memberId: state.me.id }); reload("You left your household"); } catch (e) { toast(e.message); }
   };
 }
