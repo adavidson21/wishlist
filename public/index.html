@@ -3568,14 +3568,15 @@ function wireAutofill(form) {
     // Blocked stores get looked up through Google Search, which takes a few seconds. Say so instead of looking stuck.
     slow = setTimeout(() => { if (mine === seq) say("Still looking. Some stores take a few seconds..."); }, 3500);
     try {
-      const r = await api("preview", { url: v }).catch((e) => {
+      const r = await api("preview", { url: v, hint }).catch((e) => {
         if (!hint) throw e;
         return { site: "the link" };
       });
       if (mine !== seq) return;
       // Swap in the tidied link (no tracking junk) if the box still holds what we looked up.
       if (r.clean && r.clean !== v && url.value.trim() === v) { url.value = r.clean; last = r.clean; }
-      if (!r.title && hint) r.title = hint;
+      // The store app's share text names the product better than words guessed from the link.
+      if (hint && (!r.title || r.guessed)) { r.title = hint; r.guessed = false; }
       if (r.image) { form.dataset.image = r.image; form.dataset.imageFor = url.value.trim(); } else { delete form.dataset.image; }
       // Sizes and colors the store offers (only the wish form listens).
       if (r.sizes?.length || r.colors?.length || r.size || r.color) form.dispatchEvent(Object.assign(new CustomEvent("linkoptions", { detail: r }), { force }));

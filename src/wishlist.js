@@ -1038,7 +1038,7 @@ function cleanTitle(title, host, siteName) {
 
 // Last resort when a store blocks us: turn the URL slug into a name ("/Cozy-Slippers/dp/..." -> "Cozy Slippers").
 function titleFromPath(u) {
-  const parts = u.pathname.split("/").filter((p) => p && !/^(dp|p|product|products|ip|gp|item|itm|s)$/i.test(p) && !/^[A-Z0-9]{8,}$/.test(p));
+  const parts = u.pathname.split("/").filter((p) => p && !/^(dp|p|product|products|ip|gp|item|itm|s)$/i.test(p) && !/^(?=.*\d)[a-z0-9]{8,}$/i.test(p));
   const slug = parts.sort((a, b) => b.length - a.length)[0];
   if (!slug || slug.length < 6 || /^\d+$/.test(slug)) return null;
   const words = decodeURIComponent(slug).replace(/\.\w+$/, "").replace(/[-_+]+/g, " ").trim();
@@ -1095,13 +1095,14 @@ async function safeFetch(url, init = {}, hops = 5) {
 }
 
 // Fetches a page like a browser would. Returns the final URL after redirects and the HTML ("" if blocked or not HTML).
+const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 async function readPage(url, timeoutMs = 6000) {
   let html = "", finalUrl = url, status = 0;
   try {
     const res = await safeFetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
       headers: {
-        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+        "user-agent": BROWSER_UA,
         accept: "text/html,application/xhtml+xml",
         "accept-language": "en-US,en;q=0.9",
       },
@@ -1118,7 +1119,7 @@ async function readPage(url, timeoutMs = 6000) {
   return { html, finalUrl, status };
 }
 
-const BOT_PAGE = /robot check|robot or human|security check|security verification|are you a (robot|human)|captcha|access denied|just a moment|attention required|pardon our interruption|verify you are human|page not found|^amazon\.com$/i;
+const BOT_PAGE = /robot check|robot or human|security check|security verification|are you a (robot|human)|captcha|access denied|just a moment|attention required|pardon our interruption|verify you are human|page not found|sorry! something went wrong|^amazon\.com$/i;
 
 // Tracking junk that changes nothing about the product. Variant, size, color and sku parameters stay.
 const TRACKING = /^(utm_\w+|gclid|gclsrc|gbraid|wbraid|dclid|fbclid|msclkid|mc_[ce]id|igshid|si|ref|ref_|refRID|_encoding|psc|pd_rd_\w+|pf_rd_\w+|content-id|crid|sprefix|qid|sr|keywords|dib|dib_tag|tag|linkCode|linkId|ascsubtag|th|smid|spLa|campaign|cmpid|cid|clickid|irclickid|irgwc|affid|afsrc|ranMID|ranEAID|ranSiteID|sharedid|share_id|epik|_branch_\w+|ga_\w+|clkid|athbdg|athcpid|athpgid|athznid|athieid|athena|adgrpid|hv\w+|lnk|intsrc|cm_\w+|srsltid|nci|cjevent|sscid|aff_\w+|source|src|from)$/i;
@@ -1127,11 +1128,52 @@ function cleanLink(u) {
   const out = new URL(u);
   out.hash = "";
   for (const k of [...out.searchParams.keys()]) if (TRACKING.test(k)) out.searchParams.delete(k);
-  if (/(^|\.)amazon\.[a-z.]+$/i.test(out.hostname)) {
-    const asin = out.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/asin)\/([A-Z0-9]{10})(?:[/?]|$)/i)?.[1];
-    if (asin) return `https://${out.hostname}/dp/${asin.toUpperCase()}`;
-  }
+  const asin = amazonAsin(out);
+  if (asin) return `https://${out.hostname}/dp/${asin}`;
   return out.toString().replace(/\?$/, "");
+}
+
+// ---------- Amazon ----------
+// Amazon blocks most requests from cloud servers, so its pages usually can't be read. These helpers get what we
+// can without the page: the real product link behind a share link, its ASIN, and the main photo.
+const isAmazon = (u) => /(^|\.)amazon\.[a-z.]+$/i.test(u.hostname);
+const amazonAsin = (u) => (isAmazon(u) ? u.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/asin)\/([A-Z0-9]{10})(?:[/?]|$)/i)?.[1]?.toUpperCase() || null : null);
+// Short links from the Amazon app's Share button (a.co/d/..., amzn.to/...).
+const SHORT_LINK = /^(www\.)?(a\.co|amzn\.to|amzn\.eu|amzn\.asia|amzn\.com)$/i;
+// Follows a share link's redirects until it reaches an Amazon product page. Returns the link unchanged if it
+// isn't a share link or the redirects don't lead anywhere useful.
+async function resolveShortLink(u) {
+  if (!SHORT_LINK.test(u.hostname)) return u;
+  let cur = u;
+  try {
+    for (let i = 0; i < 5 && fetchable(cur); i++) {
+      const res = await fetch(cur.toString(), { redirect: "manual", signal: AbortSignal.timeout(4000), headers: { "user-agent": BROWSER_UA } });
+      res.body?.cancel().catch(() => {});
+      const loc = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+      if (!loc) break;
+      cur = new URL(loc, cur);
+      if (amazonAsin(cur)) return cur;
+    }
+  } catch {}
+  return amazonAsin(cur) ? cur : u;
+}
+// Amazon's main product photo by ASIN, from the image links Amazon gives affiliate widgets. Both return a tiny
+// placeholder when there's no photo, so anything under 1 KB doesn't count.
+async function amazonImage(asin) {
+  const tries = [
+    `https://ws-na.amazon-adsystem.com/widgets/q?_encoding=UTF8&ASIN=${asin}&Format=_SL500_&ID=AsinImage&MarketPlace=US&ServiceVersion=20070822&WS=1`,
+    `https://m.media-amazon.com/images/P/${asin}.01._SCLZZZZZZZ_.jpg`,
+  ];
+  for (const u of tries) {
+    try {
+      const res = await safeFetch(u, { signal: AbortSignal.timeout(4000) });
+      if (!res) continue;
+      if (!res.ok || !/^image\//i.test(res.headers.get("content-type") || "")) { res.body?.cancel().catch(() => {}); continue; }
+      const size = (await res.arrayBuffer()).byteLength;
+      if (size >= 1024) return imageLink(res.finalUrl.toString());
+    } catch {}
+  }
+  return null;
 }
 
 // Previews are cached for a day per link (Cloudflare's edge cache, nothing stored in D1), so the same link
@@ -1200,9 +1242,15 @@ async function isImage(u) {
     return false;
   }
 }
-async function lookupLink(env, url) {
+// hints: words that came with the link (share text, the link's own words). Only used to help find the product.
+async function lookupLink(env, url, hints = []) {
   if (!env.GEMINI_API_KEY) return null;
-  const parts = [{ text: url }];
+  let msg = url;
+  const asin = amazonAsin(new URL(url));
+  if (asin) msg += `\nThis is an Amazon product. Its ASIN (Amazon's product ID) is ${asin}. Amazon pages often can't be opened, so search Google for "${asin}" and use the result for this exact ASIN.`;
+  const extra = hints.filter(Boolean);
+  if (extra.length) msg += `\nWords that came with the link (may help you find it, may be incomplete): ${extra.join(" / ")}`;
+  const parts = [{ text: msg }];
   // URL context lets Gemini open the page itself; if this model doesn't offer it, search alone still helps.
   let r = await callGemini(env, LINK_PROMPT, parts, LINK_SCHEMA, 25000, undefined, [{ url_context: {} }, { google_search: {} }]);
   if (r.error && r.status === 400) r = await callGemini(env, LINK_PROMPT, parts, LINK_SCHEMA, 25000, undefined, [{ google_search: {} }]);
@@ -1227,7 +1275,7 @@ const LIVE_TTL = 12 * 3600, LIVE_MISS_TTL = 6 * 3600;
 const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/${encodeURIComponent(u)}`);
 async function livePrice(env, rawUrl, { ai = true } = {}) {
   let clean;
-  try { clean = cleanLink(link(rawUrl)); } catch { return null; }
+  try { clean = cleanLink(await resolveShortLink(new URL(link(rawUrl)))); } catch { return null; }
   if (!clean) return null;
   try { const hit = await caches.default.match(liveKey(clean)); if (hit) return await hit.json(); } catch {}
   const url = new URL(clean);
@@ -1258,9 +1306,15 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
 }
 
 // ai: when the store blocks us, look it up with Gemini (only for the Fill button, not background lookups).
-async function previewLink(env, rawUrl, { ai = false } = {}) {
-  const clean = cleanLink(link(rawUrl) || fail(400, "Paste a link first."));
+// hint: words shared along with the link ("Check out X! https://..."), used to help the lookup.
+async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
+  // Share links (a.co/d/...) become the real product link first, and the link's words are read before
+  // cleaning trims Amazon links down to /dp/ASIN.
+  const full = await resolveShortLink(new URL(link(rawUrl) || fail(400, "Paste a link first.")));
+  const slugGuess = titleFromPath(full);
+  const clean = cleanLink(full);
   const url = new URL(clean);
+  const asin = amazonAsin(url);
   if (ai) {
     const hit = await cachedPreview(clean);
     if (hit && hit.price != null) return { ...hit, clean, cached: true };
@@ -1290,7 +1344,7 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
 
   title = cleanTitle(title, finalUrl.hostname, siteName);
   // Last resort for the name: the link's words. The app says it's a guess.
-  const guess = !title ? titleFromPath(finalUrl) || titleFromPath(url) : null;
+  const guess = !title ? slugGuess || titleFromPath(finalUrl) || titleFromPath(url) : null;
   // Same rule as before the lookup existed: keep the page's photo whenever we have any name for it.
   let imageUrl = null;
   if (image && (title || guess)) {
@@ -1308,12 +1362,17 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
   // The page gave us no name, photo or price (blocked, a bot check, or an empty shell): look it up. The page's own
   // details win; the lookup only fills what's missing.
   if (ai && (!title || !imageUrl || out.price == null)) {
-    const found = await lookupLink(env, clean).catch(() => null);
+    const found = await lookupLink(env, clean, [hint, slugGuess]).catch(() => null);
     if (found && (title || matchesLink(found.title, url))) {
       out = { ...out, title: title || found.title, price: price ?? found.price, image: imageUrl || found.image, found: true, guessed: false, via: "search",
         sizes: out.sizes.length ? out.sizes : found.sizes, colors: out.colors.length ? out.colors : found.colors,
         size: out.size || found.size, color: out.color || found.color, brand: out.brand || found.brand };
     }
+  }
+  // Amazon photo straight from its ASIN when neither the page nor the lookup gave one.
+  if (asin && !out.image && (out.title || hint)) {
+    out.image = await amazonImage(asin);
+    if (out.image) out.imageVia = "asin";
   }
   console.log(`preview ${site} http=${status} page=${title ? "name" : html ? "noname" : "blocked"}${imageUrl ? "+photo" : ""} -> ${out.via || (out.guessed ? "guess" : "page")}${out.image ? " photo" : ""}${out.price != null ? " price" : ""}`);
   if (ai && out.found) await cachePreview(clean, out);
@@ -2551,9 +2610,9 @@ const handlers = {
   // Autofill: read a product link and return its name and price (nothing is saved).
   async "POST preview"(req, env) {
     const me = await auth(req, env);
-    const { url } = await body(req);
+    const { url, hint } = await body(req);
     await rateLimit(env, `preview:${me.id}`, ABUSE.previewPerMember, "That's a lot of links for now. Type the details in, or try again in a bit.");
-    return previewLink(env, url, { ai: true });
+    return previewLink(env, url, { ai: true, hint: typeof hint === "string" ? hint.slice(0, 150) : "" });
   },
 
   // Photo to suggestions: Gemini guesses what the item is and finds a store page for each. Nothing is stored.
