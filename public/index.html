@@ -622,7 +622,7 @@
   .two label.field { margin-bottom: 12px; }
   select.input { appearance: none; -webkit-appearance: none; padding-right: 34px;
     background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23887' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
-  .bday { display: grid; grid-template-columns: 1.6fr 1fr 1.1fr; gap: 10px; margin-bottom: 16px; }
+  .bday { display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px; margin-bottom: 16px; }
   .flabel { display: block; font-size: 16px; font-weight: 700; margin-bottom: 7px; }
   .flabel em { font-style: normal; font-weight: 500; color: var(--faint); }
   /* "Good to know" card on a list: birthday, sizes, please no */
@@ -2060,13 +2060,18 @@ function dupeTag(m) {
   const twins = everyone().filter((x) => x.id !== m.id && key(x) === key(m));
   if (!twins.length) return "";
   const hhDiffers = m.householdId && twins.every((x) => x.householdId !== m.householdId);
-  return hhDiffers ? householdLabel(m.householdId) : m.lastName || (m.householdId ? householdLabel(m.householdId) : "");
+  if (hhDiffers) return householdLabel(m.householdId);
+  if (m.lastName && twins.every((x) => String(x.lastName || "").toLowerCase() !== m.lastName.toLowerCase())) return m.lastName;
+  // Uncle Freddy is in a household with his wife, cousin Freddy isn't in one: cousin Freddy reads "On their own".
+  if (!m.householdId && twins.every((x) => x.householdId)) return "On their own";
+  return m.lastName || "";
 }
 const dupeHtml = (m) => { const t = dupeTag(m); return t ? `<span class="dupe-tag">${esc(t)}</span>` : ""; };
-// First and last name inputs side by side. Last name is required for anyone new.
+// First and last name inputs side by side. The last name is optional; it's only needed when someone in the same
+// circle (and same household, or both in none) already has that first name. The server says so when it is.
 const nameFields = (label, first = "", last = "", firstName = "name", lastName = "lastName") => `<div class="two">
   <label class="field"><span>${label ? `${label} first name` : "First name"}</span><input class="input" name="${firstName}" maxlength="40" value="${esc(first)}" required autocomplete="off"></label>
-  <label class="field"><span>Last name</span><input class="input" name="${lastName}" maxlength="40" value="${esc(last)}" required autocomplete="off"></label></div>`;
+  <label class="field"><span>Last name <em style="font-weight:600;color:var(--muted)">(optional)</em></span><input class="input" name="${lastName}" maxlength="40" value="${esc(last)}" autocomplete="off"></label></div>`;
 const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a circle";
 
 // ---------- households ----------
@@ -2107,7 +2112,7 @@ function householdChip(m) {
 // ---------- occasions ----------
 // Marks and budgets belong to an occasion: Christmas for everyone, plus a person's birthday if they added
 // one. The server sends each person's upcoming occasions, soonest first: { code: YYYYMMDD, date, christmas,
-// birthday, turning }. Things reset the day after an occasion.
+// birthday }. Things reset the day after an occasion.
 const occParts = (o) => o.date.split("-").map(Number);
 const occDay = (o) => { const [, m, d] = occParts(o); return `${MONTHS[m - 1].slice(0, 3)} ${d}`; };
 const daysUntil = (o) => {
@@ -2398,7 +2403,7 @@ async function renderWelcome(step = "code", info = {}) {
       <div class="picker">
         ${info.members.map((m, i) => `<button class="member slide" style="animation-delay:${0.1 + i * 0.05}s" type="button" data-id="${esc(m.id)}">
             ${avatar(m.name, m.id)}
-            <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
+            <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}${m.household ? `<span class="dupe-tag">${esc(m.household)}</span>` : ""}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
           </button>`).join("")}
       </div>` : ""}`;
     $("#backBtn").onclick = () => renderWelcome(invite ? "invite" : "code");
@@ -2440,7 +2445,7 @@ async function renderWelcome(step = "code", info = {}) {
         ${starting ? "" : `<p class="hint" style="margin-top:0">Already on Hints?${tip("Sign in as yourself, then join this circle from Settings. That way you keep one list.")}</p>`}
         ${starting ? `<label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>` : ""}
         ${nameFields("Your")}
-        <p class="hint" style="margin-top:-4px">Helps tell two people with the same first name apart.</p>
+        <p class="hint" style="margin-top:-4px">Only needed if someone here has the same first name.</p>
         <button class="btn primary wide" type="submit">${starting ? "Create circle" : `Join ${esc(info.group.name)}`}</button>
       </form>`;
     const nameIn = $("#newForm").elements.name;
@@ -3097,7 +3102,8 @@ async function renderMine() {
   const pinNotice = pc ? `<div class="starter slide" id="pinNotice" style="margin:0 0 14px"><strong>Your PIN was cleared</strong>
       <p>${esc(pc.by)} cleared it on ${new Date(pc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, so you could sign in again. Set a new one to keep your notes yours.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pinNoticeOk">Not now</button><button class="btn primary" type="button" id="pinNoticeSet">Set a PIN</button></div></div>` : "";
-  const lastNotice = state.me.lastName ? "" : `<form class="starter slide" id="lastNotice" style="margin:0 0 14px" autocomplete="off"><strong>Add your last name</strong>
+  const nameTwin = !state.me.lastName && everyone().some((x) => x.id !== state.me.id && x.name.toLowerCase() === state.me.name.toLowerCase());
+  const lastNotice = !nameTwin ? "" : `<form class="starter slide" id="lastNotice" style="margin:0 0 14px" autocomplete="off"><strong>Add your last name</strong>
       <p>So your people can tell you apart from anyone else named ${esc(state.me.name)}.</p><div class="err" hidden></div>
       <label class="field"><span>Last name</span><input class="input" name="lastName" maxlength="40" required></label>
       <div class="actions" style="margin:0"><button class="btn primary" type="submit">Save</button></div></form>`;
@@ -4034,7 +4040,7 @@ async function renderFamily() {
         const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
         const real = m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : "";
         const bday = (m.occasions || []).find((o) => o.birthday);
-        const soon = bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}${bday.turning ? `, turning ${bday.turning}` : ""}</span>` : "";
+        const soon = bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}</span>` : "";
         const looked = m.managedBy ? ` · ${m.managedBy === state.me.id ? "you look after" : m.canManage ? "your household looks after" : `looked after by ${esc(personName(m.managedBy))}`}` : "";
         // One wrapping row: what's on their list, then the household chip (other households only) and birthday.
         return `<button class="member slide" style="animation-delay:${Math.min(i, 12) * 0.05}s" type="button" data-id="${esc(m.id)}">
@@ -4116,7 +4122,7 @@ function openHouseholds(gid) {
     // New people who aren't on Hints yet. You look after their lists until they open their invite.
     $("#setupHh", el).onclick = () => {
       const nameRow = (i) => `<div class="two" data-prow><label class="field"><span>Person ${i}</span><input class="input" data-first maxlength="40" placeholder="First name"></label>
-        <label class="field"><span>Last name</span><input class="input" data-last maxlength="40" placeholder="Last name"></label></div>`;
+        <label class="field"><span>Last name</span><input class="input" data-last maxlength="40" placeholder="Optional"></label></div>`;
       openSheet(`<h3>Add a household</h3>
         <p class="subtle">Everyone you shop for in one home. They don't need to be on Hints yet: you can add wishes for them, then send each one an invite.</p>
         <form id="setupForm" autocomplete="off"><div class="err" hidden></div>
@@ -4139,8 +4145,8 @@ function openHouseholds(gid) {
             .map((r) => ({ name: r.querySelector("[data-first]").value.trim(), lastName: r.querySelector("[data-last]").value.trim() }))
             .filter((x) => x.name || x.lastName);
           if (!people.length) throw new Error("Add at least one person.");
-          const half = people.find((x) => !x.name || !x.lastName);
-          if (half) throw new Error(`Add a first and last name for ${half.name || half.lastName}.`);
+          const half = people.find((x) => !x.name);
+          if (half) throw new Error(`Add a first name for ${half.lastName}.`);
           await api("household/new", { groupId: gid, name, people });
           await back(`Added ${people.length === 1 ? people[0].name : plural(people.length, "person", "people")}`);
         });
@@ -5415,7 +5421,7 @@ function personCard(p, o, view, n = 0, still = false) {
   const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
   const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(p.name)}">+ Budget</span>`
     : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
-  const when = view === "birthday" ? `<small class="occ-when">${occDay(o)}, ${inDays(o)}${o.turning ? ` · turning ${o.turning}` : ""}</small>` : "";
+  const when = view === "birthday" ? `<small class="occ-when">${occDay(o)}, ${inDays(o)}</small>` : "";
   return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-person="${esc(p.id)}">
     <button class="pcard-head" type="button" data-toggle="${esc(p.id)}" aria-expanded="${isOpen}">
       <span class="pcard-top">${avatar(p.name, p.id)}
@@ -6082,9 +6088,8 @@ function hintsCard(p) {
 function birthdayPill(p) {
   if (!p.birthday) return "";
   const n = bdayIn(p.birthday);
-  const turning = p.birthYear ? new Date(Date.now() + n * 86400000).getFullYear() - p.birthYear : null;
   const soon = n === 0 ? "today!" : n === 1 ? "tomorrow" : n <= 45 ? `in ${n} days` : "";
-  return `<span class="pf-pill${soon ? " gold" : ""}"><span aria-hidden="true">🎂</span>${esc(bdayText(p.birthday))}${turning ? `, turning ${turning}` : ""}${soon ? ` · ${soon}` : ""}</span>`;
+  return `<span class="pf-pill${soon ? " gold" : ""}"><span aria-hidden="true">🎂</span>${esc(bdayText(p.birthday))}${soon ? ` · ${soon}` : ""}</span>`;
 }
 // Sizes, brands, gift style and colors. Used on your profile and on other people's pages.
 function detailsHtml(p) {
@@ -6189,7 +6194,6 @@ async function renderProfileEdit() {
       <div class="bday">
         <select class="input" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
         <select class="input" name="bday" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, k) => `<option value="${k + 1}"${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select>
-        <input class="input" name="byear" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Birth year (optional)" value="${esc(prof.birthYear || "")}">
       </div>
     </div>
 
@@ -6384,7 +6388,6 @@ async function renderProfileEdit() {
       lastName: f.lastName,
       bio: f.bio,
       birthday: f.bmonth ? `${pad(f.bmonth)}-${pad(f.bday)}` : "",
-      birthYear: f.bmonth ? f.byear.trim() : "",
       sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, f[`size_${k}`]])),
       avoid: f.avoid,
       brands,
