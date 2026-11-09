@@ -1,4 +1,4 @@
-// wishlist.alexisdavidson.org: static files in public/ are served first (see wrangler.jsonc);
+// hints.alexisdavidson.org (and the old wishlist.alexisdavidson.org): static files in public/ are served first (see wrangler.jsonc);
 // anything else comes here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
 // with a link preview for that circle, everything else is a static file.
 import { routes, inviteInfo } from "./wishlist.js";

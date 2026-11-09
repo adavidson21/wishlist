@@ -1,13 +1,13 @@
 # Hints
 
-Wish lists for family and friends at **wishlist.alexisdavidson.org**. Mark what you're getting someone (hidden from the list owner) and keep private gift notes per person. Installable on phones as a PWA.
+Wish lists for family and friends at **hints.alexisdavidson.org** (the old **wishlist.alexisdavidson.org** still works: same app and data, but sign-ins are per domain, so people stay signed in where they started). Mark what you're getting someone (hidden from the list owner) and keep private gift notes per person. Installable on phones as a PWA.
 
 One Cloudflare Worker with a D1 database. No build step.
 
 ## Layout
 
 ```
-wrangler.jsonc        Cloudflare config: Worker, custom domain, D1 binding
+wrangler.jsonc        Cloudflare config: Worker, custom domains, D1 binding
 src/worker.js         Router: /api/* to wishlist.js, /join/CODE invite pages (with link previews), everything else from public/
 src/wishlist.js       API and privacy rules (D1)
 src/gemini.js         Gemini call used by photo search
@@ -30,7 +30,7 @@ public/og-invite.png  Link preview image for invite links
 2. `npx wrangler login`
 3. `npx wrangler secret put GEMINI_API_KEY` (photo search; key from https://aistudio.google.com/apikey)
 4. `npm run migrate` (applies any migrations not yet applied to the `wishlist` D1 database)
-5. `npm run deploy`. The custom domain in `wrangler.jsonc` attaches itself.
+5. `npm run deploy`. The custom domains in `wrangler.jsonc` attach themselves.
 
 **After that:** connect the repo in Cloudflare (Workers > wishlist > Settings > Build, root directory `/`) to deploy on every push to `main`, or run `npm run migrate && npm run deploy` by hand.
 - Deploy command: `npm run migrate && npm run deploy`, so new migrations are applied before the new code goes live and merging is all it takes.
