@@ -233,7 +233,7 @@ async function auth(request, env) {
   const token = request.headers.get("x-wishlist-token");
   if (!token) fail(401, "Not signed in.");
   const me = await env.DB.prepare(
-    "SELECT m.id, m.name, m.pin_hash, m.onboarded_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
+    "SELECT m.id, m.name, m.pin_hash, m.onboarded_at, m.pin_cleared_by, m.pin_cleared_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
   )
     .bind(token)
     .first();
@@ -242,7 +242,10 @@ async function auth(request, env) {
   await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE token = ? AND last_seen < ?")
     .bind(now(), token, new Date(Date.now() - 86_400_000).toISOString())
     .run();
-  return { id: me.id, name: me.name, hasPin: !!me.pin_hash, onboarded: !!me.onboarded_at, token };
+  return {
+    id: me.id, name: me.name, hasPin: !!me.pin_hash, onboarded: !!me.onboarded_at, token,
+    pinClearedBy: me.pin_cleared_by || null, pinClearedAt: me.pin_cleared_at || null,
+  };
 }
 
 // Profile details shown to family on your list (migration 0008). Reads with SELECT * so a missing column
@@ -439,7 +442,7 @@ async function manageableHousehold(env, meId, householdId) {
 }
 
 // ---------- people someone looks after ----------
-// A managed person (members.managed_by, migration 0022) doesn't use the app: a kid, or a grandparent. Whoever
+// A managed person (members.managed_by, migration 0023) doesn't use the app: a kid, or a grandparent. Whoever
 // added them manages them, and so does anyone in the same household as them. Managers edit their list and
 // profile, and still see purchased marks (the person themself never signs in, so there's no surprise to keep).
 // Nobody can sign in as them until a manager hands the list over (managed/release).
@@ -1247,8 +1250,9 @@ const handlers = {
     )
       .bind(group.id)
       .all();
+    const adminId = await adminOf(env, group.id);
     return {
-      group: { name: group.name },
+      group: { name: group.name, admin: results.find((m) => m.id === adminId)?.name || null },
       inviter: info?.inviter || null,
       members: results.map((m) => ({ id: m.id, name: m.name, hasPin: !!m.pin_hash, photo: m.photo_at || null })),
     };
@@ -1331,7 +1335,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes, m.managed_by,
+      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes, m.managed_by, m.pin_hash IS NOT NULL AS has_pin,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -1345,7 +1349,7 @@ const handlers = {
     const myHh = await householdOf(env, me.id);
     const person = (p) => ({
       id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null,
-      occasions: occasionsFor(p, t), householdId: p.household_id || null,
+      occasions: occasionsFor(p, t), householdId: p.household_id || null, hasPin: !!p.has_pin,
       // Their Nopes (shown on their page anyway), so the app can warn when an idea for them matches one.
       nopes: tagsOut(p.dislikes),
       // Someone who doesn't use the app: who added them, and whether you can run their list (canManage, same rule).
@@ -1364,7 +1368,7 @@ const handlers = {
         env.DB.prepare(`SELECT id, name, photo_at FROM households WHERE id IN (${marks})`).bind(...hhIds).all(),
         env.DB.prepare(`SELECT group_id, household_id FROM group_households WHERE household_id IN (${marks})`).bind(...hhIds).all(),
         myHh
-          ? env.DB.prepare("SELECT id, name, photo_at FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(myHh).all()
+          ? env.DB.prepare("SELECT id, name, photo_at, pin_hash IS NOT NULL AS has_pin FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(myHh).all()
           : Promise.resolve({ results: [] }),
       ]);
       const seen = new Map();
@@ -1381,15 +1385,22 @@ const handlers = {
         if (h.id === myHh) {
           myHousehold = {
             ...households[h.id],
-            members: list.map((p) => ({ id: p.id, name: p.id === me.id ? me.name : nicks.get(p.id) || p.name, photo: p.photo_at || null })),
+            members: list.map((p) => ({ id: p.id, name: p.id === me.id ? me.name : nicks.get(p.id) || p.name, photo: p.photo_at || null, hasPin: !!p.has_pin })),
           };
         }
       }
     }
     for (const g of groups) g.created_by = await adminOf(env, g.id);
+    let pinCleared = null;
+    if (me.pinClearedAt) {
+      const by = me.pinClearedBy && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(me.pinClearedBy).first());
+      pinCleared = { by: (by && (nicks.get(me.pinClearedBy) || by.name)) || "Someone", at: me.pinClearedAt };
+    }
     return {
       me: {
         id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || null,
+        // Someone cleared your forgotten PIN (see "POST pin/clear"). Shown once as a notice.
+        pinCleared,
         profile: await profileOf(env, me.id), household: myHousehold,
       },
       today: t,
@@ -2465,7 +2476,7 @@ const handlers = {
     }
     if (b.pin !== undefined) {
       const pin = pinValue(b.pin);
-      await env.DB.prepare("UPDATE members SET pin_hash = ? WHERE id = ?")
+      await env.DB.prepare("UPDATE members SET pin_hash = ?, pin_cleared_by = NULL, pin_cleared_at = NULL WHERE id = ?")
         .bind(pin ? await hashPin(who, pin) : null, who)
         .run();
     }
@@ -2473,6 +2484,40 @@ const handlers = {
       const photo = photoValue(b.photo);
       await env.DB.prepare("UPDATE members SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, who).run();
     }
+    return { ok: true };
+  },
+
+  // Clear someone's forgotten PIN so they can sign in again. There's no email to reset it with, so someone who
+  // knows them vouches instead: anyone in their household, or the admin of a circle they're in. They see who did
+  // it the next time they open the app (members.pin_cleared_by, migration 0024). Your own PIN is in POST profile.
+  async "POST pin/clear"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const id = String(b.memberId || "");
+    if (!id || id === me.id) fail(400, "Change your own PIN in Settings.");
+    const them = await env.DB.prepare("SELECT id, pin_hash, household_id FROM members WHERE id = ?").bind(id).first();
+    if (!them) fail(404, "Person not found.");
+    const myHh = await householdOf(env, me.id);
+    let ok = !!myHh && them.household_id === myHh;
+    if (!ok) {
+      const { results } = await env.DB.prepare(
+        "SELECT a.group_id FROM group_members a JOIN group_members b ON b.group_id = a.group_id WHERE a.member_id = ? AND b.member_id = ?",
+      ).bind(id, me.id).all();
+      if (!results.length) fail(404, "Person not found.");
+      for (const r of results) if ((await adminOf(env, r.group_id)) === me.id) { ok = true; break; }
+    }
+    if (!ok) fail(403, "Only someone in their household or their circle's admin can clear their PIN.");
+    if (!them.pin_hash) return { ok: true };
+    await env.DB.prepare("UPDATE members SET pin_hash = NULL, pin_cleared_by = ?, pin_cleared_at = ? WHERE id = ?")
+      .bind(me.id, now(), id)
+      .run();
+    return { ok: true };
+  },
+
+  // Dismiss the "your PIN was cleared" notice without setting a new PIN.
+  async "POST pin/seen"(req, env) {
+    const me = await auth(req, env);
+    await env.DB.prepare("UPDATE members SET pin_cleared_by = NULL, pin_cleared_at = NULL WHERE id = ?").bind(me.id).run();
     return { ok: true };
   },
 

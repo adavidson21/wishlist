@@ -2133,7 +2133,10 @@ async function renderWelcome(step = "code", info = {}) {
         <label class="field"><span>PIN</span>
           <input class="input pin-in" name="pin" inputmode="numeric" pattern="\\d{4}" maxlength="4" required autofocus></label>
         <button class="btn primary wide" type="submit">Sign in</button>
+        <button class="btn quiet wide" type="button" id="forgotPin" style="margin-top:8px">Forgot your PIN?</button>
+        <p class="subtle" id="forgotHelp" hidden style="margin-top:10px">Still signed in on another phone? Open Settings there and set a new PIN. If not, ask someone in your household${info.group.admin && info.group.admin !== info.member.name ? ` or ${esc(info.group.admin)} (the circle's admin)` : " or your circle's admin"} to clear it. It's next to your name in Manage on the Circles tab, or in Settings &gt; Household. Then come back here and tap your name.</p>
       </form>`;
+    $("#forgotPin").onclick = (e) => { e.currentTarget.hidden = true; $("#forgotHelp").hidden = false; };
     $("#backBtn").onclick = () => renderWelcome("who", info);
     wireForm($("#pinForm"), async ({ pin }) => finishJoin(await api("join", { code: info.code, memberId: info.member.id, pin }), { returning: true }));
     return;
@@ -2773,7 +2776,11 @@ async function renderMine() {
       <p>${drafts.length ? `You have ${plural(drafts.length, "maybe", "maybes")}. Publish one when you're ready for your circles to see it.` : "Drop a hint about something you'd love."}</p>
       ${drafts.length ? `<button class="add" type="button" data-mview="maybe">${LOCK} See my maybes</button>` : `<button class="add" type="button" id="listAdd">${PLUS} Drop a hint</button>`}
     </div>`;
-  v.innerHTML = '<div id="installSlot"></div>' + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
+  const pc = state.me.pinCleared;
+  const pinNotice = pc ? `<div class="starter slide" id="pinNotice" style="margin:0 0 14px"><strong>Your PIN was cleared</strong>
+      <p>${esc(pc.by)} cleared it on ${new Date(pc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, so you could sign in again. Set a new one to keep your notes yours.</p>
+      <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pinNoticeOk">Not now</button><button class="btn primary" type="button" id="pinNoticeSet">Set a PIN</button></div></div>` : "";
+  v.innerHTML = '<div id="installSlot"></div>' + pinNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
     <div class="empty">
       ${giftBox("Drop your first hint")}
       <strong>Let's start your list</strong>
@@ -2795,6 +2802,10 @@ async function renderMine() {
     $(`[data-mview="${state.mineView}"]`, v)?.focus();
   });
   $("#bdayAdd")?.addEventListener("click", quickBirthday);
+  const dropPinNotice = () => { state.me.pinCleared = null; $("#pinNotice")?.remove(); api("pin/seen", {}).catch(() => {}); };
+  $("#pinNoticeOk")?.addEventListener("click", dropPinNotice);
+  // Setting the PIN clears the notice on the server too.
+  $("#pinNoticeSet")?.addEventListener("click", () => { state.setSec = "app"; setTab("settings"); });
   $("#staleAdd")?.addEventListener("click", () => addThing());
   $("#staleOk")?.addEventListener("click", () => {
     try { localStorage.setItem(STALE_NUDGE_KEY, `${state.me.id}:${Math.floor((state.today || 0) / 10000)}`); } catch {}
@@ -5478,6 +5489,16 @@ async function renderSettings() {
 
 // Manage a circle (Circles tab, admin only; the API checks too): photo, name, its households, and who's admin.
 const isAdmin = (g) => !!g && g.createdBy === state.me.id;
+// "Clear PIN" buttons (circle Manage, Settings > Household): for someone who forgot theirs. They'll see who cleared it.
+function wireClearPin(el, reload) {
+  el.querySelectorAll("[data-clear-pin]").forEach((b) => (b.onclick = async () => {
+    const who = personName(b.dataset.clearPin);
+    if (!window.confirm(`Clear ${who}'s PIN? Only do this if they forgot it. Anyone could then sign in as them until they set a new one, and they'll see that you cleared it.`)) return;
+    b.disabled = true;
+    try { await api("pin/clear", { memberId: b.dataset.clearPin }); await reload(`${who}'s PIN is cleared. They can sign in and set a new one.`); }
+    catch (e) { toast(e.message); b.disabled = false; }
+  }));
+}
 function openCircleManage(gid) {
   const g = state.groups.find((x) => x.id === gid);
   if (!g || !isAdmin(g)) return closeSheet();
@@ -5494,10 +5515,11 @@ function openCircleManage(gid) {
     <h4>Households${tip("People who live or gift together, like Mom & Dad. Everyone can manage their own; you can manage any of them here.")}</h4>
     <button class="btn wide" type="button" id="cmHh" style="margin-top:8px">Manage households</button>
     <hr class="set-div">
-    <h4>People${tip("Taking someone out stops them seeing this circle's lists, and this circle seeing theirs. They can come back with the invite code.")}</h4>
+    <h4>People${tip("Taking someone out stops them seeing this circle's lists, and this circle seeing theirs. They can come back with the invite code. Clear PIN lets someone who forgot theirs sign in again.")}</h4>
     <div style="margin-top:6px">${others.map((m) => {
       const viaHh = m.householdId && state.households[m.householdId]?.circles.includes(g.id);
       return `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${viaHh ? `<br><small>In with ${esc(householdLabel(m.householdId))}</small>` : ""}</strong>
+        ${m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
         ${viaHh ? "" : `<button class="btn small quiet danger" type="button" data-kick="${esc(m.id)}">Remove</button>`}</div>`;
     }).join("") || `<p class="subtle">Just you so far.</p>`}</div>
     ${others.some((m) => m.householdId && state.households[m.householdId]?.circles.includes(g.id)) ? `<p class="subtle" style="margin-top:6px">People who came in with their household come out through Manage households.</p>` : ""}
@@ -5512,6 +5534,7 @@ function openCircleManage(gid) {
     wirePhotoRow(el, async (photo) => { await api("family/edit", { groupId: gid, photo }); await reload(photo ? "Circle photo saved" : "Circle photo removed"); });
     wireForm($("#circleForm", el), async ({ name }) => { await api("family/edit", { groupId: gid, name }); await reload("Circle renamed"); });
     $("#cmHh", el).onclick = () => openHouseholds(gid);
+    wireClearPin(el, reload);
     el.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = async () => {
       const who = personName(b.dataset.kick);
       if (!window.confirm(`Take ${who} out of ${g.name}? They won't see anyone's lists here, and nobody here will see theirs. They can rejoin with the invite code.`)) return;
@@ -5538,6 +5561,7 @@ function householdCard() {
   return `<div id="hhPhoto">${photoRowHtml(hh.label, `h:${hh.id}`)}</div>
     <h4 style="margin-top:14px">${esc(hh.label)}</h4>
     <div style="margin-top:6px">${hh.members.map((m) => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}</strong>
+      ${m.id !== state.me.id && m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
       ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}</div>`).join("")}</div>
     <button class="btn wide" type="button" id="hhAdd" style="margin-top:8px">${PLUS} Add someone</button>
     <hr class="set-div">
@@ -5575,6 +5599,7 @@ function wireHousehold(v, reload) {
     })));
   });
   if (!hh) return;
+  wireClearPin(v, reload);
   v.querySelectorAll("[data-hh-out]").forEach((b) => (b.onclick = async () => {
     const name = hh.members.find((m) => m.id === b.dataset.hhOut)?.name || "them";
     if (!window.confirm(`Take ${name} out of your household? They'll leave any circle they were only in through it.`)) return;
