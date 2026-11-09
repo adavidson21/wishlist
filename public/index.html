@@ -954,6 +954,11 @@
   .pill { font-size: 14px; font-weight: 700; padding: 5px 10px; border-radius: 10px; white-space: nowrap; background: var(--ok-soft); color: var(--ok); }
   .pill.over { background: var(--warn-soft); color: var(--warn); }
   .pill.none { background: var(--panel); color: var(--muted); }
+  .who-in { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px;
+    background: var(--card); color: var(--muted); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+  .who-in strong { color: var(--ink); }
+  .who-in > span:first-child { flex: 1; }
+  .who-in-go { color: var(--brand); font-weight: 700; }
   .pill.set { flex: none; background: var(--soft); color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand); cursor: pointer; }
   .pcard-top .pill { flex: none; }
   .pcard-who strong { overflow-wrap: anywhere; }
@@ -5149,6 +5154,7 @@ function renderPeopleTab(t, v) {
   const segHtml = seg("Which budget", [["christmas", `Christmas ${xmasYear(t)}`], ["birthday", "Birthdays"]], view, "two");
   v.innerHTML = `<div class="budget-layout">
     <div id="viewSeg">${segHtml}</div>
+    <button class="who-in" type="button" id="whoIn"><span>Shopping for <strong>${t.people.length - skippedN} of ${t.people.length}</strong> ${t.people.length === 1 ? "person" : "people"}</span><span class="who-in-go">Change</span></button>
     ${needGift.length && needGift.length < shownRows.length ? `<div class="b-need"><div class="label" style="margin-top:18px">Still need a gift for</div>
       <div class="still-need">${needGift.map((r) => `<button class="chip" type="button" data-need="${esc(r.p.id)}">${avatar(r.p.name, r.p.id, "sm")}${esc(r.p.name)}</button>`).join("")}</div></div>` : ""}
     <div class="b-main">
@@ -5161,7 +5167,6 @@ function renderPeopleTab(t, v) {
     <div class="stack b-actions" style="margin-top:18px">
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
-      <button class="btn quiet wide" type="button" id="whoIn">Who I'm buying for${skippedN ? ` · ${plural(skippedN, "person", "people")} left out` : ""}</button>
     </div></div>`;
   $("#whoIn").addEventListener("click", () => openBudgetWho(t));
   wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderPeopleTab(t, v); });
@@ -5448,6 +5453,7 @@ function budgetTour(force = false) {
     { sel: ".pcard [data-setbudget], .pcard", title: "Set a budget for each person",
       text: `Tap + Budget next to a name and pick how much to spend on them.${hasHh ? " People who live together share one budget at Christmas." : ""}` },
     { sel: "#viewSeg", title: "Christmas and birthdays", text: "Switch here to plan birthdays. Each birthday gets its own budget." },
+    { sel: "#whoIn", title: "Not doing gifts with someone?", text: "Tap Change to turn people off. They come off your budget and gift reminders. Only you see this." },
     { sel: "#addPurchase", title: "Bought something?", text: "Add it here. It comes out of their budget, and you can tap a name to see what you got them." },
   ].filter((x) => $(x.sel));
   if (!steps.length) return;
