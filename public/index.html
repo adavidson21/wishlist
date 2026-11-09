@@ -2060,13 +2060,18 @@ function dupeTag(m) {
   const twins = everyone().filter((x) => x.id !== m.id && key(x) === key(m));
   if (!twins.length) return "";
   const hhDiffers = m.householdId && twins.every((x) => x.householdId !== m.householdId);
-  return hhDiffers ? householdLabel(m.householdId) : m.lastName || (m.householdId ? householdLabel(m.householdId) : "");
+  if (hhDiffers) return householdLabel(m.householdId);
+  if (m.lastName && twins.every((x) => String(x.lastName || "").toLowerCase() !== m.lastName.toLowerCase())) return m.lastName;
+  // Uncle Freddy is in a household with his wife, cousin Freddy isn't in one: cousin Freddy reads "On their own".
+  if (!m.householdId && twins.every((x) => x.householdId)) return "On their own";
+  return m.lastName || "";
 }
 const dupeHtml = (m) => { const t = dupeTag(m); return t ? `<span class="dupe-tag">${esc(t)}</span>` : ""; };
-// First and last name inputs side by side. Last name is required for anyone new.
+// First and last name inputs side by side. The last name is optional; it's only needed when someone in the same
+// circle (and same household, or both in none) already has that first name. The server says so when it is.
 const nameFields = (label, first = "", last = "", firstName = "name", lastName = "lastName") => `<div class="two">
   <label class="field"><span>${label ? `${label} first name` : "First name"}</span><input class="input" name="${firstName}" maxlength="40" value="${esc(first)}" required autocomplete="off"></label>
-  <label class="field"><span>Last name</span><input class="input" name="${lastName}" maxlength="40" value="${esc(last)}" required autocomplete="off"></label></div>`;
+  <label class="field"><span>Last name <em style="font-weight:600;color:var(--muted)">(optional)</em></span><input class="input" name="${lastName}" maxlength="40" value="${esc(last)}" autocomplete="off"></label></div>`;
 const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a circle";
 
 // ---------- households ----------
@@ -2398,7 +2403,7 @@ async function renderWelcome(step = "code", info = {}) {
       <div class="picker">
         ${info.members.map((m, i) => `<button class="member slide" style="animation-delay:${0.1 + i * 0.05}s" type="button" data-id="${esc(m.id)}">
             ${avatar(m.name, m.id)}
-            <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
+            <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}${m.household ? `<span class="dupe-tag">${esc(m.household)}</span>` : ""}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
           </button>`).join("")}
       </div>` : ""}`;
     $("#backBtn").onclick = () => renderWelcome(invite ? "invite" : "code");
@@ -2440,7 +2445,7 @@ async function renderWelcome(step = "code", info = {}) {
         ${starting ? "" : `<p class="hint" style="margin-top:0">Already on Hints?${tip("Sign in as yourself, then join this circle from Settings. That way you keep one list.")}</p>`}
         ${starting ? `<label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>` : ""}
         ${nameFields("Your")}
-        <p class="hint" style="margin-top:-4px">Helps tell two people with the same first name apart.</p>
+        <p class="hint" style="margin-top:-4px">Only needed if someone here has the same first name.</p>
         <button class="btn primary wide" type="submit">${starting ? "Create circle" : `Join ${esc(info.group.name)}`}</button>
       </form>`;
     const nameIn = $("#newForm").elements.name;
@@ -3097,7 +3102,8 @@ async function renderMine() {
   const pinNotice = pc ? `<div class="starter slide" id="pinNotice" style="margin:0 0 14px"><strong>Your PIN was cleared</strong>
       <p>${esc(pc.by)} cleared it on ${new Date(pc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, so you could sign in again. Set a new one to keep your notes yours.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pinNoticeOk">Not now</button><button class="btn primary" type="button" id="pinNoticeSet">Set a PIN</button></div></div>` : "";
-  const lastNotice = state.me.lastName ? "" : `<form class="starter slide" id="lastNotice" style="margin:0 0 14px" autocomplete="off"><strong>Add your last name</strong>
+  const nameTwin = !state.me.lastName && everyone().some((x) => x.id !== state.me.id && x.name.toLowerCase() === state.me.name.toLowerCase());
+  const lastNotice = !nameTwin ? "" : `<form class="starter slide" id="lastNotice" style="margin:0 0 14px" autocomplete="off"><strong>Add your last name</strong>
       <p>So your people can tell you apart from anyone else named ${esc(state.me.name)}.</p><div class="err" hidden></div>
       <label class="field"><span>Last name</span><input class="input" name="lastName" maxlength="40" required></label>
       <div class="actions" style="margin:0"><button class="btn primary" type="submit">Save</button></div></form>`;
@@ -4116,7 +4122,7 @@ function openHouseholds(gid) {
     // New people who aren't on Hints yet. You look after their lists until they open their invite.
     $("#setupHh", el).onclick = () => {
       const nameRow = (i) => `<div class="two" data-prow><label class="field"><span>Person ${i}</span><input class="input" data-first maxlength="40" placeholder="First name"></label>
-        <label class="field"><span>Last name</span><input class="input" data-last maxlength="40" placeholder="Last name"></label></div>`;
+        <label class="field"><span>Last name</span><input class="input" data-last maxlength="40" placeholder="Optional"></label></div>`;
       openSheet(`<h3>Add a household</h3>
         <p class="subtle">Everyone you shop for in one home. They don't need to be on Hints yet: you can add wishes for them, then send each one an invite.</p>
         <form id="setupForm" autocomplete="off"><div class="err" hidden></div>
@@ -4139,8 +4145,8 @@ function openHouseholds(gid) {
             .map((r) => ({ name: r.querySelector("[data-first]").value.trim(), lastName: r.querySelector("[data-last]").value.trim() }))
             .filter((x) => x.name || x.lastName);
           if (!people.length) throw new Error("Add at least one person.");
-          const half = people.find((x) => !x.name || !x.lastName);
-          if (half) throw new Error(`Add a first and last name for ${half.name || half.lastName}.`);
+          const half = people.find((x) => !x.name);
+          if (half) throw new Error(`Add a first name for ${half.lastName}.`);
           await api("household/new", { groupId: gid, name, people });
           await back(`Added ${people.length === 1 ? people[0].name : plural(people.length, "person", "people")}`);
         });

@@ -200,12 +200,17 @@ function text(value, max, field, required = false) {
   return s || null;
 }
 
-// Two people are the same name when first and last names both match (case-insensitive). People from before last
-// names (migration 0030) have NULL, which matches an empty last name. Use with `m` as the members alias and bind
-// (first, last). Signing in by name picks the first match, so no two people in one circle may share both.
+// Two people are the same name when first and last names both match (case-insensitive). The last name is optional
+// (NULL matches an empty one). Use with `m` as the members alias and bind (first, last).
 const SAME_NAME = "m.name = ? COLLATE NOCASE AND COALESCE(m.last_name, '') = COALESCE(?, '') COLLATE NOCASE";
-const lastNameOf = (v) => text(v, LIMITS.lastName, "Last name", true);
-const fullNameOf = (first, last) => (last ? `${first} ${last}` : first);
+// A real clash: same name AND same household (or both in none). Two Freddys are fine when one is in a household
+// and the other isn't, or they're in different households; the app tells them apart by household. Bind
+// (first, last, householdId).
+const SAME_SLOT = `${SAME_NAME} AND COALESCE(m.household_id, '') = COALESCE(?, '')`;
+const lastNameOf = (v) => text(v, LIMITS.lastName, "Last name");
+const clashMsg = (first, last, where) => last
+  ? `${first} ${last} is already in ${where}.`
+  : `Someone named ${first} is already in ${where}. Add a last name to tell them apart.`;
 
 // Share buttons in store apps paste text plus a link ("Check out X! https://..."). Keep just the link.
 // Must match splitShared() in public/index.html.
@@ -563,17 +568,18 @@ async function givers(env, me, myHh) {
   return results.some((r) => r.id === me.id) ? results : [{ id: me.id, name: me.name }, ...results];
 }
 
-// Signing in picks a name within a circle, so two people with the same name can't share one.
-// Returns the circle name where `memberIds` would clash, or null.
-async function nameClash(env, groupIds, memberIds) {
+// Two people with the same name can share a circle only if they're in different households (see SAME_SLOT).
+// Returns the circle name where `memberIds`, once in household `hh` (null = none), would clash, or null.
+async function nameClash(env, groupIds, memberIds, hh) {
   for (const g of groupIds) {
     for (const m of memberIds) {
       const row = await env.DB.prepare(
         `SELECT g.name FROM groups g JOIN group_members gm ON gm.group_id = g.id JOIN members o ON o.id = gm.member_id
            JOIN members me ON me.id = ?
           WHERE g.id = ? AND o.id != me.id AND o.name = me.name COLLATE NOCASE
-            AND COALESCE(o.last_name, '') = COALESCE(me.last_name, '') COLLATE NOCASE LIMIT 1`,
-      ).bind(m, g).first();
+            AND COALESCE(o.last_name, '') = COALESCE(me.last_name, '') COLLATE NOCASE
+            AND COALESCE(o.household_id, '') = COALESCE(?, '') LIMIT 1`,
+      ).bind(m, g, hh || null).first();
       if (row) return row.name;
     }
   }
@@ -1876,20 +1882,28 @@ const handlers = {
     const info = b.from ? await inviteInfo(env, b.code, b.from) : null;
     const { results } = await env.DB.prepare(
       // People someone looks after can't be picked: they don't sign in until their list is handed over.
-      "SELECT m.id, m.name, m.last_name, m.pin_hash, m.photo_at FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.managed_by IS NULL ORDER BY m.name COLLATE NOCASE",
+      "SELECT m.id, m.name, m.last_name, m.household_id, m.pin_hash, m.photo_at FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.managed_by IS NULL ORDER BY m.name COLLATE NOCASE",
     )
       .bind(group.id)
       .all();
     const adminId = await adminOf(env, group.id);
-    // Before sign-in, only a last initial, and only for first names that show up twice ("Maria L.", "Maria D.").
+    // Only for first names that show up twice: a last initial ("Maria L."), or else their household's name.
     const firsts = results.map((m) => m.name.toLowerCase());
     const twice = (m) => firsts.indexOf(m.name.toLowerCase()) !== firsts.lastIndexOf(m.name.toLowerCase());
+    const hhTag = new Map();
+    for (const m of results) {
+      if (!twice(m) || m.last_name || !m.household_id || hhTag.has(m.household_id)) continue;
+      const h = await env.DB.prepare("SELECT name FROM households WHERE id = ?").bind(m.household_id).first();
+      const { results: ppl } = await env.DB.prepare("SELECT name FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(m.household_id).all();
+      hhTag.set(m.household_id, householdLabel(h?.name, ppl.map((p) => p.name)));
+    }
     return {
       group: { name: group.name, admin: results.find((m) => m.id === adminId)?.name || null },
       inviter: info?.inviter || null,
       members: results.map((m) => ({
         id: m.id, name: m.name, hasPin: !!m.pin_hash, photo: m.photo_at || null,
         lastInitial: twice(m) && m.last_name ? m.last_name[0].toUpperCase() : null,
+        household: twice(m) && !m.last_name ? hhTag.get(m.household_id) || null : null,
       })),
     };
   },
@@ -1911,30 +1925,34 @@ const handlers = {
     } else {
       const name = text(b.name, LIMITS.name, "First name", true);
       const lastName = lastNameOf(b.lastName);
-      member = await env.DB.prepare(
-        `SELECT m.id, m.name, m.pin_hash, m.managed_by FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_NAME}`,
+      // "Yes, add me" always makes someone new. Typing a name that's taken never signs you in as them: returning
+      // people tap their name instead, and a different person with the same name adds a last name.
+      const taken = await env.DB.prepare(
+        `SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_NAME}`,
       )
         .bind(group.id, name, lastName)
         .first();
-      if (member) await notManaged(env, member);
-      if (!member) {
-        const pin = pinValue(b.pin);
-        await circleRoom(env, group.id);
-        await newMemberAllowed(env, req);
-        const id = newId();
-        const t = now();
-        await env.DB.batch([
-          env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)").bind(
-            id,
-            name,
-            lastName,
-            pin ? await hashPin(id, pin) : null,
-            t,
-          ),
-          env.DB.prepare(JOIN_DIRECT).bind(group.id, id, t),
-        ]);
-        return { token: await signIn(env, id) };
+      if (taken) {
+        fail(409, lastName
+          ? `${name} ${lastName} is already in ${group.name}. If that's you, go back and tap your name.`
+          : `Someone named ${name} is already in ${group.name}. If that's you, go back and tap your name. If not, add your last name.`);
       }
+      const pin = pinValue(b.pin);
+      await circleRoom(env, group.id);
+      await newMemberAllowed(env, req);
+      const id = newId();
+      const t = now();
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)").bind(
+          id,
+          name,
+          lastName,
+          pin ? await hashPin(id, pin) : null,
+          t,
+        ),
+        env.DB.prepare(JOIN_DIRECT).bind(group.id, id, t),
+      ]);
+      return { token: await signIn(env, id) };
     }
     if (member.pin_hash) await checkPin(env, req, member, b.pin);
     return { token: await signIn(env, member.id) };
@@ -2973,13 +2991,12 @@ const handlers = {
       await env.DB.prepare("UPDATE group_members SET direct = 1 WHERE group_id = ? AND member_id = ?").bind(group.id, me.id).run();
       return { group: { id: group.id, name: group.name } };
     }
-    // Signing in by name picks the first match, so two people with the same name in one family would clash.
     const clash = await env.DB.prepare(
-      `SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_NAME}`,
+      `SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_SLOT}`,
     )
-      .bind(group.id, me.name, me.lastName)
+      .bind(group.id, me.name, me.lastName, await householdOf(env, me.id))
       .first();
-    if (clash) fail(409, `Someone named ${fullNameOf(me.name, me.lastName)} is already in ${group.name}.${me.lastName ? "" : " Add your last name in Settings, then join."}`);
+    if (clash) fail(409, me.lastName ? `${me.name} ${me.lastName} is already in ${group.name}.` : `Someone named ${me.name} is already in ${group.name}. Add your last name in Profile, then join.`);
     await circleSlot(env, me.id);
     await circleRoom(env, group.id);
     await env.DB.prepare(JOIN_DIRECT).bind(group.id, me.id, now()).run();
@@ -3186,9 +3203,9 @@ const handlers = {
     if (!picked.length && !hhCircles.length) fail(400, "Pick at least one circle.");
     for (const g of new Set([...picked, ...hhCircles])) {
       const clash = await env.DB.prepare(
-        `SELECT g.name FROM group_members gm JOIN members m ON m.id = gm.member_id JOIN groups g ON g.id = gm.group_id WHERE gm.group_id = ? AND ${SAME_NAME}`,
-      ).bind(g, name, lastName).first();
-      if (clash) fail(409, `${fullNameOf(name, lastName)} is already in ${clash.name}.`);
+        `SELECT g.name FROM group_members gm JOIN members m ON m.id = gm.member_id JOIN groups g ON g.id = gm.group_id WHERE gm.group_id = ? AND ${SAME_SLOT}`,
+      ).bind(g, name, lastName, hh).first();
+      if (clash) fail(409, clashMsg(name, lastName, clash.name));
       await circleRoom(env, g);
     }
     const { n: managedCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM members WHERE managed_by = ?").bind(me.id).first();
@@ -3241,7 +3258,7 @@ const handlers = {
           const inIt = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(r.group_id, id).first();
           if (!inIt) fresh.push(r.group_id);
         }
-        const clash = await nameClash(env, fresh, [id]);
+        const clash = await nameClash(env, fresh, [id], to.household_id);
         if (clash) fail(409, `Someone named ${them.name} is already in ${clash}. Add their last name first.`);
         for (const g of fresh) await circleRoom(env, g);
       }
@@ -3370,23 +3387,17 @@ const handlers = {
     if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
     if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can set up households here.");
     const hhName = text(b.name, LIMITS.household, "Household name");
-    // people: [{ name, lastName }], both required.
+    // people: [{ name, lastName? }]. It's a new household, so only two of the same name in this list clash.
     const ppl = (Array.isArray(b.people) ? b.people : [])
       .map((p) => ({ name: text(p?.name, LIMITS.name, "First name"), lastName: text(p?.lastName, LIMITS.lastName, "Last name") }))
       .filter((p) => p.name || p.lastName);
     if (!ppl.length) fail(400, "Add at least one person.");
     if (ppl.length > 12) fail(400, "That's a lot of people for one household.");
-    for (const p of ppl) if (!p.name || !p.lastName) fail(400, `Add a first and last name for ${p.name || p.lastName}.`);
+    for (const p of ppl) if (!p.name) fail(400, `Add a first name for ${p.lastName}.`);
     const names = ppl.map((p) => p.name);
-    const keys = ppl.map((p) => `${p.name}\n${p.lastName}`.toLowerCase());
+    const keys = ppl.map((p) => `${p.name}\n${p.lastName || ""}`.toLowerCase());
     const dupe = ppl.find((p, i) => keys.indexOf(keys[i]) !== i);
-    if (dupe) fail(409, `${fullNameOf(dupe.name, dupe.lastName)} is in the list twice.`);
-    for (const p of ppl) {
-      const clash = await env.DB.prepare(
-        `SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_NAME}`,
-      ).bind(groupId, p.name, p.lastName).first();
-      if (clash) fail(409, `${fullNameOf(p.name, p.lastName)} is already in this circle.`);
-    }
+    if (dupe) fail(409, dupe.lastName ? `${dupe.name} ${dupe.lastName} is in the list twice.` : `${dupe.name} is in the list twice. Add a last name to tell them apart.`);
     await circleRoom(env, groupId, names.length);
     const { n: managedCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM members WHERE managed_by = ?").bind(me.id).first();
     if (managedCount + names.length > ABUSE.managedPerMember) fail(409, `You can set up ${ABUSE.managedPerMember} people at a time. Send some invites first.`);
@@ -3429,7 +3440,7 @@ const handlers = {
       ]);
     }
     const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all();
-    const clash = await nameClash(env, results.map((r) => r.group_id), [memberId]);
+    const clash = await nameClash(env, results.map((r) => r.group_id), [memberId], hh);
     if (clash) fail(409, `Someone named ${them.name} with the same last name is already in ${clash}, which this household is in.`);
     for (const r of results) {
       const inIt = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(r.group_id, memberId).first();
@@ -3501,7 +3512,7 @@ const handlers = {
         "SELECT COUNT(*) AS n FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.household_id = ?",
       ).bind(groupId, hh).first();
       await circleRoom(env, groupId, ids.length - already);
-      const clash = await nameClash(env, [groupId], ids);
+      const clash = await nameClash(env, [groupId], ids, hh);
       if (clash) fail(409, `Someone in that household has the same name as someone already in ${clash}. One of them can add their last name first.`);
       await env.DB.batch([
         env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(groupId, hh, t),
@@ -3530,17 +3541,16 @@ const handlers = {
     // as: someone you look after. Their PIN is never set from here (they don't sign in).
     const who = await ownerFor(env, me, b.as);
     if (who !== me.id && b.pin !== undefined) fail(400, "Only they can set their own PIN.");
-    // Name and last name. The last name can be changed but not cleared (it's how two people with the same first
-    // name are told apart), and nobody in any of their circles may end up with the same first and last name.
+    // Name and optional last name. Nobody in their circles and their household slot may end up with the same name.
     if (b.name !== undefined || b.lastName !== undefined) {
-      const row = await env.DB.prepare("SELECT name, last_name FROM members WHERE id = ?").bind(who).first();
+      const row = await env.DB.prepare("SELECT name, last_name, household_id FROM members WHERE id = ?").bind(who).first();
       const first = b.name !== undefined ? text(b.name, LIMITS.name, "Name", true) : row.name;
       const last = b.lastName !== undefined ? lastNameOf(b.lastName) : row.last_name;
       const clash = await env.DB.prepare(
         `SELECT g.name FROM group_members gm JOIN members m ON m.id = gm.member_id JOIN groups g ON g.id = gm.group_id
-          WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ? AND ${SAME_NAME} LIMIT 1`,
-      ).bind(who, who, first, last).first();
-      if (clash) fail(409, `Someone named ${fullNameOf(first, last)} is already in ${clash.name}.`);
+          WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ? AND ${SAME_SLOT} LIMIT 1`,
+      ).bind(who, who, first, last, row.household_id).first();
+      if (clash) fail(409, clashMsg(first, last, clash.name));
       await env.DB.prepare("UPDATE members SET name = ?, last_name = ? WHERE id = ?").bind(first, last, who).run();
     }
     if (b.birthday !== undefined) {
