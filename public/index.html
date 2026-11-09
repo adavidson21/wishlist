@@ -70,10 +70,15 @@
 
 
   /* Text size setting (Settings > Text size): Small, Normal, Large, Extra large. */
-  :root[data-text="sm"] :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: .9; }
-  :root[data-text="lg"] :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: 1.12; }
-  :root[data-text="xl"] :is(main, .hero, dialog.sheet, .toast) { zoom: 1.25; }
-  :root[data-text="xl"] nav.tabs { zoom: 1.12; }
+  /* Normal is a touch smaller than the raw CSS sizes (text and spacing together), so screens feel less oversized. */
+  :root { --z: .92; }
+  :root[data-text="sm"] { --z: .84; }
+  :root[data-text="lg"] { --z: 1.03; }
+  :root[data-text="xl"] { --z: 1.15; }
+  :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: var(--z); }
+  :root[data-text="xl"] nav.tabs { zoom: 1.03; }
+  /* iPhones zoom the page when a box under 16px is tapped, so boxes stay at 16px or more on screen. */
+  :is(input, textarea, select):not([type="checkbox"]):not([type="radio"]) { font-size: max(1em, calc(16px / var(--z))); }
 
   /* The theme button lives in Settings now. theme.js still applies the saved choice. */
   .theme-toggle { display: none !important; }
@@ -417,10 +422,13 @@
   .hh { background: var(--panel); border-radius: calc(var(--r) + 4px); padding: 10px; }
   .hh-name { display: flex; align-items: center; gap: 7px; margin: 2px 6px 10px; font-size: 14px; font-weight: 800; color: var(--muted); }
   .hh .member + .member { margin-top: 8px; }
-  .hh-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .hh-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
   .hh-row:first-of-type { border-top: 0; }
   .hh-row .avatar { width: 40px; height: 40px; font-size: 17px; }
-  .hh-row strong { flex: 1; min-width: 0; font-size: 17px; overflow-wrap: anywhere; }
+  /* Name gets at least ~8 characters of room; past that the buttons wrap to their own line instead of squeezing it. */
+  .hh-row strong { flex: 1 1 8em; min-width: 0; font-size: 17px; overflow-wrap: break-word; }
+  .hh-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-left: auto; flex: none; max-width: 100%; }
+  .hh-acts .btn { flex: none; }
   .hh-row strong small { color: var(--muted); font-weight: 600; font-size: 14px; }
   .pick-person { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--card); text-align: left; font-weight: 700; font-size: 17px; }
   .pick-person + .pick-person { margin-top: 8px; }
@@ -3836,7 +3844,7 @@ function openHouseholds(gid) {
   const by = new Map(), loose = [];
   for (const m of g.members) m.householdId ? by.set(m.householdId, [...(by.get(m.householdId) || []), m]) : loose.push(m);
   const nm = (m) => `${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}`;
-  const row = (m, extra = "") => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${nm(m)}${notJoined(m)}</strong>${inviteBtn(m)}${extra}</div>`;
+  const row = (m, extra = "") => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${nm(m)}${notJoined(m)}</strong>${hhActs(inviteBtn(m) + extra)}</div>`;
   const waiting = g.members.filter((m) => m.managedBy && m.canManage);
   const back = async (msg) => {
     await refreshMe();
@@ -4048,6 +4056,8 @@ function openInvite(g) {
 // Personal invite for someone who isn't on Hints yet (you set up their list). Opening the link signs them in
 // as themselves, so there's no shared PIN and no picking a name. One link per person; a new one replaces the old.
 const notJoined = (m) => (m.managedBy && m.canManage ? `<br><small>${m.inviteSent ? "Invite sent" : "Not joined yet"}</small>` : "");
+// A person row's buttons, kept together so they drop below the name as a group when space runs out.
+const hhActs = (html) => (html.trim() ? `<span class="hh-acts">${html}</span>` : "");
 const inviteBtn = (m) => (m.managedBy && m.canManage ? `<button class="btn small${m.inviteSent ? " quiet" : ""}" type="button" data-hi="${esc(m.id)}">${m.inviteSent ? "Resend" : "Invite"}</button>` : "");
 const wireInviteBtns = (el) => el.querySelectorAll("[data-hi]").forEach((b) => (b.onclick = () => sendPersonalInvite(b.dataset.hi)));
 function sendPersonalInvite(id) {
@@ -6224,8 +6234,8 @@ function openCircleManage(gid) {
     <div style="margin-top:6px">${others.map((m) => {
       const viaHh = m.householdId && state.households[m.householdId]?.circles.includes(g.id);
       return `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${viaHh ? `<br><small>In with ${esc(householdLabel(m.householdId))}</small>` : ""}${notJoined(m)}</strong>
-        ${inviteBtn(m)}${m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
-        ${viaHh ? "" : `<button class="btn small quiet danger" type="button" data-kick="${esc(m.id)}">Remove</button>`}</div>`;
+        ${hhActs(`${inviteBtn(m)}${m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
+        ${viaHh ? "" : `<button class="btn small quiet danger" type="button" data-kick="${esc(m.id)}">Remove</button>`}`)}</div>`;
     }).join("") || `<p class="subtle">Just you so far.</p>`}</div>
     ${others.some((m) => m.householdId && state.households[m.householdId]?.circles.includes(g.id)) ? `<p class="subtle" style="margin-top:6px">People who came in with their household come out through Manage households.</p>` : ""}
     <hr class="set-div">
@@ -6267,8 +6277,8 @@ function householdCard() {
   return `<div id="hhPhoto">${photoRowHtml(hh.label, `h:${hh.id}`)}</div>
     <h4 style="margin-top:14px">${esc(hh.label)}</h4>
     <div style="margin-top:6px">${hh.members.map((m) => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}</strong>
-      ${m.id !== state.me.id && m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
-      ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}</div>`).join("")}</div>
+      ${hhActs(`${m.id !== state.me.id && m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
+      ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}`)}</div>`).join("")}</div>
     <button class="btn wide" type="button" id="hhAdd" style="margin-top:8px">${PLUS} Add someone</button>
     <hr class="set-div">
     <form id="hhNameForm" autocomplete="off">
