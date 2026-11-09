@@ -302,6 +302,37 @@
   .link-line { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--brand); }
   .link-line svg { flex: none; }
   .link-line.warn { color: var(--danger, #b3261e); }
+  .link-line { border: 0; background: none; padding: 2px 0; text-align: left; cursor: pointer; }
+  .link-line[data-goto] b { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
+  @keyframes lkFlash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30%, 70% { box-shadow: 0 0 0 4px var(--gold, #C9A227); } }
+  .lk-flash { animation: lkFlash 1.6s ease 2; }
+  .lk-card { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+  .lk-card + .lk-card { margin-top: 8px; }
+  .lk-card .tile { width: 48px; height: 48px; font-size: 20px; border-radius: 12px; }
+  .lk-card .lk-txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .lk-card .lk-txt strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lk-card .lk-txt small { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .lk-card .lk-tag { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); }
+  .lk-card .lk-ok { color: var(--ok); }
+  .lk-card.on { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
+  .lk-card .lk-x { flex: none; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--panel); color: var(--muted); display: grid; place-items: center; font-size: 18px; }
+  .wd-links { margin-top: 16px; }
+  .wd-links h4 { display: flex; align-items: center; gap: 6px; }
+  .goes-add { width: 100%; border: 1.5px dashed var(--line); border-radius: 14px; background: none; padding: 14px; font: inherit; font-weight: 700; color: var(--brand); display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+  .goes-pick { margin-top: 10px; animation: open .25s ease both; }
+  .goes-pick .input { margin-bottom: 8px; }
+  .goes-list { max-height: 300px; overflow-y: auto; display: grid; gap: 8px; padding: 2px; }
+  .goes-list .lk-card + .lk-card { margin-top: 0; }
+  .goes-kind { margin-top: 12px; }
+  .goes-kind .hint { margin: 2px 0 0; }
+  .mrow { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  body.lk-dragging, body.lk-dragging * { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+  .lk-ghost { position: fixed !important; z-index: 1000; margin: 0 !important; pointer-events: none; rotate: -2deg; scale: 1.03; box-shadow: 0 18px 40px rgba(0,0,0,.25); opacity: .96; }
+  .lk-lifted { opacity: .35; }
+  .lk-over { outline: 3px dashed var(--gold, #C9A227); outline-offset: 3px; scale: 1.02; transition: scale .15s ease; }
+  .lk-pair { display: grid; gap: 0; justify-items: center; margin: 4px 0 14px; }
+  .lk-pair .lk-card { cursor: default; }
+  .lk-join { width: 34px; height: 34px; margin: -6px 0; z-index: 1; border-radius: 50%; background: var(--gold, #C9A227); color: #fff; display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
   .goes-box { margin: 12px 0 4px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--gold, #C9A227) 14%, transparent); font-size: 14px; }
   .goes-box p { margin: 0 0 6px; }
   .goes-box .check { margin: 0; }
@@ -3372,7 +3403,7 @@ function openTour() {
     { id: "hi", scene: ringScene(), title: w.started ? `${fam} is ready!` : fam ? `Welcome to ${fam}!` : `Welcome, ${state.me.name}!`,
       text: w.started ? "Here's how Hints works. It takes about 20 seconds." : fam ? `So glad you're here, ${state.me.name}. Here's how it works.` : "Here's a quick look at how Hints works." },
     { id: "add", scene: addScene(), title: "Drop a hint", text: "Paste a link from any store or app (TikTok Shop, Amazon, anywhere), or just type a name. Put it on your wish list, or tuck it in Maybe (only you see it) until you're sure." },
-    { id: "link", scene: linkScene(), title: "Some things go together", text: "Only want the pencils if you get the coloring book? Open a wish and link it under Goes with. Pick Both or neither, or Only with that one." },
+    { id: "link", scene: linkScene(), title: "Some things go together", text: "Only want the pencils if you get the coloring book? Press and hold a wish on My list and drop it on the one it goes with (or use Goes with when you edit it)." },
     { id: "surprise", scene: surpriseScene(), title: "Gifts stay a surprise", text: "When someone marks a gift on your list, you never see it. No spoilers, ever." },
     { id: "private", scene: privateScene(), title: "Plan in secret", text: "Jot down gift ideas and set a budget for each person in Budget. The people you're shopping for never see any of it." },
     !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
@@ -3810,11 +3841,108 @@ const shareRow = () => `<p class="hint" style="text-align:center;margin:26px 0 6
 function wireMineItems(root, all) {
   root.querySelectorAll(".row[data-id]").forEach((el) => {
     const item = all.find((i) => i.id === el.dataset.id);
-    el.onclick = (e) => { if (!e.target.closest("a, button")) editItem(item); };
+    el.onclick = (e) => { if (!e.target.closest("a, button") && Date.now() - dragDoneAt > 400) editItem(item); };
     el.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); editItem(item); } };
   });
+  wireLinkDrag(root, all);
   root.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => toggleTopPick(all.find((i) => i.id === b.dataset.star), b)));
   root.querySelectorAll("[data-publish]").forEach((b) => (b.onclick = () => confirmPublish(all.find((i) => i.id === b.dataset.publish))));
+}
+
+// Drag to link: press and hold a wish on My list, drag it onto another, and drop to link them (Goes with).
+// Works with touch and a mouse. Scrolling is blocked only while something is lifted.
+let dragDoneAt = 0;
+function wireLinkDrag(root, all) {
+  const cards = [...root.querySelectorAll(".row.mrow[data-id]")];
+  if (cards.length < 2) return;
+  cards.forEach((card) => {
+    card.addEventListener("contextmenu", (e) => { if (card.dataset.pressing) e.preventDefault(); });
+    card.addEventListener("pointerdown", (e) => {
+      if (e.button > 0 || e.target.closest("a, button")) return;
+      const x0 = e.clientX, y0 = e.clientY;
+      card.dataset.pressing = "1";
+      const stop = () => { clearTimeout(t); delete card.dataset.pressing; card.removeEventListener("pointermove", far); };
+      const far = (ev) => { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) stop(); };
+      const t = setTimeout(() => { stop(); liftCard(card, x0, y0, all); }, 380);
+      card.addEventListener("pointermove", far);
+      card.addEventListener("pointerup", stop, { once: true });
+      card.addEventListener("pointercancel", stop, { once: true });
+    });
+  });
+}
+function liftCard(card, x0, y0, all) {
+  const r = card.getBoundingClientRect();
+  const ghost = card.cloneNode(true);
+  ghost.className += " lk-ghost";
+  Object.assign(ghost.style, { width: r.width + "px", left: r.left + "px", top: r.top + "px", animation: "none" });
+  document.body.append(ghost);
+  card.classList.add("lk-lifted");
+  document.body.classList.add("lk-dragging");
+  buzz();
+  let over = null, x = x0, y = y0, raf = 0;
+  const at = (cx, cy) => {
+    x = cx; y = cy;
+    ghost.style.translate = `${x - x0}px ${y - y0}px`;
+    const hit = document.elementFromPoint(x, y)?.closest(".row.mrow[data-id]");
+    const next = hit && hit !== card ? hit : null;
+    if (next !== over) { over?.classList.remove("lk-over"); next?.classList.add("lk-over"); if (next) buzz(); over = next; }
+  };
+  // Scroll the page when the card is held near the top or bottom.
+  const edge = () => {
+    const d = y < 90 ? -10 : y > innerHeight - 110 ? 10 : 0;
+    if (d) { scrollBy(0, d); at(x, y); }
+    raf = requestAnimationFrame(edge);
+  };
+  raf = requestAnimationFrame(edge);
+  const onPointer = (e) => at(e.clientX, e.clientY);
+  const onTouch = (e) => { e.preventDefault(); const t = e.touches[0]; if (t) at(t.clientX, t.clientY); };
+  const done = () => {
+    cancelAnimationFrame(raf);
+    removeEventListener("pointermove", onPointer);
+    removeEventListener("touchmove", onTouch);
+    removeEventListener("pointerup", done);
+    removeEventListener("touchend", done);
+    removeEventListener("pointercancel", onCancel);
+    ghost.remove();
+    card.classList.remove("lk-lifted");
+    over?.classList.remove("lk-over");
+    document.body.classList.remove("lk-dragging");
+    dragDoneAt = Date.now();
+    const a = all.find((i) => i.id === card.dataset.id), b = over && all.find((i) => i.id === over.dataset.id);
+    if (a && b) linkSheet(a, b);
+  };
+  // A touch drag can't scroll the page (touchmove is cancelled), so pointercancel only comes from the system.
+  const onCancel = (e) => { if (e.pointerType !== "touch") done(); };
+  addEventListener("pointermove", onPointer);
+  addEventListener("touchmove", onTouch, { passive: false });
+  addEventListener("pointerup", done);
+  addEventListener("touchend", done);
+  addEventListener("pointercancel", onCancel);
+}
+// After a drop: pick how the two go together, then link them.
+function linkSheet(a, b) {
+  const sub = (o) => (o.draft ? "In Maybe" : o.price_cents != null ? money(o.price_cents) : "");
+  const why = (k) => (k === "needs" ? `You only want ${esc(a.title)} if you get ${esc(b.title)}. ${esc(b.title)} is fine on its own.` : "Nobody gets one without the other.");
+  openSheet(`
+    <h3>Link these?</h3>
+    <div class="lk-pair">${lkCard(a, { sub: sub(a), extra: " " })}<span class="lk-join">${LINK_I.replace('width="13" height="13"', 'width="18" height="18"')}</span>${lkCard(b, { sub: sub(b), extra: " " })}</div>
+    <div class="goes-kind">${seg("How they go together", [["together", "Both or neither"], ["needs", "Only with it"]], "together", "two")}<p class="hint" data-why>${why("together")}</p></div>
+    <button class="btn primary wide" type="button" id="lkGo">${LINK_I} Link them</button>
+    <button class="btn quiet wide" type="button" id="lkNo" style="margin-top:6px">Cancel</button>`, (el) => {
+    let kind = "together";
+    wireSeg($(".seg", el), (v) => { kind = v; $("[data-why]", el).innerHTML = why(v); });
+    $("#lkNo", el).onclick = closeSheet;
+    $("#lkGo", el).onclick = async () => {
+      try {
+        await api("item/link", { id: a.id, with: b.id, kind });
+        closeSheet();
+        buzz();
+        toast(kind === "needs" ? `Linked. ${a.title} only comes with ${b.title}.` : "Linked. Both or neither.", () => api("item/link", { id: a.id, kind: null }).then(() => { state.stale = true; render(); }, (e) => oops(e.message)));
+        state.stale = true;
+        render();
+      } catch (e) { oops(e.message); }
+    };
+  });
 }
 
 // Filters repaint just the cards (no refetch, no re-animating the page), so typing in search keeps focus.
@@ -4117,7 +4245,7 @@ function nameBlock(i) {
   return `${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}<span class="row-title">${esc(title)}</span>`;
 }
 // Size, color, category and (optionally) the store as small chips under a wish's name.
-function detailChips(i, { store = false, price = false } = {}) {
+function detailChips(i, { store = false, price = false, links = true } = {}) {
   const out = [];
   if (price && i.price_cents != null) out.push(`<span class="dchip price">${money(i.price_cents)}</span>`);
   if (i.size) out.push(`<span class="dchip var"><small>Size</small>${esc(i.size)}</span>`);
@@ -4129,19 +4257,48 @@ function detailChips(i, { store = false, price = false } = {}) {
   const c = catOf(i);
   out.push(`<span class="dchip cat">${catIcon(c, 13)}${esc(CAT[c].label)}</span>`);
   if (store && i.url) out.push(`<a class="dchip store" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}${EXT_I}</a>`);
-  return `<div class="dchips">${out.join("")}</div>${linkLine(i)}`;
+  return `<div class="dchips">${out.join("")}</div>${links ? linkLine(i) : ""}`;
 }
 // Linked wishes ("Goes with", from the API): together = both or neither, needs = only wanted with that one,
 // pairs = that one is only wanted with this. On your own list, a partner in Maybe keeps a published wish hidden.
 const LINK_WORDS = { together: "Together with", needs: "Only with", pairs: "Goes with" };
+const LINK_TAGS = { together: "Both or neither", needs: "Needed for this one", pairs: "Only wanted with this" };
+// A linked wish as a small card: photo, name, and how it's doing. tag: small label on top. extra: buttons on the right.
+function lkCard(p, { tag = "", sub = "", attrs = "", extra = "", on = false } = {}) {
+  return `<div class="lk-card${on ? " on" : ""}" role="button" tabindex="0" ${attrs}>${tile(p, "item")}
+    <span class="lk-txt">${tag ? `<span class="lk-tag">${tag}</span>` : ""}<strong>${esc(p.title)}</strong>${sub ? `<small>${sub}</small>` : ""}</span>${extra || CHEV}</div>`;
+}
+// How a linked wish on someone's list is doing, for whoever's looking.
+const lkStatus = (p) => p.claim?.mine ? `<span class="lk-ok">You're getting it</span>`
+  : p.claim ? `${esc(p.claim.buyerName)} ${p.claim.many ? "are" : "is"} getting it`
+  : p.price_cents != null ? `${money(p.price_cents)} · Still available` : "Still available";
+// Tap a linked wish on a card: scroll to its card and flash it.
+function gotoLinked(id) {
+  const q = CSS.escape(id);
+  const card = document.querySelector(`#view [data-key="item:${q}"], #view .row[data-id="${q}"]`);
+  if (!card) {
+    const mine = (state.myItems || []).find((o) => o.id === id);
+    return toast(mine?.draft ? "That one is in your Maybe list." : "It's hidden by your filters right now.");
+  }
+  card.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" });
+  card.classList.remove("lk-flash"); void card.offsetWidth; card.classList.add("lk-flash");
+  setTimeout(() => card.classList.remove("lk-flash"), 3400);
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-goto]");
+  if (!b || b.closest("dialog")) return;
+  e.stopPropagation();
+  gotoLinked(b.dataset.goto);
+});
 function linkLine(i) {
   const l = i.goesWith || [];
   if (!l.length) return "";
   const out = Object.keys(LINK_WORDS).map((k) => {
     const these = l.filter((x) => x.kind === k);
     if (!these.length) return "";
-    const names = these.map((x) => (x.removed ? "a removed wish" : esc(x.title) + (x.draft && !i.draft ? " (in Maybe, so this stays hidden for now)" : "")));
-    return `<span class="link-line${these.some((x) => x.removed) ? " warn" : ""}">${LINK_I}${LINK_WORDS[k]} ${andList(names)}</span>`;
+    return these.map((x) => x.removed
+      ? `<span class="link-line warn">${LINK_I}<span>${LINK_WORDS[k]} a removed wish</span></span>`
+      : `<button type="button" class="link-line" data-goto="${esc(x.id)}" aria-label="Go to ${esc(x.title)}">${LINK_I}<span>${LINK_WORDS[k]} <b>${esc(x.title)}</b>${x.draft && !i.draft ? " (in Maybe, so this stays hidden for now)" : ""}</span></button>`).join("");
   }).join("");
   return `<div class="links">${out}</div>`;
 }
@@ -4239,13 +4396,15 @@ function editItem(item, opts = {}) {
   const sibs = ((asId ? opts.list : state.myItems) || []).filter((o) => o.id !== item.id && !o.received_at && !o.removed);
   const linkNow = (item.goesWith || []).find((x) => x.kind !== "pairs" && !x.removed) || null;
   const pairsNow = (item.goesWith || []).filter((x) => x.kind === "pairs");
-  const goesSection = !sibs.length ? "" : `<section class="fsec"><h4 class="fsec-h">Goes with</h4>
-    <label class="field"><span>Linked wish <small style="font-weight:500;color:var(--muted)">like a coloring book and its pencils</small></span><select class="input" name="goesWith"><option value="">Nothing</option>
-      ${sibs.map((o) => `<option value="${esc(o.id)}"${linkNow?.id === o.id ? " selected" : ""}>${esc(o.title)}${o.draft ? " (Maybe)" : ""}</option>`).join("")}</select></label>
-    <label class="field" data-goes-kind${linkNow ? "" : " hidden"}><span>How?</span><select class="input" name="goesKind">
-      <option value="together"${linkNow?.kind !== "needs" ? " selected" : ""}>Both or neither</option>
-      <option value="needs"${linkNow?.kind === "needs" ? " selected" : ""}>Only want this one with it</option></select></label>
-    ${pairsNow.length ? `<p class="hint" style="margin:0">${andList(pairsNow.map((x) => esc(x.title)))} ${pairsNow.length > 1 ? "are" : "is"} only wanted with this one.</p>` : ""}
+  const goesSection = !sibs.length ? "" : `<section class="fsec" data-goes><h4 class="fsec-h">Goes with</h4>
+    <input type="hidden" name="goesWith" value="${esc(linkNow?.id || "")}"><input type="hidden" name="goesKind" value="${linkNow?.kind === "needs" ? "needs" : "together"}">
+    <div data-goes-now></div>
+    <div class="goes-pick" data-goes-pick hidden>
+      ${sibs.length > 6 ? `<input class="input" type="search" data-goes-q placeholder="Search your wishes" aria-label="Search your wishes">` : ""}
+      <div class="goes-list">${sibs.map((o) => lkCard(o, { sub: o.draft ? "In Maybe" : o.price_cents != null ? money(o.price_cents) : "", attrs: `data-pick="${esc(o.id)}" data-q="${esc(o.title.toLowerCase())}"`, extra: PLUS })).join("")}</div>
+    </div>
+    <div class="goes-kind" data-goes-kind hidden>${seg("How they go together", [["together", "Both or neither"], ["needs", "Only with it"]], linkNow?.kind === "needs" ? "needs" : "together", "two")}<p class="hint" data-goes-why></p></div>
+    ${pairsNow.length ? `<p class="hint" style="margin:8px 0 0">${andList(pairsNow.map((x) => esc(x.title)))} ${pairsNow.length > 1 ? "are" : "is"} only wanted with this one.</p>` : ""}
   </section>`;
   openSheet(`
     <h3>${asId ? (isNew ? `Add a wish for ${esc(asName)}` : `Edit ${esc(asName)}'s wish`) : isNew ? "What would you like?" : "Edit wish"}</h3>
@@ -4298,7 +4457,38 @@ function editItem(item, opts = {}) {
         pickGiftCards(mine.giftCards);
       });
       const goesSel = form.elements.goesWith;
-      goesSel?.addEventListener("change", () => { $("[data-goes-kind]", form).hidden = !goesSel.value; });
+      // Goes with picker: the linked wish as a card (Change, ×), or a dashed "Link another wish" button that opens
+      // the list of your other wishes. Both or neither / Only with it shows once something is picked.
+      const goes = $("[data-goes]", form);
+      const paintGoes = () => {
+        if (!goes) return;
+        const p = sibs.find((o) => o.id === goesSel.value);
+        const pick = $("[data-goes-pick]", goes), kindEl = $("[data-goes-kind]", goes);
+        $("[data-goes-now]", goes).innerHTML = p
+          ? lkCard(p, { tag: "Linked", sub: p.draft ? "In Maybe" : p.price_cents != null ? money(p.price_cents) : "", on: true, attrs: "data-goes-change",
+            extra: `<button type="button" class="lk-x" data-goes-off aria-label="Unlink">×</button>` })
+          : pick.hidden ? `<button type="button" class="goes-add" data-goes-open>${LINK_I} Link another wish</button>` : "";
+        kindEl.hidden = !p;
+        const k = form.elements.goesKind.value, name2 = p ? esc(p.title) : "";
+        $("[data-goes-why]", goes).innerHTML = !p ? "" : k === "needs"
+          ? `You only want this one if you get ${name2}. ${name2} is fine on its own.` : "Nobody gets one without the other.";
+        pick.querySelectorAll("[data-pick]").forEach((c) => c.classList.toggle("on", c.dataset.pick === goesSel.value));
+      };
+      if (goes) {
+        wireSeg($(".seg", goes), (v) => { form.elements.goesKind.value = v; paintGoes(); });
+        goes.addEventListener("click", (e) => {
+          const t = e.target;
+          if (t.closest("[data-goes-off]")) { goesSel.value = ""; paintGoes(); return; }
+          if (t.closest("[data-goes-open], [data-goes-change]")) { $("[data-goes-pick]", goes).hidden = false; goesSel.value && ($("[data-goes-now]", goes).innerHTML = ""); paintGoes(); $("[data-goes-q]", goes)?.focus(); return; }
+          const c = t.closest("[data-pick]");
+          if (c) { goesSel.value = c.dataset.pick; $("[data-goes-pick]", goes).hidden = true; paintGoes(); }
+        });
+        $("[data-goes-q]", goes)?.addEventListener("input", (e) => {
+          const q = e.target.value.trim().toLowerCase();
+          goes.querySelectorAll("[data-pick]").forEach((c) => (c.hidden = q && !c.dataset.q.includes(q)));
+        });
+        paintGoes();
+      }
       // Save the link only when it changed.
       const saveLink = async (d, id) => {
         if (!goesSel) return;
@@ -5525,6 +5715,7 @@ async function renderPerson(id) {
   wireIdeaRows(v, mine);
   v.querySelectorAll("[data-give]").forEach((b) => (b.onclick = () => giveGiftCard(list.giftCards.find((c) => c.brand === b.dataset.give), list.member, name, id)));
   const byKind = { item: all, idea: sugg };
+  state.personItems = all;
   // Tapping a card (not one of its buttons or links) opens the full details, read only.
   v.querySelectorAll("article.wish[data-key]").forEach((el) => {
     const open = () => {
@@ -6230,14 +6421,18 @@ function wishDetails(card, kind, i, name) {
     i.claim ? `${esc(i.claim.buyerName)} ${i.claim.many ? "are" : "is"} getting this` : "",
   ].filter(Boolean).join(" · ");
   const btns = [...card.querySelectorAll(".row-foot button")];
+  // Linked wishes, shown as cards you can open (the sheet switches to that wish).
+  const linked = kind === "item" ? (i.goesWith || []).map((l) => ({ l, p: (state.personItems || []).find((o) => o.id === l.id) })).filter(({ p }) => p) : [];
   openSheet(`
     <div class="wd">
       <div class="wd-img${src ? " photo" : ""}">${src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer">` : iconTile(i.title, i.id)}</div>
       ${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}
       <h3 class="wd-title">${esc(brand && i.title.toLowerCase().startsWith(brand.toLowerCase() + " ") ? i.title.slice(brand.length + 1).replace(/^[-|:,]\s*/, "") : i.title)}</h3>
       ${buy}
-      ${detailChips(i)}
+      ${detailChips(i, { links: false })}
       ${notes ? `<div class="wish-note"><span>${kind === "idea" ? `${esc(i.author_name)}'s note` : `${esc(name)}'s note`}</span>${esc(notes)}</div>` : ""}
+      ${linked.length ? `<div class="wd-links"><h4 class="fsec-h">${LINK_I} Goes with</h4>
+        ${linked.map(({ l, p }) => lkCard(p, { tag: LINK_TAGS[l.kind], sub: lkStatus(p), attrs: `data-wd-link="${esc(p.id)}" aria-label="Open ${esc(p.title)}"` })).join("")}</div>` : ""}
       ${meta ? `<p class="wd-meta">${meta}</p>` : ""}
       ${btns.length ? `<div class="wd-actions">
         ${btns.map((b, n) => `<button type="button" class="${esc(b.className)}" data-wd="${n}"${b.getAttribute("aria-label") ? ` aria-label="${esc(b.getAttribute("aria-label"))}"` : ""}>${b.innerHTML}</button>`).join("")}
@@ -6246,6 +6441,16 @@ function wishDetails(card, kind, i, name) {
     const live = el.querySelector("[data-live]");
     if (live && liveSeen.get(key)) paintLive(live, liveSeen.get(key));
     el.querySelectorAll("[data-wd]").forEach((b) => (b.onclick = () => { closeSheet(); btns[+b.dataset.wd].click(); }));
+    el.querySelectorAll("[data-wd-link]").forEach((b) => {
+      const go = () => {
+        const p = state.personItems.find((o) => o.id === b.dataset.wdLink);
+        const card2 = document.querySelector(`#view [data-key="item:${CSS.escape(p.id)}"]`);
+        card2?.scrollIntoView({ block: "center" });
+        wishDetails(card2 || document.createElement("div"), "item", p, name);
+      };
+      b.onclick = go;
+      b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+    });
     el.querySelector(".wd-img img")?.addEventListener("error", (e) => { const box = e.target.parentElement; box.classList.remove("photo"); box.innerHTML = iconTile(i.title, i.id); });
   });
 }
