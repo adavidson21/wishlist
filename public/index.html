@@ -34,7 +34,7 @@
 <script src="/theme.js"></script>
 <script>try { var ts = localStorage.getItem("wishlist-text"); if (ts) document.documentElement.dataset.text = ts;
   if (localStorage.getItem("wishlist-motion") === "off") document.documentElement.dataset.motion = "off";
-  var ac = localStorage.getItem("wishlist-accent"); if (ac) document.documentElement.dataset.accent = ac; } catch (e) {}</script>
+  localStorage.removeItem("wishlist-accent"); } catch (e) {}</script>
 <style>
   /* Warm and a little handmade: cream paper, a wine header band, burgundy for actions, gold for
      top picks, pine for "you're getting this". Bricolage Grotesque for titles and big numbers, Figtree for the rest.
@@ -68,19 +68,6 @@
     --t0: #3A2129; --t0-ink: #F0B5C4; --t1: #1E3029; --t1-ink: #8FD0B4; --t2: #3A2F1C; --t2-ink: #F1D08A; --t3: #252A3D; --t3-ink: #B4BDF0;
     --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
 
-  /* App color (Settings > Look and feel): Wine is the default above. Each one swaps the action color,
-     soft tints and the header band, in light and dark. Saved per device (wishlist-accent). */
-  :root[data-accent="navy"] { --brand: #2E4A7D; --soft: #E7ECF6; --soft-ink: #2E4A7D; --hero: #17284A; --hero-muted: #BCC8E4; }
-  :root[data-accent="plum"] { --brand: #5E2A73; --soft: #F0E7F4; --soft-ink: #5E2A73; --hero: #351543; --hero-muted: #D4BCDF; }
-  :root[data-accent="clay"] { --brand: #A0472A; --soft: #F8E9E2; --soft-ink: #8A3B22; --hero: #4E2114; --hero-muted: #EBC3B3; }
-  @media (prefers-color-scheme: dark) {
-    :root[data-accent="navy"]:not([data-theme="light"]) { --brand: #A9BDF0; --brand-ink: #111B33; --soft: #232B40; --soft-ink: #BFCDF5; --hero: #121B30; --hero-muted: #A7B4D8; }
-    :root[data-accent="plum"]:not([data-theme="light"]) { --brand: #D2A8E6; --brand-ink: #24102D; --soft: #33213D; --soft-ink: #DDBDEB; --hero: #22102B; --hero-muted: #C3A3D2; }
-    :root[data-accent="clay"]:not([data-theme="light"]) { --brand: #EBA88F; --brand-ink: #2E140B; --soft: #3A251E; --soft-ink: #F2BFAB; --hero: #2E150D; --hero-muted: #D9AE9E; }
-  }
-  :root[data-accent="navy"][data-theme="dark"] { --brand: #A9BDF0; --brand-ink: #111B33; --soft: #232B40; --soft-ink: #BFCDF5; --hero: #121B30; --hero-muted: #A7B4D8; }
-  :root[data-accent="plum"][data-theme="dark"] { --brand: #D2A8E6; --brand-ink: #24102D; --soft: #33213D; --soft-ink: #DDBDEB; --hero: #22102B; --hero-muted: #C3A3D2; }
-  :root[data-accent="clay"][data-theme="dark"] { --brand: #EBA88F; --brand-ink: #2E140B; --soft: #3A251E; --soft-ink: #F2BFAB; --hero: #2E150D; --hero-muted: #D9AE9E; }
 
   /* Text size setting (Settings > Text size): Small, Normal, Large, Extra large. */
   :root[data-text="sm"] :is(main, .hero, dialog.sheet, nav.tabs, .toast) { zoom: .9; }
@@ -517,11 +504,6 @@
   .cdots { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .cdot { display: inline-flex; align-items: center; gap: 6px; }
   .cdot i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
-  .accents { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .accent { border: 2px solid var(--line); background: var(--card); border-radius: 14px; padding: 10px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
-    font-weight: 700; font-size: 13px; color: var(--muted); }
-  .accent i { width: 30px; height: 30px; border-radius: 50%; background: var(--a); box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--h); margin: 3px; }
-  .accent[aria-checked="true"] { border-color: var(--brand); color: var(--ink); }
   .brand-add .input { flex: 1; min-width: 0; }
 
   /* Profile: a card like a social profile (cover in your favorite colors, photo, name, bio), then
@@ -4667,13 +4649,6 @@ function setTextSize(v) {
   try { v === "md" ? localStorage.removeItem(TEXT_KEY) : localStorage.setItem(TEXT_KEY, v); } catch {}
   if (v === "md") delete root.dataset.text; else root.dataset.text = v;
 }
-// [key, label, action color, header color] (light values, for the picker). Palettes are in the CSS.
-const ACCENTS = [["wine", "Wine", "#7A1B36", "#4A0E22"], ["navy", "Navy", "#2E4A7D", "#17284A"], ["plum", "Plum", "#5E2A73", "#351543"], ["clay", "Clay", "#A0472A", "#4E2114"]];
-function setAccent(v) {
-  const root = document.documentElement;
-  try { v === "wine" ? localStorage.removeItem("wishlist-accent") : localStorage.setItem("wishlist-accent", v); } catch {}
-  if (v === "wine") delete root.dataset.accent; else root.dataset.accent = v;
-}
 function setMotion(on) {
   const root = document.documentElement;
   try { on ? localStorage.removeItem(MOTION_KEY) : localStorage.setItem(MOTION_KEY, "off"); } catch {}
@@ -4702,10 +4677,6 @@ async function renderSettings() {
       <h4>Text size</h4>
       <div id="textSeg">${seg("Text size", TEXT_SIZES.map(([k, l, px]) => [k, `<b style="font-size:${px}px">Aa</b>${l}`]), root.dataset.text || "md", "four")}</div>
       <div class="ts-preview"><small>Preview</small>Cozy socks, size medium. Any color but orange!</div>
-      <hr class="set-div">
-      <h4>App color</h4>
-      <div class="accents" role="radiogroup" aria-label="App color" id="accents">${ACCENTS.map(([k, l, a, h]) => `<button class="accent" type="button" role="radio" data-accent="${k}" aria-checked="${(root.dataset.accent || "wine") === k}"><i style="--a:${a};--h:${h}"></i>${l}</button>`).join("")}</div>
-      <p class="sub" style="margin:8px 0 0">Just on this device.</p>
       <hr class="set-div">
       ${swRow("motionSw", "Animations", "", root.dataset.motion !== "off")}
     </div>
@@ -4774,11 +4745,6 @@ async function renderSettings() {
   mq.onchange = () => { if (state.tab === "settings" && $("#modes")) paintTheme(); };
 
   wireSeg($("#textSeg", v), setTextSize);
-  v.querySelectorAll("[data-accent]").forEach((b) => (b.onclick = () => {
-    setAccent(b.dataset.accent);
-    v.querySelectorAll("[data-accent]").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
-    buzz();
-  }));
   $("#motionSw", v).onclick = (e) => {
     const on = e.currentTarget.getAttribute("aria-checked") !== "true";
     setMotion(on);
