@@ -590,6 +590,7 @@
   .ts-preview { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-top: 10px; color: var(--ink); font-size: 16px; }
   .ts-preview small { display: block; color: var(--muted); font-size: 13px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dupe-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--line, rgba(0,0,0,.06)); color: var(--muted); font-size: 12px; font-weight: 600; vertical-align: middle; }
   /* Size and color on a wish: dropdowns when the store lists them, otherwise a box with suggestions. */
   .sc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
   .sc-row .flabel { margin-bottom: 7px; }
@@ -1930,6 +1931,21 @@ const others = () => everyone().filter((m) => m.id !== state.me.id);
 // Someone who doesn't use the app, and you're one of the people who looks after their list.
 const canManageId = (id) => !!everyone().find((m) => m.id === id)?.canManage;
 const personName = (id) => everyone().find((m) => m.id === id)?.name || "Someone";
+// Two people you can see with the same first name (two Marias): a small tag saying which one. Their household
+// when the two are in different households, otherwise their last name. Empty when the name is unique.
+function dupeTag(m) {
+  if (!m) return "";
+  const key = (x) => String(x.name || "").trim().toLowerCase();
+  const twins = everyone().filter((x) => x.id !== m.id && key(x) === key(m));
+  if (!twins.length) return "";
+  const hhDiffers = m.householdId && twins.every((x) => x.householdId !== m.householdId);
+  return hhDiffers ? householdLabel(m.householdId) : m.lastName || (m.householdId ? householdLabel(m.householdId) : "");
+}
+const dupeHtml = (m) => { const t = dupeTag(m); return t ? `<span class="dupe-tag">${esc(t)}</span>` : ""; };
+// First and last name inputs side by side. Last name is required for anyone new.
+const nameFields = (label, first = "", last = "", firstName = "name", lastName = "lastName") => `<div class="two">
+  <label class="field"><span>${label ? `${label} first name` : "First name"}</span><input class="input" name="${firstName}" maxlength="40" value="${esc(first)}" required autocomplete="off"></label>
+  <label class="field"><span>Last name</span><input class="input" name="${lastName}" maxlength="40" value="${esc(last)}" required autocomplete="off"></label></div>`;
 const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a circle";
 
 // ---------- households ----------
@@ -2249,7 +2265,7 @@ async function renderWelcome(step = "code", info = {}) {
       <div class="picker">
         ${info.members.map((m, i) => `<button class="member slide" style="animation-delay:${0.1 + i * 0.05}s" type="button" data-id="${esc(m.id)}">
             ${avatar(m.name, m.id)}
-            <span class="who"><strong>${esc(m.name)}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
+            <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
           </button>`).join("")}
       </div>` : ""}`;
     $("#backBtn").onclick = () => renderWelcome(invite ? "invite" : "code");
@@ -2290,7 +2306,8 @@ async function renderWelcome(step = "code", info = {}) {
         <div class="name-preview" id="namePrev">${avatar("?", "new", true)}</div>
         ${starting ? "" : `<p class="hint" style="margin-top:0">Already on Hints?${tip("Sign in as yourself, then join this circle from Settings. That way you keep one list.")}</p>`}
         ${starting ? `<label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>` : ""}
-        <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
+        ${nameFields("Your")}
+        <p class="hint" style="margin-top:-4px">Helps tell two people with the same first name apart.</p>
         <button class="btn primary wide" type="submit">${starting ? "Create circle" : `Join ${esc(info.group.name)}`}</button>
       </form>`;
     const nameIn = $("#newForm").elements.name;
@@ -2305,7 +2322,7 @@ async function renderWelcome(step = "code", info = {}) {
     $("#backBtn").onclick = () => (starting ? renderWelcome(invite ? "invite" : "code") : renderWelcome("who", info));
     wireForm($("#newForm"), async (d) => {
       if (starting) finishJoin(await api("start", d), { started: d.groupName.trim() });
-      else finishJoin(await api("join", { code: info.code, name: d.name }), { joined: info.group.name });
+      else finishJoin(await api("join", { code: info.code, name: d.name, lastName: d.lastName }), { joined: info.group.name });
     });
   }
 }
@@ -2945,7 +2962,11 @@ async function renderMine() {
   const pinNotice = pc ? `<div class="starter slide" id="pinNotice" style="margin:0 0 14px"><strong>Your PIN was cleared</strong>
       <p>${esc(pc.by)} cleared it on ${new Date(pc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, so you could sign in again. Set a new one to keep your notes yours.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pinNoticeOk">Not now</button><button class="btn primary" type="button" id="pinNoticeSet">Set a PIN</button></div></div>` : "";
-  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
+  const lastNotice = state.me.lastName ? "" : `<form class="starter slide" id="lastNotice" style="margin:0 0 14px" autocomplete="off"><strong>Add your last name</strong>
+      <p>So your people can tell you apart from anyone else named ${esc(state.me.name)}.</p><div class="err" hidden></div>
+      <label class="field"><span>Last name</span><input class="input" name="lastName" maxlength="40" required></label>
+      <div class="actions" style="margin:0"><button class="btn primary" type="submit">Save</button></div></form>`;
+  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
     <div class="empty">
       ${giftBox("Drop your first hint")}
       <strong>Let's start your list</strong>
@@ -2970,6 +2991,12 @@ async function renderMine() {
   $("#bdayAdd")?.addEventListener("click", quickBirthday);
   const dropPinNotice = () => { state.me.pinCleared = null; $("#pinNotice")?.remove(); api("pin/seen", {}).catch(() => {}); };
   $("#pinNoticeOk")?.addEventListener("click", dropPinNotice);
+  if ($("#lastNotice")) wireForm($("#lastNotice"), async ({ lastName }) => {
+    await api("profile", { lastName });
+    state.me.lastName = lastName.trim();
+    $("#lastNotice")?.remove();
+    toast("Last name saved");
+  });
   // Setting the PIN clears the notice on the server too.
   $("#pinNoticeSet")?.addEventListener("click", () => { state.setSec = "app"; setTab("settings"); });
   $("#staleAdd")?.addEventListener("click", () => addThing());
@@ -3834,7 +3861,7 @@ async function renderFamily() {
         // One wrapping row: what's on their list, then the household chip (other households only) and birthday.
         return `<button class="member slide" style="animation-delay:${Math.min(i, 12) * 0.05}s" type="button" data-id="${esc(m.id)}">
           ${avatar(m.name, m.id)}
-          <span class="who"><strong>${esc(m.name)}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}${real}${looked}</small>${householdChip(m)}${soon}</span>${budgetMini(p)}</span>${CHEV}
+          <span class="who"><strong>${esc(m.name)}${householdChip(m) && dupeTag(m) === householdLabel(m.householdId) ? "" : dupeHtml(m)}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}${real}${looked}</small>${householdChip(m)}${soon}</span>${budgetMini(p)}</span>${CHEV}
         </button>`;
   };
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
@@ -3910,7 +3937,8 @@ function openHouseholds(gid) {
     wireInviteBtns(el);
     // New people who aren't on Hints yet. You look after their lists until they open their invite.
     $("#setupHh", el).onclick = () => {
-      const nameRow = (i) => `<label class="field"><span>Person ${i}</span><input class="input" name="p" maxlength="40" placeholder="Name"></label>`;
+      const nameRow = (i) => `<div class="two" data-prow><label class="field"><span>Person ${i}</span><input class="input" data-first maxlength="40" placeholder="First name"></label>
+        <label class="field"><span>Last name</span><input class="input" data-last maxlength="40" placeholder="Last name"></label></div>`;
       openSheet(`<h3>Add a household</h3>
         <p class="subtle">Everyone you shop for in one home. They don't need to be on Hints yet: you can add wishes for them, then send each one an invite.</p>
         <form id="setupForm" autocomplete="off"><div class="err" hidden></div>
@@ -3923,29 +3951,33 @@ function openHouseholds(gid) {
         setTimeout(() => box.querySelector("input")?.focus(), 300);
         $("#hhBack", el2).onclick = () => openHouseholds(gid);
         $("#morePpl", el2).onclick = () => {
-          const n = box.querySelectorAll("input").length;
+          const n = box.querySelectorAll("[data-prow]").length;
           if (n >= 12) return;
           box.insertAdjacentHTML("beforeend", nameRow(n + 1));
-          box.querySelectorAll("input")[n].focus();
+          box.querySelectorAll("[data-first]")[n].focus();
         };
         wireForm($("#setupForm", el2), async ({ name }) => {
-          const people = [...box.querySelectorAll("input")].map((x) => x.value.trim()).filter(Boolean);
+          const people = [...box.querySelectorAll("[data-prow]")]
+            .map((r) => ({ name: r.querySelector("[data-first]").value.trim(), lastName: r.querySelector("[data-last]").value.trim() }))
+            .filter((x) => x.name || x.lastName);
           if (!people.length) throw new Error("Add at least one person.");
+          const half = people.find((x) => !x.name || !x.lastName);
+          if (half) throw new Error(`Add a first and last name for ${half.name || half.lastName}.`);
           await api("household/new", { groupId: gid, name, people });
-          await back(`Added ${people.length === 1 ? people[0] : plural(people.length, "person", "people")}`);
+          await back(`Added ${people.length === 1 ? people[0].name : plural(people.length, "person", "people")}`);
         });
       });
     };
     const addNew = (hhId) => openSheet(`<h3>Add to ${esc(householdLabel(hhId))}</h3>
       <p class="subtle">Someone who isn't on Hints yet. You can add wishes for them, then send them an invite.</p>
       <form id="newPerson" autocomplete="off"><div class="err" hidden></div>
-        <label class="field"><span>Their name</span><input class="input" name="name" maxlength="40" required></label>
+        ${nameFields("Their")}
         <div class="actions"><button class="btn" type="button" id="hhBack">Back</button><button class="btn primary" type="submit">Add</button></div>
       </form>`, (el2) => {
       setTimeout(() => $("#newPerson", el2).elements.name.focus(), 300);
       $("#hhBack", el2).onclick = () => openHouseholds(gid);
-      wireForm($("#newPerson", el2), async ({ name }) => {
-        await api("managed/add", { name, householdId: hhId });
+      wireForm($("#newPerson", el2), async ({ name, lastName }) => {
+        await api("managed/add", { name, lastName, householdId: hhId });
         await back(`Added ${name.trim()}`);
       });
     });
@@ -4229,7 +4261,7 @@ async function renderPerson(id) {
   }
   setHero(`<button class="back" type="button" id="backBtn">${BACK} Circles</button>
     <div class="hero-row">${avatar(name, id, true)}
-      <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}</div>
+      <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}${dupeTag(everyone().find((m) => m.id === id)) ? `<span class="realname">${esc(dupeTag(everyone().find((m) => m.id === id)))}</span>` : ""}</div>
       <button class="hero-edit" type="button" id="editBtn" aria-label="Edit nickname and budget for ${esc(name)}">${PENCIL}<span>Edit</span></button></div>${meter}`);
 
   const chip = (group, k, label, count, icon = "") =>
@@ -4591,7 +4623,7 @@ function addManaged() {
     <p class="subtle">A kid, or a grandparent who'd rather not. You'll add their wishes for them, and everyone can shop from their list.${hh ? ` They'll join ${esc(hh.label)}, so everyone in it can help.` : ""}</p>
     <form id="mgForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Their name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
+      ${nameFields("Their")}
       ${multi() ? `<fieldset class="fsec"><h4 class="fsec-h">Which circles?</h4>
         ${state.groups.map((g) => `<label class="check"><span>${esc(g.name)}</span><input type="checkbox" name="g:${esc(g.id)}" checked></label>`).join("")}</fieldset>` : ""}
       <button class="btn primary wide" type="submit">Add them</button>
@@ -4600,7 +4632,7 @@ function addManaged() {
       wireForm($("#mgForm", el), async (d) => {
         const groupIds = multi() ? state.groups.filter((g) => d[`g:${g.id}`]).map((g) => g.id) : undefined;
         if (groupIds && !groupIds.length) throw new Error("Pick at least one circle.");
-        const { id } = await api("managed/add", { name: d.name, groupIds });
+        const { id } = await api("managed/add", { name: d.name, lastName: d.lastName, groupIds });
         closeSheet();
         buzz();
         toast(`Added ${d.name.trim()}. Now add what they'd love.`);
@@ -4619,7 +4651,7 @@ function editManagedProfile(member, name) {
     <div id="mgPhoto">${photoRowHtml(real, member.id)}</div>
     <form id="mgProfileForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Name</span><input class="input" name="name" maxlength="40" value="${esc(real)}" required></label>
+      ${nameFields("", real, member.lastName || "")}
       <div class="two"><label class="field"><span>Birthday month</span><select class="input" name="bm"><option value="">None</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select></label>
         <label class="field"><span>Day</span><select class="input" name="bd"><option value=""></option>${Array.from({ length: 31 }, (_, k) => `<option${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select></label></div>
       <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span>${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(p.sizes?.[k] || "")}"></label>`).join("")}</div>
@@ -4633,7 +4665,7 @@ function editManagedProfile(member, name) {
         if ((d.bm && !d.bd) || (!d.bm && d.bd)) throw new Error("Pick both the month and the day, or neither.");
         const tags = (v) => v.split(",").map((x) => x.trim()).filter(Boolean);
         await api("profile", {
-          as: member.id, name: d.name,
+          as: member.id, name: d.name, lastName: d.lastName,
           birthday: d.bm ? `${String(d.bm).padStart(2, "0")}-${String(d.bd).padStart(2, "0")}` : "",
           sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, d[`size_${k}`].trim()])),
           likes: tags(d.likes), dislikes: tags(d.dislikes), avoid: d.avoid,
@@ -4881,7 +4913,9 @@ function renderBudgetTab(t) {
 
 function renderPeopleTab(t, v) {
   const view = budgetView();
-  const rows = t.people.map((p) => ({ p, o: viewOcc(p, view) }));
+  // People you're not doing gifts with stay off this page (and out of the totals).
+  const skippedN = t.people.filter((p) => p.skipped).length;
+  const rows = t.people.filter((p) => !p.skipped).map((p) => ({ p, o: viewOcc(p, view) }));
   const shownRows = rows.filter((r) => r.o);
   if (view === "birthday") shownRows.sort((a, b) => a.o.code - b.o.code);
   const noBday = rows.filter((r) => !r.o);
@@ -4935,7 +4969,9 @@ function renderPeopleTab(t, v) {
     <div class="stack b-actions" style="margin-top:18px">
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
+      <button class="btn quiet wide" type="button" id="whoIn">Who I'm buying for${skippedN ? ` · ${plural(skippedN, "person", "people")} left out` : ""}</button>
     </div></div>`;
+  $("#whoIn").addEventListener("click", () => openBudgetWho(t));
   wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderPeopleTab(t, v); });
   $("#addPurchase").addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
   $("#addIdea").addEventListener("click", () => addThing(null));
@@ -4946,6 +4982,54 @@ function renderPeopleTab(t, v) {
   v.querySelectorAll("[data-need]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.need)));
   v.querySelectorAll(".pcard[data-person]").forEach((c) => wireTrackerCard(c, t, view));
   v.querySelectorAll(".pcard[data-household]").forEach((el) => wireHhBudgetCard(el, cards.find((c) => c.h?.id === el.dataset.household)));
+}
+
+// Who's in your budget: switch off a household or one person you've agreed not to exchange gifts with. Only for
+// you; they drop off the People tab, the totals and the gift reminders. Purchases and ideas for them stay.
+function openBudgetWho(t) {
+  const skips = new Set(t.skips || []);
+  const byHh = new Map(), loose = [];
+  for (const p of t.people) p.householdId ? byHh.set(p.householdId, [...(byHh.get(p.householdId) || []), p]) : loose.push(p);
+  const sw = (target, label, sub, on, extra = "", inHh = "") => `<label class="check"${extra}><span>${label}${sub ? `<small>${sub}</small>` : ""}</span><input type="checkbox" data-skip="${esc(target)}"${inHh ? ` data-hh="${esc(inHh)}"` : ""} ${on ? "checked" : ""}${extra.includes("opacity") ? " disabled" : ""}></label>`;
+  // Name with avatar. Inside a household section the header already says which household, so no tag there.
+  const who = (p, tag) => `<span style="display:flex;align-items:center;gap:10px">${avatar(p.name, p.id, "sm")}<span>${esc(p.name)}${tag ? dupeHtml(everyone().find((x) => x.id === p.id)) : ""}</span></span>`;
+  const person = (p, hhOff) => sw(`m:${p.id}`, who(p), "", !hhOff && !skips.has(`m:${p.id}`), ` style="margin-left:18px${hhOff ? ";opacity:.5" : ""}"`, p.householdId);
+  openSheet(`<h3>Who I'm buying for</h3>
+    <p class="subtle">Turn off anyone you've agreed not to exchange gifts with. They come off your budget and gift reminders. Only you see this.</p>
+    <div id="whoList">${[...byHh].map(([hh, ppl]) => {
+      const off = skips.has(`h:${hh}`);
+      return `<div class="label" style="margin-top:14px">${esc(householdLabel(hh))}</div>
+        ${ppl.length > 1 ? sw(`h:${hh}`, "Whole household", "", !off) : ""}
+        ${ppl.map((p) => (ppl.length > 1 ? person(p, off) : sw(`m:${p.id}`, who(p), "", !off && !skips.has(`m:${p.id}`)))).join("")}`;
+    }).join("")}
+    ${loose.length ? `<div class="label" style="margin-top:14px">${byHh.size ? "Not in a household" : "People"}</div>
+      ${loose.map((p) => sw(`m:${p.id}`, who(p, true), "", !skips.has(`m:${p.id}`))).join("")}` : ""}</div>
+    <button class="btn primary wide" type="button" id="whoDone" style="margin-top:8px">Done</button>`, (el) => {
+    let changed = false;
+    $("#whoDone", el).onclick = () => closeSheet();
+    // Turning a household off greys out its people (they're all off); turning it back on restores their own switches.
+    const syncHh = (hh) => el.querySelectorAll(`[data-hh="${CSS.escape(hh)}"]`).forEach((x) => {
+      const off = skips.has(`h:${hh}`);
+      x.checked = !off && !skips.has(x.dataset.skip);
+      x.disabled = off;
+      x.closest(".check").style.opacity = off ? ".5" : "";
+    });
+    sheet.addEventListener("close", () => { if (changed) { state.lastLeft = null; renderTracker().catch(() => {}); } }, { once: true });
+    el.querySelectorAll("[data-skip]").forEach((box) => (box.onchange = async () => {
+      const target = box.dataset.skip;
+      const skip = !box.checked;
+      box.disabled = true;
+      try {
+        await api("budget/skip", { target, skip });
+        skip ? skips.add(target) : skips.delete(target);
+        t.skips = [...skips];
+        changed = true;
+        buzz();
+      } catch (e) { box.checked = !box.checked; toast(e.message); }
+      box.disabled = false;
+      if (target.startsWith("h:")) syncHh(target.slice(2));
+    }));
+  });
 }
 
 // Purchases: everything you've bought for anyone's upcoming occasions, grouped by occasion, with where each
@@ -5893,7 +5977,7 @@ async function renderProfileEdit() {
         <input type="file" accept="image/*" id="photoFile" hidden>
       </div>
       <hr class="set-div">
-      <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
+      ${nameFields("Your", state.me.name, state.me.lastName || "")}
       <label class="field"><span>A line about you <span class="counter" id="bioCount"></span></span>
         <input class="input" name="bio" id="bioIn" maxlength="100" value="${esc(prof.bio || "")}" placeholder="A few words about you"></label>
       <span class="flabel">Birthday</span>
@@ -6081,6 +6165,7 @@ async function renderProfileEdit() {
     const pad = (n) => String(n).padStart(2, "0");
     await api("profile", {
       name: f.name,
+      lastName: f.lastName,
       bio: f.bio,
       birthday: f.bmonth ? `${pad(f.bmonth)}-${pad(f.bday)}` : "",
       birthYear: f.bmonth ? f.byear.trim() : "",
