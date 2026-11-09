@@ -78,9 +78,9 @@ export async function callGemini(env, system, parts, schema, timeoutMs, model = 
     const msg = data?.error?.message || `Gemini error ${apiRes.status}`;
     console.log(`Gemini ${model} ${tools ? "with search " : ""}failed: ${apiRes.status} ${msg}`);
     const friendly =
-      apiRes.status === 429 && quota?.notInPlan ? "Photo search isn't included in the free Gemini plan for this model. Turn on billing or switch models."
-        : apiRes.status === 429 && quota?.daily ? "Photo search hit today's limit. It resets overnight (about 3am Eastern)."
-        : apiRes.status === 429 ? "Photo search is getting a lot of use right now. Wait a minute and try again."
+      apiRes.status === 429 && quota?.notInPlan ? "The AI isn't included in the free Gemini plan for this model. Turn on billing or switch models."
+        : apiRes.status === 429 && quota?.daily ? "The AI hit today's limit. It resets overnight (about 3am Eastern)."
+        : apiRes.status === 429 ? "The AI is getting a lot of use right now. Wait a minute and try again."
         : apiRes.status === 503 || apiRes.status === 504 ? "The AI is busy or slow right now. Try again in a moment."
         : "The AI request failed.";
     return { error: json({ error: friendly, detail: `${apiRes.status}: ${msg}` }, 502), status: apiRes.status, quota };
