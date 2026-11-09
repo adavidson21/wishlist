@@ -296,12 +296,23 @@
   .group-line .gbar i { display: block; height: 100%; background: var(--gold, #C9A227); border-radius: inherit; }
   .row-sub .linkbtn { align-self: flex-start; padding: 0; }
   .dchip.qty { font-weight: 700; }
-  .links { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
-  .link-line { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--brand); }
+  .links { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .link-line { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px 6px 6px; border: 0; border-radius: 12px; background: var(--gold-soft); color: var(--ink); font: inherit; font-size: 13px; line-height: 1.3; text-align: left; cursor: pointer; box-shadow: inset 3px 0 0 var(--gold); }
   .link-line svg { flex: none; }
-  .link-line.warn { color: var(--danger, #b3261e); }
-  .link-line { border: 0; background: none; padding: 2px 0; text-align: left; cursor: pointer; }
-  .link-line[data-goto] b { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
+  .link-line .lk-thumb { flex: none; width: 36px; height: 36px; border-radius: 9px; overflow: hidden; display: grid; place-items: center; background: var(--card); color: var(--gold-ink); }
+  .link-line .lk-thumb .tile { width: 36px; height: 36px; border-radius: 9px; font-size: 15px; }
+  .link-line .lk-thumb .tile.photo { padding: 3px; }
+  .link-line .lk-thumb .tile svg { width: 18px; height: 18px; }
+  .link-line .lk-say { display: grid; gap: 2px; min-width: 0; }
+  .link-line .lk-pill { display: inline-flex; align-items: center; gap: 4px; justify-self: start; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--gold-ink); }
+  .link-line b { font-weight: 800; }
+  .link-line small { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .link-line.warn { background: color-mix(in srgb, var(--danger, #b3261e) 10%, transparent); color: var(--danger, #b3261e); font-weight: 700; padding: 8px 10px; box-shadow: inset 3px 0 0 var(--danger, #b3261e); cursor: default; }
+  .glink { position: absolute; left: 6px; top: 6px; max-width: calc(100% - 52px); display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: var(--gold-soft); color: var(--gold-ink); font-size: 11.5px; font-weight: 800; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .glink span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .glink small { font-size: 10.5px; flex: none; }
+  .glink svg { flex: none; }
+  .glink.warn { background: color-mix(in srgb, var(--danger, #b3261e) 14%, var(--card)); color: var(--danger, #b3261e); }
   @keyframes lkFlash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30%, 70% { box-shadow: 0 0 0 4px var(--gold, #C9A227); } }
   .lk-flash { animation: lkFlash 1.6s ease 2; }
   .lk-card { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
@@ -1190,6 +1201,8 @@
   .linkrow { display: flex; gap: 8px; }
   .linkrow .input { flex: 1; min-width: 0; }
   .linkrow .btn { min-height: 54px; }
+  .linkrow .open-link { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: var(--brand); }
+  .linkrow .open-link[hidden] { display: none; }
   .inwrap { position: relative; flex: 1; min-width: 0; }
   .inwrap .input:not(textarea) { padding-right: 50px; }
   .inwrap input[name="title"]:not(.has-btn) { padding-right: 15px; }
@@ -4053,6 +4066,7 @@ function galleryCard(i, n = 0) {
       ${i.price_cents != null ? `<span class="gprice">${money(i.price_cents)}</span>`
         : i.price_est || estFound.get(`item:${i.id}`) ? `<span class="gprice est" title="Estimated price">~${money(Math.max(100, Math.round((i.price_est || estFound.get(`item:${i.id}`)) / 100) * 100))}</span>` : ""}
       ${i.draft ? "" : starBtn(i)}
+      ${linkBadge(i)}
     </div>
     <div class="gbody">
       ${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}
@@ -4230,6 +4244,7 @@ function swatchOf(name) {
   }
   return "";
 }
+const OPEN_I = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 const EXT_I = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
 // The brand: what was saved, or the store's name when the title starts with it ("Zara Puffer" from zara.com).
 function brandOf(i) {
@@ -4251,7 +4266,7 @@ function nameBlock(i) {
   return `${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}<span class="row-title">${esc(title)}</span>`;
 }
 // Size, color, category and (optionally) the store as small chips under a wish's name.
-function detailChips(i, { store = false, price = false, links = true } = {}) {
+function detailChips(i, { store = false, price = false, links = true, who = "" } = {}) {
   const out = [];
   if (price && i.price_cents != null) out.push(`<span class="dchip price">${money(i.price_cents)}</span>`);
   if (i.size) out.push(`<span class="dchip var"><small>Size</small>${esc(i.size)}</span>`);
@@ -4263,7 +4278,7 @@ function detailChips(i, { store = false, price = false, links = true } = {}) {
   const c = catOf(i);
   out.push(`<span class="dchip cat">${catIcon(c, 13)}${esc(CAT[c].label)}</span>`);
   if (store && i.url) out.push(`<a class="dchip store" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}${EXT_I}</a>`);
-  return `<div class="dchips">${out.join("")}</div>${links ? linkLine(i) : ""}`;
+  return `<div class="dchips">${out.join("")}</div>${links ? linkLine(i, who) : ""}`;
 }
 // Linked wishes ("Goes with", from the API): together = both or neither, needs = only wanted with that one,
 // pairs = that one is only wanted with this. On your own list, a partner in Maybe keeps a published wish hidden.
@@ -4296,17 +4311,38 @@ document.addEventListener("click", (e) => {
   e.stopPropagation();
   gotoLinked(b.dataset.goto);
 });
-function linkLine(i) {
+// Linked wishes on a card: a gold strip per link with the partner's photo, a short tag (Set, Only with, Goes with)
+// and one plain sentence. who: the list owner's name on someone else's list; empty on your own list.
+const LINK_SHORT = { together: "Set", needs: "Only with", pairs: "Goes with" };
+const linkPartner = (id) => (state.myItems || []).find((o) => o.id === id) || (state.personItems || []).find((o) => o.id === id);
+// The partner's photo without starting another photo lookup (its own card already does that).
+const lkThumb = (p) => { const src = p.image_url || imageFound.get(`item:${p.id}`); return src ? photoTile(src, p.title, p.id) : iconTile(p.title, p.id); };
+function linkSentence(k, title, who) {
+  const t = `<b>${esc(title)}</b>`;
+  if (k === "together") return who ? `${esc(who)} wants this and ${t} together` : `Both or neither with ${t}`;
+  if (k === "needs") return who ? `${esc(who)} only wants this with ${t}` : `Only want this with ${t}`;
+  return who ? `${t} is only wanted with this one` : `${t} only comes with this one`;
+}
+function linkLine(i, who = "") {
   const l = i.goesWith || [];
   if (!l.length) return "";
-  const out = Object.keys(LINK_WORDS).map((k) => {
-    const these = l.filter((x) => x.kind === k);
-    if (!these.length) return "";
-    return these.map((x) => x.removed
-      ? `<span class="link-line warn">${LINK_I}<span>${LINK_WORDS[k]} a removed wish</span></span>`
-      : `<button type="button" class="link-line" data-goto="${esc(x.id)}" aria-label="Go to ${esc(x.title)}">${LINK_I}<span>${LINK_WORDS[k]} <b>${esc(x.title)}</b>${x.draft && !i.draft ? " (in Maybe, so this stays hidden for now)" : ""}</span></button>`).join("");
-  }).join("");
+  const out = Object.keys(LINK_WORDS).map((k) => l.filter((x) => x.kind === k).map((x) => {
+    if (x.removed) return `<span class="link-line warn">${LINK_I}<span>${LINK_WORDS[k]} a removed wish</span></span>`;
+    const p = linkPartner(x.id);
+    const maybe = x.draft && !i.draft ? `<small>It's in Maybe, so this stays hidden for now</small>` : "";
+    return `<button type="button" class="link-line" data-goto="${esc(x.id)}" aria-label="${esc(LINK_SHORT[k])}: go to ${esc(x.title)}">
+      <span class="lk-thumb">${p ? lkThumb(p) : LINK_I}</span>
+      <span class="lk-say"><span class="lk-pill">${LINK_I}${LINK_SHORT[k]}</span><span>${linkSentence(k, x.title, who)}</span>${maybe}</span></button>`;
+  }).join("")).join("");
   return `<div class="links">${out}</div>`;
+}
+// Gallery cards have no room for the strip, so the photo gets a gold "Set with X" badge instead.
+function linkBadge(i) {
+  const l = (i.goesWith || []);
+  if (!l.length) return "";
+  const x = l.find((o) => !o.removed) || l[0];
+  const words = x.removed ? `${LINK_WORDS[x.kind]} a removed wish` : `${x.kind === "together" ? "Set with" : LINK_WORDS[x.kind]} ${x.title}`;
+  return `<span class="glink${x.removed ? " warn" : ""}" title="${esc(words)}">${LINK_I}<span>${esc(words)}</span>${l.length > 1 ? `<small>+${l.length - 1}</small>` : ""}</span>`;
 }
 
 function sizeColorRow() {
@@ -4561,7 +4597,8 @@ function linkField(value, first) {
   return `<label class="field"><span${first ? ' class="vh"' : ""}>Link</span>
     <div class="linkrow"><div class="inwrap"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Paste a link from any store or app" : "Paste a link to fill in the rest"}">
     <button class="clearx" type="button" data-clear aria-label="Clear link"${value ? "" : " hidden"}>${CLEAR_I}</button></div>
-    <button class="btn small${first ? " primary" : ""}" type="button" data-paste${value ? " hidden" : ""}>${PASTE_I} Paste</button></div>
+    <button class="btn small${first ? " primary" : ""}" type="button" data-paste${value ? " hidden" : ""}>${PASTE_I} Paste</button>
+    <a class="btn small open-link" data-open target="_blank" rel="noopener" href="${/^https?:\/\//i.test(value || "") ? esc(value) : "#"}"${/^https?:\/\//i.test(value || "") ? "" : " hidden"}>Open ${OPEN_I}</a></div>
     <small class="fillmsg" hidden></small></label>`;
 }
 function photoField() {
@@ -4864,8 +4901,15 @@ function wireAutofill(form) {
     const s = splitShared(raw);
     if (s.url !== url.value) url.value = s.url;
     if (s.hint) hint = s.hint;
+    sync();
   };
-  const sync = () => { const has = !!url.value.trim(); paste.hidden = has; clear.hidden = !has; name.sync(); };
+  // Open: the link in a new tab, shown once the box holds a web link (so you can check the store page while editing).
+  const open = form.querySelector("[data-open]");
+  const sync = () => {
+    const v = url.value.trim(), has = !!v, web = /^https?:\/\/\S+\.\S+/i.test(v);
+    paste.hidden = has; clear.hidden = !has; name.sync();
+    if (open) { open.hidden = !web; open.href = web ? v : "#"; }
+  };
   function fill(force) {
     const p = lookup(force);
     running = p;
@@ -5580,7 +5624,8 @@ async function renderPerson(id) {
   const plan = t?.people.find((p) => p.id === id);
   const sugg = list.suggestions || [];
   const mine = list.myIdeas || [];
-  const all = list.items;
+   const all = list.items;
+  state.personItems = all; // set before the cards render so linked wishes can show their partner's photo
   // Someone you look after: you add and edit their wishes and profile here.
   const manage = !!list.canManage;
   state.manageList = manage;
@@ -6392,7 +6437,7 @@ function personRow(i, kind, n = 0) {
     <div class="row-top"><div class="side">${tile(i, kind)}${sidePrice(i, kind, paid)}</div>
       <div class="row-main">
         ${nameBlock(i)}
-        ${detailChips(i)}
+        ${detailChips(i, { who: kind === "item" ? personName(state.person) : "" })}
         ${i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" hidden></span>` : ""}
         <div class="wish-meta">${meta}</div>
       </div>
