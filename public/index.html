@@ -2412,7 +2412,7 @@ async function renderWelcome(step = "code", info = {}) {
       <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="notMe">Not ${esc(res.name)}?</button></p>`;
     $("#claimBtn").onclick = async (e) => {
       e.currentTarget.disabled = true;
-      try { finishJoin(await api("claim", { token: invite.hi }), { joined: circle || "" }); }
+      try { finishJoin(await api("invite/claim", { token: invite.hi }), { joined: circle || "" }); }
       catch (err) { toast(err.message); invite.hi = ""; renderWelcome("invite"); }
     };
     $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
