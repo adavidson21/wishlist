@@ -503,6 +503,7 @@ const itemOut = (r) => ({
   notes: r.notes,
   size: r.size || null,
   color: r.color || null,
+  brand: r.brand || null,
   priority: r.priority,
   category: r.category || null,
   draft: !!r.draft,
@@ -579,9 +580,10 @@ async function setIdeaClaim(env, me, ideaId, on, price, occasion) {
   }
 }
 
-// Size and color on a wish: separate UPDATEs so a save without them (the Top pick toggle) leaves them alone.
+// Size, color and brand on a wish: separate UPDATEs so a save without them (the Top pick toggle) leaves them alone.
 function sizeColorRows(env, id, b) {
   const rows = [];
+  if (b.brand !== undefined) rows.push(env.DB.prepare("UPDATE items SET brand = ? WHERE id = ?").bind(text(b.brand, LIMITS.brand, "Brand"), id));
   if (b.size !== undefined) rows.push(env.DB.prepare("UPDATE items SET size = ? WHERE id = ?").bind(text(b.size, LIMITS.size, "Size"), id));
   if (b.color !== undefined) rows.push(env.DB.prepare("UPDATE items SET color = ? WHERE id = ?").bind(text(b.color, LIMITS.color, "Color"), id));
   return rows;
@@ -648,6 +650,7 @@ async function optionsFromShopify(url, html) {
       size: chosen && si >= 0 ? tidyOption(chosen[`option${si + 1}`]) : "",
       color: chosen && ci >= 0 ? tidyOption(chosen[`option${ci + 1}`]) : "",
       title: p.title ? decode(p.title) : null,
+      brand: p.vendor ? decode(p.vendor) : null,
       price: chosen ? toPrice(chosen.price / 100) : toPrice((p.price ?? p.price_min) / 100),
       image: p.featured_image ? (String(p.featured_image).startsWith("//") ? `https:${p.featured_image}` : p.featured_image) : null,
     };
@@ -726,7 +729,9 @@ function jsonLdProduct(html) {
         const image = typeof img === "string" ? img : img?.url || img?.contentUrl || null;
         const avail = String(offer.availability || [].concat(offer.offers || [])[0]?.availability || "");
         const inStock = /InStock|LimitedAvailability|OnlineOnly|PreOrder|InStoreOnly/i.test(avail) ? true : /OutOfStock|SoldOut|Discontinued/i.test(avail) ? false : null;
-        return { title: node.name ? decode(node.name) : null, price, image, inStock };
+        const b = [].concat(node.brand || node.manufacturer || [])[0];
+        const brand = typeof b === "string" ? decode(b) : b?.name ? decode(b.name) : null;
+        return { title: node.name ? decode(node.name) : null, price, image, inStock, brand };
       }
       if (node["@graph"]) queue.push(node["@graph"]);
     }
@@ -834,7 +839,8 @@ Open the URL (use Google Search if you can't open it) and report the product on 
   usually on the store's image server), or "" if you didn't see one. Never build or guess a URL.
 - in_stock: true if that store currently shows it available to buy new, false if sold out or unavailable, null if unclear.
 - sizes, colors: the size and color choices that page offers (as written there), or empty lists if none.
-- size, color: the size and color this exact link has selected (for example from the URL), or "" if none.`;
+- size, color: the size and color this exact link has selected (for example from the URL), or "" if none.
+- brand: the brand that makes the product (for example "Nike" or "Zara"), not the store selling it unless they're the same, or "" if unclear.`;
 const LINK_SCHEMA = {
   type: "object",
   properties: {
@@ -847,8 +853,9 @@ const LINK_SCHEMA = {
     colors: { type: "array", items: { type: "string" } },
     size: { type: "string" },
     color: { type: "string" },
+    brand: { type: "string" },
   },
-  required: ["found", "title", "price", "image", "in_stock", "sizes", "colors", "size", "color"],
+  required: ["found", "title", "price", "image", "in_stock", "sizes", "colors", "size", "color", "brand"],
 };
 async function isImage(u) {
   try {
@@ -869,7 +876,12 @@ async function lookupLink(env, url) {
   let image = imageLink(d.image?.trim() || "");
   if (image && !(await isImage(image))) image = null;
   return { title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null,
-    sizes: uniq(Array.isArray(d.sizes) ? d.sizes : []), colors: uniq(Array.isArray(d.colors) ? d.colors : []), size: tidyOption(d.size), color: tidyOption(d.color) };
+    sizes: uniq(Array.isArray(d.sizes) ? d.sizes : []), colors: uniq(Array.isArray(d.colors) ? d.colors : []), size: tidyOption(d.size), color: tidyOption(d.color), brand: tidyBrand(d.brand) };
+}
+// A brand name worth showing: trimmed, not a placeholder, short enough for the label.
+function tidyBrand(v) {
+  const t = decode(v).replace(/\s+/g, " ").trim();
+  return !t || t.length > LIMITS.brand || /^(n\/?a|none|unknown|generic|unbranded|null|undefined)$/i.test(t) ? "" : t;
 }
 
 // ---------- live prices: what a linked store charges right now ----------
@@ -920,10 +932,12 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
   }
   const { html, finalUrl, status } = await readPage(url);
 
-  let title = null, price = null, siteName = null, image = null;
+  let title = null, price = null, siteName = null, image = null, brand = null;
   if (html) {
     siteName = meta(html, "og:site_name");
     const ld = jsonLdProduct(html);
+    brand = ld.brand || meta(html, "product:brand", "og:brand", "brand")
+      || decode(html.match(/id=["']bylineInfo["'][^>]*>([\s\S]*?)<\/a>/i)?.[1]).replace(/^(visit the|brand:)\s*/i, "").replace(/\s+store$/i, ""); // Amazon
     title = ld.title
       || decode(html.match(/id=["']productTitle["'][^>]*>([\s\S]*?)</i)?.[1]) // Amazon
       || meta(html, "og:title", "twitter:title")
@@ -951,10 +965,11 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
   const opts = await linkOptions(url, html);
   // A Shopify store's product JSON is often readable even when the page isn't.
   if (!title && opts.shop?.title) title = cleanTitle(opts.shop.title, url.hostname, siteName);
+  if (!brand && opts.shop?.brand) brand = opts.shop.brand;
   if (price == null && opts.shop?.price != null) price = opts.shop.price;
   if (!imageUrl && opts.shop?.image && title) imageUrl = imageLink(opts.shop.image);
   let out = { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !title && !!guess,
-    sizes: opts.sizes, colors: opts.colors, size: opts.size, color: opts.color };
+    sizes: opts.sizes, colors: opts.colors, size: opts.size, color: opts.color, brand: tidyBrand(brand) };
   // The page gave us no name, photo or price (blocked, a bot check, or an empty shell): look it up. The page's own
   // details win; the lookup only fills what's missing.
   if (ai && (!title || !imageUrl || out.price == null)) {
@@ -962,7 +977,7 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
     if (found && (title || matchesLink(found.title, url))) {
       out = { ...out, title: title || found.title, price: price ?? found.price, image: imageUrl || found.image, found: true, guessed: false, via: "search",
         sizes: out.sizes.length ? out.sizes : found.sizes, colors: out.colors.length ? out.colors : found.colors,
-        size: out.size || found.size, color: out.color || found.color };
+        size: out.size || found.size, color: out.color || found.color, brand: out.brand || found.brand };
     }
   }
   console.log(`preview ${site} http=${status} page=${title ? "name" : html ? "noname" : "blocked"}${imageUrl ? "+photo" : ""} -> ${out.via || (out.guessed ? "guess" : "page")}${out.image ? " photo" : ""}${out.price != null ? " price" : ""}`);
