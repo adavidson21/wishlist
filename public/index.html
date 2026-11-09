@@ -4736,7 +4736,7 @@ function manageCard(list, name) {
   return `<section class="set-card manage-card">
     <h4>You look after ${esc(name)}'s list</h4>
     <p class="sub">${who} ${esc(name)}, who doesn't use the app. You can still see what's been bought.</p>
-    <div class="mg-hh">${hhId ? `${tileAvatar(householdLabel(hhId), `h:${hhId}`, "sm")}<span class="mg-txt">Lives with <strong>${esc(householdLabel(hhId))}</strong>${mineHh ? '<button class="linkbtn" type="button" id="mgOut">Doesn\'t live with us?</button>' : ""}</span>`
+    <div class="mg-hh">${hhId ? `${tileAvatar(householdLabel(hhId), `h:${hhId}`, "sm")}<span class="mg-txt">Household: <strong>${esc(householdLabel(hhId))}</strong>${mineHh ? '<button class="linkbtn" type="button" id="mgOut">Not in our household?</button>' : ""}</span>`
       : `<span class="mg-txt">Not part of a household</span>`}</div>
     <div class="mg-btns">
       <button class="btn primary small" type="button" id="mgAdd">${PLUS} Add a wish</button>
@@ -4823,7 +4823,7 @@ function addManaged() {
     <form id="mgForm" autocomplete="off">
       <div class="err" hidden></div>
       ${nameFields("Their")}
-      ${hh ? `<label class="check"><span>They live with me<small>Joins ${esc(hh.label)}, so everyone in it can help with their list</small></span><input type="checkbox" name="liveWithMe"></label>` : ""}
+      ${hh ? `<label class="check"><span>Add to my household<small>Joins ${esc(hh.label)}, so everyone in it can help with their list</small></span><input type="checkbox" name="liveWithMe"></label>` : ""}
       ${multi() ? `<fieldset class="fsec"><h4 class="fsec-h">Which circles?</h4>
         ${state.groups.map((g) => `<label class="check"><span>${esc(g.name)}</span><input type="checkbox" name="g:${esc(g.id)}" checked></label>`).join("")}</fieldset>` : ""}
       <button class="btn primary wide" type="submit">Add them</button>
@@ -5457,7 +5457,7 @@ function budgetTour(force = false) {
     { sel: "#hero .hero-stat", title: "Your gift budget",
       text: `This adds up what you plan to spend and shows what's left. ${names.length ? `${peopleNames(names)} ${names.length > 1 ? "see" : "sees"} the same numbers, so you plan together.` : "Only you see it."} The people you're shopping for never do.` },
     { sel: ".pcard [data-setbudget], .pcard", title: "Set a budget for each person",
-      text: `Tap + Budget next to a name and pick how much to spend on them.${hasHh ? " People who live together share one budget at Christmas." : ""}` },
+      text: `Tap + Budget next to a name and pick how much to spend on them.${hasHh ? " People in the same household share one budget at Christmas." : ""}` },
     { sel: "#viewSeg", title: "Christmas and birthdays", text: "Switch here to plan birthdays. Each birthday gets its own budget." },
     { sel: "#whoIn", title: "Not doing gifts with someone?", text: "Tap Change to turn people off. They come off your budget and gift reminders. Only you see this." },
     { sel: "#addPurchase", title: "Bought something?", text: "Add it here. It comes out of their budget, and you can tap a name to see what you got them." },

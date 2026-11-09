@@ -3196,7 +3196,7 @@ const handlers = {
     const name = text(b.name, LIMITS.name, "Their first name", true);
     const lastName = lastNameOf(b.lastName);
     const mine = await myGroupIds(env, me.id);
-    // Your household only when they live with you (joinHousehold); older apps don't send it and keep the old default.
+    // Your household only when you add them to it (joinHousehold); older apps don't send it and keep the old default.
     const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : b.joinHousehold === false ? null : await householdOf(env, me.id);
     const picked = Array.isArray(b.groupIds) ? [...new Set(b.groupIds.map(String))].filter((g) => mine.includes(g)) : b.householdId ? [] : mine;
     const hhCircles = hh ? (await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all()).results.map((r) => r.group_id) : [];
