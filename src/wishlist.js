@@ -319,7 +319,7 @@ async function sharesGroup(env, a, b) {
   return !!row;
 }
 
-// SQL condition: item `i` is published (not in the owner's "Just me" drafts) and visible to the viewer
+// SQL condition: item `i` is published (not in the owner's "Maybe" drafts) and visible to the viewer
 // (bound once as ?) through at least one shared family that the owner hasn't hidden it from.
 const ITEM_VISIBLE = `i.draft = 0 AND EXISTS (
   SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
@@ -1323,7 +1323,7 @@ const handlers = {
     };
   },
 
-  // Add (no id) or edit (id) one of your own items. size and color: free text, absent = unchanged. New items start in "Just me" (draft) until published.
+  // Add (no id) or edit (id) one of your own items. size and color: free text, absent = unchanged. New items start in "Maybe" (draft) until published.
   // "Must have" only applies to published items, so it is dropped on drafts.
   async "POST item/save"(req, env) {
     const me = await auth(req, env);
@@ -1378,7 +1378,7 @@ const handlers = {
     return { id };
   },
 
-  // Publish one of your "Just me" items to your wish list. One way: a published item never goes back to drafts.
+  // Publish one of your "Maybe" items to your wish list. One way: a published item never goes back to drafts.
   // created_at is reset so it sorts as a new wish on the list.
   async "POST item/publish"(req, env) {
     const me = await auth(req, env);
