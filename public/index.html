@@ -489,6 +489,14 @@
   .gc-chip { width: 26px; height: 19px; border-radius: 4px; background: linear-gradient(135deg, #F3D98B, #C9A246); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
     background-image: linear-gradient(135deg, #F3D98B, #C9A246), linear-gradient(90deg, transparent 45%, rgba(0,0,0,.18) 45% 55%, transparent 55%); background-blend-mode: multiply; }
   .gc-emoji { font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+  /* Brand logo on a little white tile. Monochrome svg marks get more breathing room than store icons. */
+  .gc-logo { --s: 34px; width: var(--s); height: var(--s); flex: none; border-radius: calc(var(--s) * .26); background: #fff; display: grid; place-items: center;
+    padding: calc(var(--s) * .1); box-shadow: 0 1px 3px rgba(0,0,0,.25); overflow: hidden; }
+  .gc-logo.mark { padding: calc(var(--s) * .2); }
+  .gc-logo img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: calc(var(--s) * .14); }
+  .gc-logo.broken { background: none; box-shadow: none; padding: 0; font-size: calc(var(--s) * .7); line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+  .gc-logo.broken img { display: none; }
+  .gc-logo.broken::after { content: attr(data-emoji); }
   .gc-name { font-weight: 800; font-size: 15px; line-height: 1.15; text-shadow: 0 1px 2px rgba(0,0,0,.3); overflow-wrap: anywhere; }
   .gc-name small { display: block; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin-bottom: 1px; }
   .gc-badge { position: absolute; right: 8px; bottom: 8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
@@ -515,6 +523,7 @@
   .gc-pick .gc-name small { font-size: 8.5px; }
   .gc-pick .gc-chip { width: 20px; height: 15px; }
   .gc-pick .gc-emoji { font-size: 18px; }
+  .gc-pick .gc-logo { --s: 26px; }
   .gc-pick .gc-item[aria-pressed="true"] .gc { box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--brand); }
   .gc-pick .gc-item[aria-pressed="true"] .gc-check { display: grid; }
   .gc-check { display: none; position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 50%; place-items: center; background: #fff; color: var(--brand);
@@ -524,6 +533,7 @@
   .gc-hero .gc { transform: rotate(-2deg); }
   .gc-hero .gc-name { font-size: 20px; }
   .gc-hero .gc-emoji { font-size: 34px; }
+  .gc-hero .gc-logo { --s: 48px; }
   .about { text-align: center; color: var(--faint); font-size: 13px; margin-top: 22px; }
 
   /* Bottom tabs: My list, Circles, [Add], Budget, Settings */
@@ -3127,7 +3137,10 @@ const GC_GROUPS = [...new Set(GIFT_LIST.map((g) => g.group))];
 const gcFindUrl = (g) => `https://www.google.com/search?q=${encodeURIComponent(`${g.name} gift card`)}`;
 const squash = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 function giftCard(g, extra = "") {
-  return `<span class="gc" style="--gc:${g.color}" aria-hidden="true"><span class="gc-top"><span class="gc-chip"></span><span class="gc-emoji">${g.emoji}</span></span>
+  // The logo falls back to the emoji if its file can't load (offline before it was ever cached).
+  const mark = g.logo ? `<span class="gc-logo${g.logo.endsWith(".svg") ? " mark" : ""}" data-emoji="${g.emoji}"><img src="${g.logo}" alt="" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('broken')"></span>`
+    : `<span class="gc-emoji">${g.emoji}</span>`;
+  return `<span class="gc" style="--gc:${g.color}" aria-hidden="true"><span class="gc-top"><span class="gc-chip"></span>${mark}</span>
     <span class="gc-name"><small>Gift card</small>${esc(g.name)}</span>${extra}</span>`;
 }
 
