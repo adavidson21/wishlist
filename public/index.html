@@ -1140,6 +1140,7 @@ const LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 const CAMERA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
 const PENCIL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const PASTE_I = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>';
 const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 const CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const STAR = '<svg width="18" height="18" viewBox="0 0 24 24" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2l2.7 5.4 5.9.8-4.3 4.2 1.1 5.9L12 16.7l-5.3 2.8 1-5.9-4.2-4.2 5.9-.8z"/></svg>';
@@ -1276,6 +1277,31 @@ function readHash() {
 document.querySelectorAll(".tab[data-tab]").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
 $("#addTab").onclick = () => addThing();
 
+// ---------- links from other apps ----------
+// Share sheet (installed app on Android): the OS opens /?share_url=...&share_text=... (see manifest share_target).
+// Store apps like TikTok Shop often put the link inside share_text, so keep every part and let splitShared() sort it out.
+let pendingShare = (() => {
+  const q = new URLSearchParams(location.search);
+  const parts = ["share_title", "share_text", "share_url"].map((k) => q.get(k) || "").filter(Boolean);
+  if (!parts.length) return "";
+  history.replaceState(null, "", location.pathname + location.hash);
+  return parts.join(" ");
+})();
+function openPendingShare() {
+  if (!pendingShare || !state.me || !getToken()) return;
+  const raw = pendingShare;
+  pendingShare = "";
+  addThing(undefined, { carry: { url: raw }, fill: true });
+}
+// Paste a link anywhere in the app (not into a box) to start a new wish with it.
+document.addEventListener("paste", (e) => {
+  if (e.target.closest?.("input, textarea, select, [contenteditable]") || sheet.open || !state.me || !getToken()) return;
+  const raw = e.clipboardData?.getData("text") || "";
+  if (!/https?:\/\/\S+|(?:[a-z0-9-]+\.)+[a-z]{2,}\/\S/i.test(raw)) return;
+  e.preventDefault();
+  addThing(undefined, { carry: { url: raw }, fill: true });
+});
+
 const group = () => state.groups[0] || null;
 // You can be in several families. People are listed once even if they share more than one with you.
 const multi = () => state.groups.length > 1;
@@ -1382,6 +1408,7 @@ async function render() {
     else if (state.tab === "settings") await renderSettings();
     else await renderMine();
     if (!state.me.onboarded && !state.toured) openTour();
+    else openPendingShare();
   } catch (e) {
     if (!getToken()) return;
     $("#view").innerHTML = `<div class="err">${esc(e.message)}</div><button class="btn" type="button" id="retry">Try again</button>`;
@@ -1438,7 +1465,7 @@ const PERK_GIFT = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" s
 const PERK_EYE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
 const perks = () => `<div class="perks">
-  <div class="perk slide" style="animation-delay:1.3s"><span class="pi" style="background:var(--t0);color:var(--t0-ink)">${PERK_GIFT}</span><span>Make your wish list<small>Type a name or paste a link from any store</small></span></div>
+  <div class="perk slide" style="animation-delay:1.3s"><span class="pi" style="background:var(--t0);color:var(--t0-ink)">${PERK_GIFT}</span><span>Make your wish list<small>Paste a link from any store or app, or just type a name</small></span></div>
   <div class="perk slide" style="animation-delay:1.4s"><span class="pi" style="background:var(--t3);color:var(--t3-ink)">${PERK_EYE}</span><span>See what everyone's hoping for<small>And quietly mark what you're getting</small></span></div>
   <div class="perk slide" style="animation-delay:1.5s"><span class="pi" style="background:var(--t1);color:var(--t1-ink)">${LOCK.replace(/width="14" height="14"/, 'width="22" height="22"')}</span><span>Gifts stay a surprise<small>You never see what's been bought for you</small></span></div>
 </div>`;
@@ -1814,7 +1841,7 @@ function openTour() {
   const slides = [
     { id: "hi", scene: ringScene(), title: w.started ? `${fam} is ready!` : fam ? `Welcome to ${fam}!` : `Welcome, ${state.me.name}!`,
       text: w.started ? "Here's how Wishlist works. It takes about 20 seconds." : fam ? `So glad you're here, ${state.me.name}. Here's how it works.` : "Here's a quick look at how Wishlist works." },
-    { id: "add", scene: addScene(), title: "Add what you'd love", text: "Type a name or paste a link from any store. New wishes stay private in Just me until you tap Publish." },
+    { id: "add", scene: addScene(), title: "Add what you'd love", text: "Paste a link from any store or app (TikTok Shop, Amazon, anywhere), or just type a name. New wishes stay private in Just me until you tap Publish." },
     { id: "surprise", scene: surpriseScene(), title: "Gifts stay a surprise", text: "When someone marks a gift on your list, you never see it. No spoilers, ever." },
     { id: "private", scene: privateScene(), title: "Your notes are just for you", text: "Jot down gift ideas and set a budget for each person in Budget. Nobody else can see them." },
     !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
@@ -2265,10 +2292,12 @@ function editItem(item, opts = {}) {
     ${draft && !isNew ? JUST_ME_NOTE : ""}
     <form id="itemForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || "Warm slippers, size 8")}" required></label>
-      ${isNew ? `<p class="hint" style="margin-top:-10px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
-      ${linkField(item.url)}
+      ${isNew ? linkField(item.url, true) : ""}
+      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "Warm slippers, size 8"))}" required></label>
+      ${isNew ? "" : linkField(item.url)}
       ${sizeColorRow()}
+      ${photoField()}
+      ${isNew ? `<p class="hint" style="margin-top:-6px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       <details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
         <div>
@@ -2301,7 +2330,12 @@ function editItem(item, opts = {}) {
         $("#itemSave", el).textContent = on ? "Add to my wish list" : "Save to Just me";
         $("#pubNowHint", el).textContent = on ? "Goes straight to your wish list." : "Off: saves to Just me, where only you can see it.";
       });
-      if (isNew) setTimeout(() => { const t = form.elements.title; t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 300);
+      if (isNew) setTimeout(() => {
+        // Link first, unless a starter idea or carried-over text already gave it a name.
+        const t = opts.title || form.elements.title.value || form.elements.url.value ? form.elements.title : form.elements.url;
+        t.focus(); t.setSelectionRange?.(t.value.length, t.value.length);
+      }, 300);
+      if (opts.fill) form.fillFromLink?.();
       $("#toGiftCards", el)?.addEventListener("click", async () => {
         const mine = await api("list").catch(() => ({ giftCards: [] }));
         pickGiftCards(mine.giftCards);
@@ -2331,12 +2365,15 @@ function editItem(item, opts = {}) {
     });
 }
 // ---------- autofill from a link ----------
-function linkField(value) {
-  return `<label class="field"><span>Link</span>
-    <div class="linkrow"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="Paste a link to fill in the rest">
-    <button class="btn small" type="button" data-fill>Fill</button></div>
-    <small class="fillmsg" hidden></small></label>
-    <div class="photo-box">
+// first: the new-wish layout, where the link box leads and fills in everything else.
+function linkField(value, first) {
+  return `<label class="field"><span${first ? ' class="vh"' : ""}>Link</span>
+    <div class="linkrow"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Paste a link from any store or app" : "Paste a link to fill in the rest"}">
+    <button class="btn small${first ? " primary" : ""}" type="button" data-fill>${value ? "Fill" : `${PASTE_I} Paste`}</button></div>
+    <small class="fillmsg" hidden></small></label>`;
+}
+function photoField() {
+  return `<div class="photo-box">
       <input type="file" accept="image/*" data-photo hidden>
       <button class="btn wide photo-btn" type="button" data-photo-btn>${CAMERA} Or snap a photo of it</button>
       <div class="photo-status" hidden></div>
@@ -2514,13 +2551,29 @@ function wireAutofill(form) {
     } catch (e) { if (mine === seq) say(e.message); }
     finally { if (mine === seq) { btn.disabled = false; clearTimeout(slow); } }
   }
-  btn.addEventListener("click", () => fill(true));
+  // Empty box: the button pastes from the clipboard. Something in it: the button looks it up again.
+  const syncBtn = () => { btn.innerHTML = url.value.trim() ? "Fill" : `${PASTE_I} Paste`; };
+  url.addEventListener("input", syncBtn);
+  btn.addEventListener("click", async () => {
+    if (url.value.trim()) return fill(true);
+    let raw = "";
+    try { raw = await navigator.clipboard.readText(); } catch {}
+    if (!raw.trim()) { url.focus(); return say("Nothing to paste yet. Copy a link (Share, then Copy link), or long-press this box and tap Paste."); }
+    hint = ""; tidy(raw); syncBtn(); fill(false);
+  });
+  form.fillFromLink = () => { syncBtn(); return fill(false); };
+  // A link pasted into the name box belongs in the link box.
+  title.addEventListener("paste", (e) => {
+    const raw = e.clipboardData?.getData("text") || "";
+    if (!/https?:\/\/\S+/i.test(raw) || url.value.trim()) return;
+    e.preventDefault(); hint = ""; tidy(raw); syncBtn(); fill(false);
+  });
   // Read the raw clipboard: a type=url box drops line breaks, which would glue the words onto the link.
   url.addEventListener("paste", (e) => {
     const raw = e.clipboardData?.getData("text");
     if (raw && splitShared(raw).url !== raw.trim()) { e.preventDefault(); hint = ""; tidy(raw); }
     else hint = "";
-    setTimeout(() => fill(false), 0);
+    setTimeout(() => { syncBtn(); fill(false); }, 0);
   });
   // A link typed (or edited) by hand fills in when you leave the box, if it's new and the name is still empty.
   url.addEventListener("change", () => {
@@ -3404,8 +3457,10 @@ function editIdea(idea, subjectId, opts = {}) {
       ${chips ? (subjectId ? `<p class="what">${LOCK} ${esc(personName(subjectId))} never sees this</p>` : "") : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
           <option value="">Choose someone</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`
         : `<p class="what">For ${esc(personName(idea.subject_id))}</p>`}
-      <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : "That book she mentioned"}" required></label>
-      ${linkField(idea.url)}
+      ${isNew ? linkField(idea.url, true) : ""}
+      <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : isNew ? "Or type the idea" : "That book she mentioned"}" required></label>
+      ${isNew ? "" : linkField(idea.url)}
+      ${photoField()}
       <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}"></label>
       <label class="field"><span>Note</span><textarea class="input" name="note" maxlength="1000">${esc(idea.note)}</textarea></label>
       <label class="check"><span>Let others see this idea<small id="shareHint"></small></span><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}></label>
@@ -3423,6 +3478,8 @@ function editIdea(idea, subjectId, opts = {}) {
       wireAutofill(form);
       wireWhoChips(el);
       restoreImage(form, c);
+      if (isNew && !form.elements.title.value && !form.elements.url.value) setTimeout(() => form.elements.url.focus(), 300);
+      if (opts.fill) form.fillFromLink?.();
       // Which occasion it's for: shown when you're getting it and the person has a birthday too.
       let occSubject = null, occasion = () => undefined;
       const syncOcc = () => {

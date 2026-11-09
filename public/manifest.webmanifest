@@ -14,5 +14,6 @@
   ],
   "user_preferences": {
     "color_scheme_dark": { "theme_color": "#241D20", "background_color": "#1A1517" }
-  }
+  },
+  "share_target": { "action": "/", "method": "GET", "params": { "title": "share_title", "text": "share_text", "url": "share_url" } }
 }
