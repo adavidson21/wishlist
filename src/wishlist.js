@@ -640,9 +640,51 @@ async function readPage(url, timeoutMs = 7000) {
   return { html, finalUrl, status };
 }
 
-const BOT_PAGE = /robot check|captcha|access denied|just a moment|attention required|page not found|^amazon\.com$/i;
+const BOT_PAGE = /robot check|robot or human|are you a (robot|human)|captcha|access denied|just a moment|attention required|pardon our interruption|verify you are human|page not found|^amazon\.com$/i;
 
-async function previewLink(env, rawUrl) {
+// When a store blocks us (many big ones block requests from cloud servers), ask Gemini to look the link up
+// through Google instead. It only reports what it found on that page or in search; the photo URL is checked
+// to really be an image before we use it.
+const LINK_PROMPT = `Someone pasted a product link into a gift wish list, and our server couldn't read the page.
+Open the URL (use Google Search if you can't open it) and report the product on that exact page:
+- found: false if you can't tell which product the link is for. Never invent or guess a product.
+- title: the product's name as a shopper would say it, brand first when known, under 80 characters
+- price: the current price in US dollars as a number, or null if you can't tell
+- image: the URL of the main product photo exactly as it appears on the page or in search results (an image file,
+  usually on the store's image server), or "" if you didn't see one. Never build or guess a URL.`;
+const LINK_SCHEMA = {
+  type: "object",
+  properties: {
+    found: { type: "boolean" },
+    title: { type: "string" },
+    price: { type: "number", nullable: true },
+    image: { type: "string" },
+  },
+  required: ["found", "title", "price", "image"],
+};
+async function isImage(u) {
+  try {
+    const res = await fetch(u, { headers: { range: "bytes=0-2047" }, signal: AbortSignal.timeout(4000) });
+    return res.ok && /^image\//i.test(res.headers.get("content-type") || "");
+  } catch {
+    return false;
+  }
+}
+async function lookupLink(env, url) {
+  if (!env.GEMINI_API_KEY) return null;
+  const parts = [{ text: url }];
+  // URL context lets Gemini open the page itself; if this model doesn't offer it, search alone still helps.
+  let r = await callGemini(env, LINK_PROMPT, parts, LINK_SCHEMA, 25000, undefined, [{ url_context: {} }, { google_search: {} }]);
+  if (r.error && r.status === 400) r = await callGemini(env, LINK_PROMPT, parts, LINK_SCHEMA, 25000, undefined, [{ google_search: {} }]);
+  const d = r.data;
+  if (!d?.found || !d.title?.trim()) return null;
+  let image = imageLink(d.image?.trim() || "");
+  if (image && !(await isImage(image))) image = null;
+  return { title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image };
+}
+
+// ai: when the store blocks us, look it up with Gemini (only for the Fill button, not background lookups).
+async function previewLink(env, rawUrl, { ai = false } = {}) {
   const url = new URL(link(rawUrl) || fail(400, "Paste a link first."));
   const { html, finalUrl } = await readPage(url);
 
@@ -665,12 +707,20 @@ async function previewLink(env, rawUrl) {
     if (BOT_PAGE.test(title || "")) title = null;
   }
 
-  title = cleanTitle(title, finalUrl.hostname, siteName) || titleFromPath(finalUrl) || titleFromPath(url);
+  title = cleanTitle(title, finalUrl.hostname, siteName);
   let imageUrl = null;
   if (image && title) {
     try { imageUrl = imageLink(new URL(image, finalUrl).toString()); } catch {}
   }
-  return { url: finalUrl.toString(), title, price, image: imageUrl, site: finalUrl.hostname.replace(/^www\./, ""), found: !!html };
+  const site = finalUrl.hostname.replace(/^www\./, "");
+  // The page gave us nothing usable (blocked, a bot check, or an empty shell): try the lookup.
+  if (!title && ai) {
+    const found = await lookupLink(env, finalUrl.toString()).catch(() => null);
+    if (found) return { url: finalUrl.toString(), title: found.title, price: found.price, image: found.image, site, found: true, via: "search" };
+  }
+  // Last resort: a name guessed from the link's words. The app says it's a guess.
+  const guess = !title ? titleFromPath(finalUrl) || titleFromPath(url) : null;
+  return { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !!guess };
 }
 
 // ---------- photo to suggestions ----------
@@ -1353,7 +1403,7 @@ const handlers = {
   async "POST preview"(req, env) {
     await auth(req, env);
     const { url } = await body(req);
-    return previewLink(env, url);
+    return previewLink(env, url, { ai: true });
   },
 
   // Photo to suggestions: Gemini guesses what the item is and finds a store page for each. Nothing is stored.
