@@ -321,11 +321,13 @@ async function auth(request, env) {
 // just means an empty profile.
 const SIZE_KEYS = ["shirt", "pants", "shoe", "ring"];
 // Keys only; labels and colors live in public/index.html. Never rename a key (they're stored).
-const GIFT_STYLES = ["surprise", "experiences", "practical", "homemade", "consumable", "books", "together", "giftcards"];
+const GIFT_STYLES = ["surprise", "experiences", "practical", "homemade", "consumable", "books", "together", "giftcards",
+  "list", "sentimental", "funny", "thrifted", "cash"];
+const GIFT_STYLE_MAX = 5;
 const FAV_COLORS = ["red", "pink", "orange", "yellow", "green", "teal", "blue", "navy", "purple", "brown", "black", "white", "gray", "gold", "silver"];
 // Jewelry metals (migration 0028). Same rule: keys only, never rename one.
 const METALS = ["gold", "silver", "rosegold", "gunmetal"];
-// max: how many can be picked (gift style is up to 3; colors are any of them).
+// max: how many can be picked (gift style is up to GIFT_STYLE_MAX; colors are any of them).
 function keysOut(v, allowed, max = 3) {
   try {
     const a = JSON.parse(v || "[]");
@@ -348,7 +350,7 @@ function profileOut(row) {
     sizes: Object.fromEntries(SIZE_KEYS.map((k) => [k, typeof sizes[k] === "string" ? sizes[k] : ""])),
     avoid: row?.avoid || "",
     brands: brandsOut(row?.brands),
-    giftStyle: keysOut(row?.gift_style, GIFT_STYLES),
+    giftStyle: keysOut(row?.gift_style, GIFT_STYLES, GIFT_STYLE_MAX),
     colors: keysOut(row?.colors, FAV_COLORS, FAV_COLORS.length),
     // Colors they'd rather not get (migration 0030). Never also a favorite.
     colorsNo: keysOut(row?.colors_no, FAV_COLORS, FAV_COLORS.length).filter((k) => !keysOut(row?.colors, FAV_COLORS, FAV_COLORS.length).includes(k)),
@@ -3513,7 +3515,7 @@ const handlers = {
   // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
   // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text.
-  // brands: favorite brand names (free text). giftStyle: up to 3 keys. colors, colorsNo: any color keys (favorites and
+  // brands: favorite brand names (free text). giftStyle: up to 5 keys ("surprise" and "list" not together). colors, colorsNo: any color keys (favorites and
   // colors to skip; one color can't be both, favorites win). loves: short free text (old).
   // likes, dislikes: lists of short tags (Loves and Nopes). bio: one short line.
   // as: someone you look after (everything but the PIN). Absent = unchanged.
@@ -3584,7 +3586,9 @@ const handlers = {
       await env.DB.prepare("UPDATE members SET brands = ? WHERE id = ?").bind(brands.length ? JSON.stringify(brands) : null, who).run();
     }
     if (b.giftStyle !== undefined) {
-      await env.DB.prepare("UPDATE members SET gift_style = ? WHERE id = ?").bind(keysIn(b.giftStyle, GIFT_STYLES), who).run();
+      const styles = keysIn(b.giftStyle, GIFT_STYLES, GIFT_STYLE_MAX);
+      if (styles?.includes('"surprise"') && styles.includes('"list"')) fail(400, "Pick Surprise me or Stick to my list, not both.");
+      await env.DB.prepare("UPDATE members SET gift_style = ? WHERE id = ?").bind(styles, who).run();
     }
     if (b.colors !== undefined || b.colorsNo !== undefined) {
       const row = await env.DB.prepare("SELECT colors, colors_no FROM members WHERE id = ?").bind(who).first();
