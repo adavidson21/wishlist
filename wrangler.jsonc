@@ -10,7 +10,13 @@
     { "pattern": "hints.alexisdavidson.org", "custom_domain": true },
     { "pattern": "wishlist.alexisdavidson.org", "custom_domain": true }
   ],
-  "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite" },
+  // GEMINI_DAILY_CAP: most Gemini calls the whole app makes per day (UTC), so abuse can't run up the bill.
+  "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite", "GEMINI_DAILY_CAP": "1500" },
+  // Per-IP burst cap on every API call and invite page (src/limits.js). Approximate, per Cloudflare location.
+  // namespace_id just has to be unique in the Cloudflare account.
+  "ratelimits": [
+    { "name": "BURST", "namespace_id": "4821", "simple": { "limit": 240, "period": 60 } }
+  ],
   // Wishlist data (D1). Schema changes: add a file to migrations/, then
   // `npx wrangler d1 migrations apply wishlist --remote`.
   "d1_databases": [

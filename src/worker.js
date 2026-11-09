@@ -1,11 +1,36 @@
 // hints.alexisdavidson.org. The Worker runs before static files (run_worker_first in wrangler.jsonc) so the
 // retired wishlist.alexisdavidson.org can redirect everything here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
 // with a link preview for that circle, everything else is a static file.
+// Every response gets the security headers below. API calls and invite pages also pass a per-IP burst cap (src/limits.js).
 import { routes, inviteInfo } from "./wishlist.js";
 import { json } from "./gemini.js";
+import { LIMITS, burstOk, hit, ipOf } from "./limits.js";
 
 const HOST = "hints.alexisdavidson.org";
 const OLD_HOST = "wishlist.alexisdavidson.org"; // retired November 2026 (the app was called Wishlist)
+
+// Safe for the whole app: no framing (clickjacking), no MIME sniffing, HTTPS only, minimal referrers,
+// and no access to the mic, location or payment APIs. (No CSP yet: the page uses inline scripts and styles.)
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+  "permissions-policy": "geolocation=(), microphone=(), payment=(), usb=(), interest-cohort=()",
+  "cross-origin-opener-policy": "same-origin",
+};
+
+function secure(res) {
+  const out = new Response(res.body, res); // copies status and headers into a mutable response
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  return out;
+}
+
+const tooMany = () => {
+  const res = json({ error: "Too many requests. Wait a minute and try again." }, 429);
+  res.headers.set("retry-after", "60");
+  return res;
+};
 
 export default {
   async fetch(request, env) {
@@ -15,24 +40,35 @@ export default {
       url.hostname = HOST;
       return Response.redirect(url.toString(), 301);
     }
-    const handler = routes[url.pathname];
-    if (handler) return handler(request, env);
-    if (url.pathname.startsWith("/api/")) return json({ error: "Not found." }, 404);
-    const join = url.pathname.match(/^\/join\/([A-Za-z0-9]{3,12})\/?$/);
-    if (join && (request.method === "GET" || request.method === "HEAD")) return invitePage(env, url, join[1]);
-    return env.ASSETS.fetch(request);
+    return secure(await route(request, env, url));
   },
 };
+
+async function route(request, env, url) {
+  const isApi = url.pathname.startsWith("/api/");
+  const join = url.pathname.match(/^\/join\/([A-Za-z0-9]{3,12})\/?$/);
+  if ((isApi || join) && !(await burstOk(env, request))) {
+    return isApi ? tooMany() : new Response("Too many requests. Wait a minute and try again.", { status: 429, headers: { "retry-after": "60" } });
+  }
+  const handler = routes[url.pathname];
+  if (handler) return handler(request, env);
+  if (isApi) return json({ error: "Not found." }, 404);
+  if (join && (request.method === "GET" || request.method === "HEAD")) return invitePage(request, env, url, join[1]);
+  return env.ASSETS.fetch(request);
+}
 
 // The same single page as "/", with the title and Open Graph tags swapped so a pasted invite link
 // shows "Join The Davidsons on Hints" in iMessage, WhatsApp, Facebook and so on.
 // The page itself reads the code from the path.
-async function invitePage(env, url, code) {
+async function invitePage(request, env, url, code) {
   // No conditional headers, so this is always a full 200 page and never a 304 to rewrite.
   const page = await env.ASSETS.fetch(new Request(new URL("/", url)));
   let info = null;
   try {
-    info = await inviteInfo(env, code, url.searchParams.get("from"));
+    // The preview says whether a code is real, so it shares the lookup limit: guessing codes here is no
+    // easier than through /api/lookup. Over the limit, the page just shows the generic preview.
+    const [max, win] = LIMITS.lookupPerIp;
+    if (env.DB && (await hit(env, `lookup:ip:${ipOf(request)}`, win)) <= max) info = await inviteInfo(env, code, url.searchParams.get("from"));
   } catch (err) {
     console.error("invite preview", err);
   }

@@ -1,4 +1,5 @@
 // Gemini helper (used by photo search). Copied from personal-tools.
+import { geminiAllowed } from "./limits.js";
 
 // Token savers sent with every call. If the model rejects them (400), the call is retried once without them.
 // - mediaResolution MEDIUM: about half the image tokens of the default, still sharp enough to read labels.
@@ -33,6 +34,11 @@ export function quotaInfo(data) {
 // Returns { data, grounding } or { error: Response, status, quota }. `tools` turns on built-in tools such as
 // [{ google_search: {} }]; `grounding` is then the response's groundingMetadata (may be empty).
 export async function callGemini(env, system, parts, schema, timeoutMs, model = env.GEMINI_MODEL || "gemini-3.5-flash-lite", tools = null) {
+  // Whole-app daily cap (GEMINI_DAILY_CAP), so nobody can run up the bill. Treated like Google's own daily limit.
+  if (!(await geminiAllowed(env))) {
+    console.log("Gemini daily cap reached (GEMINI_DAILY_CAP)");
+    return { error: json({ error: "The AI hit today's limit for Hints. It resets tomorrow. You can still type things in." }, 429), status: 429, quota: { daily: true } };
+  }
   const makeBody = (savers) => JSON.stringify({
     system_instruction: { parts: [{ text: system }] },
     contents: [{ role: "user", parts }],

@@ -20,6 +20,7 @@
 //   - A person can be in several families. An item hidden from a family (item_hidden) is never shown through
 //     that family: you see it only if you share some other family with the owner where it isn't hidden.
 import { json, callGemini } from "./gemini.js";
+import { LIMITS as ABUSE, hit, ipOf } from "./limits.js";
 import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost, cleanBrandDomain } from "./stores.js";
 // Sets globalThis.GIFT_CARDS. Shared with the app, so both sides use the same brand list.
 import "../public/giftcards.js";
@@ -147,6 +148,46 @@ const fail = (status, message) => {
   throw new HttpError(status, message);
 };
 
+// ---------- abuse limits (numbers in src/limits.js) ----------
+// Counts one hit for `key` against each [max, windowSec]; 429 once any is over.
+async function rateLimit(env, key, windows, message = "You're doing that a lot. Wait a bit and try again.") {
+  for (const [max, win] of Array.isArray(windows[0]) ? windows : [windows]) {
+    if ((await hit(env, key, win)) > max) fail(429, message);
+  }
+}
+// Same, but answers true/false instead of failing (for background calls that should quietly do nothing).
+async function underLimit(env, key, windows) {
+  for (const [max, win] of Array.isArray(windows[0]) ? windows : [windows]) {
+    if ((await hit(env, key, win)) > max) return false;
+  }
+  return true;
+}
+// A brand new person: per-IP and whole-app daily caps, so nobody can fill the database with fake people.
+async function newMemberAllowed(env, request) {
+  await rateLimit(env, `newmember:ip:${ipOf(request)}`, ABUSE.newMemberPerIp, "Too many new people from here today. Try again tomorrow.");
+  if ((await hit(env, "newmember:all", 86400)) > ABUSE.newMembersPerDay) fail(429, "Hints isn't taking new people right now. Try again tomorrow.");
+}
+// Room for `adding` more people in a circle.
+async function circleRoom(env, groupId, adding = 1) {
+  if (adding <= 0) return;
+  const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?").bind(groupId).first();
+  if (n + adding > ABUSE.membersPerCircle) fail(409, `That circle is full (${ABUSE.membersPerCircle} people).`);
+}
+// Room for one more circle for this person.
+async function circleSlot(env, memberId) {
+  const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM group_members WHERE member_id = ?").bind(memberId).first();
+  if (n >= ABUSE.circlesPerMember) fail(409, `You're in ${n} circles, the most allowed. Leave one first.`);
+}
+// Checks a PIN. Every try counts (per person and per IP), so 4 digits can't be guessed: 8 tries per 15 minutes
+// and 20 a day per person. Counting tries rather than misses means parallel guesses can't sneak past.
+async function checkPin(env, request, member, pin) {
+  const tooMany = "Too many PIN tries. Wait a while and try again.";
+  await rateLimit(env, `pin:m:${member.id}`, ABUSE.pinTriesPerMember, tooMany);
+  await rateLimit(env, `pin:ip:${ipOf(request)}`, ABUSE.pinTriesPerIp, tooMany);
+  if (!pin) fail(403, "PIN required.");
+  if ((await hashPin(member.id, String(pin))) !== member.pin_hash) fail(403, "Wrong PIN.");
+}
+
 function text(value, max, field, required = false) {
   const s = typeof value === "string" ? value.trim() : "";
   if (required && !s) fail(400, `${field} is required.`);
@@ -211,20 +252,35 @@ function pinValue(value) {
   return s;
 }
 
-async function body(request) {
+// The JSON body as an object ({} if it isn't one). Over `max` characters is refused before parsing.
+async function body(request, max = ABUSE.maxBody) {
+  if (Number(request.headers.get("content-length") || 0) > max) fail(413, "That's too much to send at once.");
+  let raw;
   try {
-    return (await request.json()) || {};
+    raw = await request.text();
+  } catch {
+    return {};
+  }
+  if (raw.length > max) fail(413, "That's too much to send at once.");
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
   } catch {
     return {};
   }
 }
 
+// A new device token. Each person keeps at most ABUSE.devicesPerMember; past that the least recently used is
+// signed out, so signing in over and over can't pile up rows.
 async function signIn(env, memberId) {
   const token = newToken();
   const t = now();
-  await env.DB.prepare("INSERT INTO devices (token, member_id, created_at, last_seen) VALUES (?, ?, ?, ?)")
-    .bind(token, memberId, t, t)
-    .run();
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO devices (token, member_id, created_at, last_seen) VALUES (?, ?, ?, ?)").bind(token, memberId, t, t),
+    env.DB.prepare(
+      "DELETE FROM devices WHERE member_id = ?1 AND token NOT IN (SELECT token FROM devices WHERE member_id = ?1 ORDER BY last_seen DESC, created_at DESC LIMIT ?2)",
+    ).bind(memberId, ABUSE.devicesPerMember),
+  ]);
   return token;
 }
 
@@ -724,9 +780,10 @@ async function optionsFromShopify(url, html) {
   const handle = url.pathname.match(/\/products\/([^/?#]+)/)?.[1];
   if (!handle || (html && !/shopify/i.test(html))) return null;
   try {
-    const res = await fetch(`${url.origin}/products/${handle}.js`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) });
-    if (!res.ok || !/json/i.test(res.headers.get("content-type") || "")) return null;
-    const p = await res.json();
+    const res = await safeFetch(`${url.origin}/products/${handle}.js`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) });
+    if (!res) return null;
+    if (!res.ok || !/json/i.test(res.headers.get("content-type") || "")) { res.body?.cancel().catch(() => {}); return null; }
+    const p = JSON.parse(await readCapped(res, 2_000_000));
     const opts = Array.isArray(p.options) ? p.options : [];
     const at = (re) => opts.findIndex((o) => re.test(String(typeof o === "object" ? o.name : o).trim()));
     const si = at(SIZE_NAME), ci = at(COLOR_NAME);
@@ -851,12 +908,60 @@ function titleFromPath(u) {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// Outbound fetches (store pages, product photos) only go to ordinary public websites: http(s) on the normal
+// ports, a real domain name (no IP addresses, localhost or internal names) and no passwords in the link.
+// Stops anyone using Hints as a proxy to poke at other servers.
+function fetchable(u) {
+  try {
+    const x = u instanceof URL ? u : new URL(u);
+    if (x.protocol !== "https:" && x.protocol !== "http:") return false;
+    if (x.port && x.port !== "80" && x.port !== "443") return false;
+    if (x.username || x.password) return false;
+    const h = x.hostname.toLowerCase().replace(/\.$/, "");
+    if (!h.includes(".") || h.startsWith("[") || /^[\d.]+$/.test(h)) return false;
+    return !/(^|\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|test|invalid|example|arpa)$/.test(h);
+  } catch {
+    return false;
+  }
+}
+
+// Reads at most `max` characters of a response body, then stops downloading (a huge page can't eat the Worker's memory).
+async function readCapped(res, max) {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const dec = new TextDecoder();
+  let out = "";
+  try {
+    while (out.length < max) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out += dec.decode(value, { stream: true });
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+  return out.slice(0, max);
+}
+
+// fetch() that follows up to 5 redirects itself, checking every hop with fetchable(). Null if a hop isn't allowed.
+async function safeFetch(url, init = {}, hops = 5) {
+  let u = url instanceof URL ? url : new URL(url);
+  for (let i = 0; i <= hops; i++) {
+    if (!fetchable(u)) return null;
+    const res = await fetch(u.toString(), { ...init, redirect: "manual" });
+    const loc = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!loc) return Object.defineProperty(res, "finalUrl", { value: u });
+    res.body?.cancel().catch(() => {});
+    u = new URL(loc, u);
+  }
+  return null;
+}
+
 // Fetches a page like a browser would. Returns the final URL after redirects and the HTML ("" if blocked or not HTML).
 async function readPage(url, timeoutMs = 6000) {
   let html = "", finalUrl = url, status = 0;
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
+    const res = await safeFetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
       headers: {
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
@@ -864,9 +969,12 @@ async function readPage(url, timeoutMs = 6000) {
         "accept-language": "en-US,en;q=0.9",
       },
     });
-    status = res.status;
-    finalUrl = new URL(res.url || url);
-    if (res.ok && /html/i.test(res.headers.get("content-type") || "")) html = (await res.text()).slice(0, 1_500_000);
+    if (res) {
+      status = res.status;
+      finalUrl = res.finalUrl;
+      if (res.ok && /html/i.test(res.headers.get("content-type") || "")) html = await readCapped(res, 1_500_000);
+      else res.body?.cancel().catch(() => {});
+    }
   } catch {
     // Unreachable or slow: html stays empty.
   }
@@ -947,7 +1055,9 @@ const LINK_SCHEMA = {
 };
 async function isImage(u) {
   try {
-    const res = await fetch(u, { headers: { range: "bytes=0-2047" }, signal: AbortSignal.timeout(4000) });
+    const res = await safeFetch(u, { headers: { range: "bytes=0-2047" }, signal: AbortSignal.timeout(4000) });
+    if (!res) return false;
+    res.body?.cancel().catch(() => {});
     return res.ok && /^image\//i.test(res.headers.get("content-type") || "");
   } catch {
     return false;
@@ -1242,6 +1352,8 @@ const handlers = {
   // `from` (optional) is the id of whoever sent the invite link; their name comes back as `inviter`.
   async "POST lookup"(req, env) {
     const b = await body(req);
+    // Shared with /join/CODE previews (src/worker.js), so invite codes can't be guessed in bulk.
+    await rateLimit(env, `lookup:ip:${ipOf(req)}`, ABUSE.lookupPerIp, "Too many tries. Wait a bit, then check the code and try again.");
     const group = await groupByCode(env, b.code);
     const info = b.from ? await inviteInfo(env, b.code, b.from) : null;
     const { results } = await env.DB.prepare(
@@ -1261,6 +1373,7 @@ const handlers = {
   // Step 2: sign in as an existing member (memberId, plus PIN if they set one) or add yourself (name).
   async "POST join"(req, env) {
     const b = await body(req);
+    await rateLimit(env, `join:ip:${ipOf(req)}`, ABUSE.joinPerIp, "Too many sign-in tries. Wait a bit and try again.");
     const group = await groupByCode(env, b.code);
     let member;
     if (b.memberId) {
@@ -1281,6 +1394,8 @@ const handlers = {
       if (member) await notManaged(env, member);
       if (!member) {
         const pin = pinValue(b.pin);
+        await circleRoom(env, group.id);
+        await newMemberAllowed(env, req);
         const id = newId();
         const t = now();
         await env.DB.batch([
@@ -1295,10 +1410,7 @@ const handlers = {
         return { token: await signIn(env, id) };
       }
     }
-    if (member.pin_hash) {
-      if (!b.pin) fail(403, "PIN required.");
-      if ((await hashPin(member.id, String(b.pin))) !== member.pin_hash) fail(403, "Wrong PIN.");
-    }
+    if (member.pin_hash) await checkPin(env, req, member, b.pin);
     return { token: await signIn(env, member.id) };
   },
 
@@ -1308,6 +1420,9 @@ const handlers = {
     const groupName = text(b.groupName, LIMITS.group, "Circle name", true);
     const name = text(b.name, LIMITS.name, "Your name", true);
     const pin = pinValue(b.pin);
+    await rateLimit(env, `start:ip:${ipOf(req)}`, ABUSE.startPerIp, "Too many new circles from here today. Try again tomorrow.");
+    if ((await hit(env, "newcircle:all", 86400)) > ABUSE.newCirclesPerDay) fail(429, "Hints isn't taking new circles right now. Try again tomorrow.");
+    await newMemberAllowed(env, req);
     const groupId = newId();
     const memberId = newId();
     const t = now();
@@ -1547,6 +1662,8 @@ const handlers = {
       if (rows.length) await env.DB.batch(rows);
       return { id: b.id };
     }
+    const { n: itemCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL").bind(owner).first();
+    if (itemCount >= ABUSE.itemsPerMember) fail(409, `That list is full (${ABUSE.itemsPerMember} wishes). Remove a few to add more.`);
     const id = newId();
     await env.DB.batch([
       env.DB.prepare(
@@ -1758,6 +1875,8 @@ const handlers = {
       if (!res.meta.changes) fail(404, "Idea not found.");
     } else {
       if (!b.subjectId || b.subjectId === me.id || !(await sharesGroup(env, me.id, b.subjectId))) fail(400, "Pick who this idea is for.");
+      const { n: ideaCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM private_ideas WHERE author_id = ?").bind(me.id).first();
+      if (ideaCount >= ABUSE.ideasPerMember) fail(409, `You have ${ABUSE.ideasPerMember} gift ideas, the most allowed. Delete a few to add more.`);
       id = newId();
       await env.DB.prepare(
         `INSERT INTO private_ideas (id, author_id, subject_id, title, url, price_cents, note, shared, created_at, updated_at, image_url, image_checked_at, details_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${DETAILS_V})`,
@@ -1843,6 +1962,8 @@ const handlers = {
   // signing in until remaining is 0, then redraws.
   async "POST refresh"(req, env) {
     const me = await auth(req, env);
+    // Over the limit: report nothing left, so the app stops asking until next time.
+    if (!(await underLimit(env, `refresh:${me.id}`, ABUSE.refreshPerMember))) return { checked: 0, updated: 0, remaining: 0 };
     const pick = (table, owner) => env.DB.prepare(
       `SELECT id, url FROM ${table} WHERE ${owner} = ? AND url IS NOT NULL AND url != '' AND details_v < ?${table === "items" ? " AND removed_at IS NULL" : ""} ORDER BY created_at DESC LIMIT ?`,
     ).bind(me.id, DETAILS_V, REFRESH_BATCH).all();
@@ -1862,6 +1983,7 @@ const handlers = {
   async "POST image"(req, env) {
     const me = await auth(req, env);
     const { kind, id } = await body(req);
+    if (!(await underLimit(env, `image:${me.id}`, ABUSE.imagePerMember))) return { image: null, price_cents: null };
     let row;
     if (kind === "item") {
       row = await env.DB.prepare(
@@ -1895,6 +2017,7 @@ const handlers = {
   // Only things you can see; Gemini lookups (blocked stores) run a few at a time.
   async "POST prices"(req, env) {
     const me = await auth(req, env);
+    if (!(await underLimit(env, `prices:${me.id}`, ABUSE.pricesPerMember))) return { prices: {} };
     const { keys } = await body(req);
     const want = [...new Set((Array.isArray(keys) ? keys : []).map(String))].slice(0, 12);
     const rows = [];
@@ -1932,16 +2055,18 @@ const handlers = {
 
   // Autofill: read a product link and return its name and price (nothing is saved).
   async "POST preview"(req, env) {
-    await auth(req, env);
+    const me = await auth(req, env);
     const { url } = await body(req);
+    await rateLimit(env, `preview:${me.id}`, ABUSE.previewPerMember, "That's a lot of links for now. Type the details in, or try again in a bit.");
     return previewLink(env, url, { ai: true });
   },
 
   // Photo to suggestions: Gemini guesses what the item is and finds a store page for each. Nothing is stored.
   async "POST identify"(req, env) {
-    await auth(req, env);
+    const me = await auth(req, env);
     if (!env.GEMINI_API_KEY) fail(500, "Photo search isn't set up (missing GEMINI_API_KEY).");
-    const { image } = await body(req);
+    const { image } = await body(req, ABUSE.maxPhotoBody);
+    await rateLimit(env, `identify:${me.id}`, ABUSE.identifyPerMember, "That's a lot of photo searches for now. Try again later, or type it in.");
     const match = typeof image === "string" && image.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
     if (!match) fail(400, "That photo didn't come through. Try again.");
     if (match[2].length > 4_000_000) fail(400, "That photo is too large. Try a smaller one.");
@@ -2093,6 +2218,7 @@ const handlers = {
   // Join another family while signed in, so the same you (and the same list) is in both.
   async "POST family/join"(req, env) {
     const me = await auth(req, env);
+    await rateLimit(env, `lookup:ip:${ipOf(req)}`, ABUSE.lookupPerIp, "Too many tries. Wait a bit, then check the code and try again.");
     const group = await groupByCode(env, (await body(req)).code);
     const already = await env.DB.prepare("SELECT direct FROM group_members WHERE group_id = ? AND member_id = ?").bind(group.id, me.id).first();
     if (already?.direct) fail(409, `You're already in ${group.name}.`);
@@ -2108,6 +2234,8 @@ const handlers = {
       .bind(group.id, me.name)
       .first();
     if (clash) fail(409, `Someone named ${me.name} is already in ${group.name}. Change your name in Settings (for example, add a last initial), then join.`);
+    await circleSlot(env, me.id);
+    await circleRoom(env, group.id);
     await env.DB.prepare(JOIN_DIRECT).bind(group.id, me.id, now()).run();
     return { group: { id: group.id, name: group.name } };
   },
@@ -2116,6 +2244,9 @@ const handlers = {
   async "POST family/start"(req, env) {
     const me = await auth(req, env);
     const name = text((await body(req)).groupName, LIMITS.group, "Circle name", true);
+    await circleSlot(env, me.id);
+    await rateLimit(env, `start:m:${me.id}`, ABUSE.circlesStartedPerMemberDay, "That's a lot of new circles today. Try again tomorrow.");
+    if ((await hit(env, "newcircle:all", 86400)) > ABUSE.newCirclesPerDay) fail(429, "Hints isn't taking new circles right now. Try again tomorrow.");
     const id = newId();
     const t = now();
     const code = await newUniqueJoinCode(env);
@@ -2225,7 +2356,12 @@ const handlers = {
         "SELECT g.name FROM group_members gm JOIN members m ON m.id = gm.member_id JOIN groups g ON g.id = gm.group_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
       ).bind(g, name).first();
       if (clash) fail(409, `Someone named ${name} is already in ${clash.name}. Add a last initial to tell them apart.`);
+      await circleRoom(env, g);
     }
+    const { n: managedCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM members WHERE managed_by = ?").bind(me.id).first();
+    if (managedCount >= ABUSE.managedPerMember) fail(409, `You look after ${managedCount} people, the most allowed.`);
+    await rateLimit(env, `managed:${me.id}`, ABUSE.managedAddsPerMemberDay, "That's a lot of new people today. Try again tomorrow.");
+    if ((await hit(env, "newmember:all", 86400)) > ABUSE.newMembersPerDay) fail(429, "Hints isn't taking new people right now. Try again tomorrow.");
     const id = newId();
     const t = now();
     await env.DB.batch([
@@ -2321,6 +2457,10 @@ const handlers = {
     const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all();
     const clash = await nameClash(env, results.map((r) => r.group_id), [memberId]);
     if (clash) fail(409, `Someone named ${them.name} is already in ${clash}, which this household is in. One of them can add a last initial first.`);
+    for (const r of results) {
+      const inIt = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(r.group_id, memberId).first();
+      if (!inIt) await circleRoom(env, r.group_id);
+    }
     await env.DB.batch([
       env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, memberId),
       env.DB.prepare(
@@ -2372,10 +2512,17 @@ const handlers = {
     const hh = householdId ? await manageableHousehold(env, me.id, householdId) : await householdOf(env, me.id);
     if (!hh) fail(404, "You're not in a household.");
     if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    // Someone else's household (managed as a circle's admin) can only be moved in or out of a circle you're the admin of,
+    // so an admin of one circle can't pull other people into a different circle.
+    if (hh !== (await householdOf(env, me.id)) && (await adminOf(env, groupId)) !== me.id) fail(403, "Only that circle's admin can do that.");
     const { results: ppl } = await env.DB.prepare("SELECT id FROM members WHERE household_id = ?").bind(hh).all();
     const ids = ppl.map((p) => p.id);
     const t = now();
     if (on) {
+      const { n: already } = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.household_id = ?",
+      ).bind(groupId, hh).first();
+      await circleRoom(env, groupId, ids.length - already);
       const clash = await nameClash(env, [groupId], ids);
       if (clash) fail(409, `Someone in that household has the same name as someone already in ${clash}. One of them can add a last initial first.`);
       await env.DB.batch([

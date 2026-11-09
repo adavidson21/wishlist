@@ -10,7 +10,8 @@ One Cloudflare Worker with a D1 database. No build step.
 wrangler.jsonc        Cloudflare config: Worker, custom domains, D1 binding
 src/worker.js         Router: /api/* to wishlist.js, /join/CODE invite pages (with link previews), everything else from public/
 src/wishlist.js       API and privacy rules (D1)
-src/gemini.js         Gemini call used by photo search
+src/gemini.js         Gemini call used by photo search (with the app-wide daily cap)
+src/limits.js         Abuse limits: rate limits, quotas and caps (see Abuse limits)
 src/stores.js         Stores photo search may link to, plus blocked marketplaces
 migrations/           D1 schema (wrangler d1 migrations)
 public/index.html     The app (single page)
@@ -110,6 +111,17 @@ public/og-invite.png  Link preview image for invite links
 - **Desktop (1024px and up):** the tabs become a left sidebar (logo, a big Drop a hint button, a pill that slides to the current tab, and your name at the bottom, which opens Profile). Lists and people sit in a card grid. Someone's list puts their Good to know card, stats and filters in a left column with wishes on the right; Budget does the same with the Christmas/Birthdays switch and actions. Settings is two columns; Profile stays one readable column. Sheets open as a centered card. Cards lift on hover, the header band has slow drifting snow, and screens slide in when you switch. Press N anywhere to add a wish. Phones and tablets are unchanged. The wrappers (`person-layout`, `budget-layout`) are plain blocks on small screens.
 - **Settings:** text size (Default, Large, Extra large) and appearance (Automatic, Light, Dark) are saved on the device.
 - **Look and motion:** cream background, a wine header band, burgundy actions, gold for top picks, pine for "you're getting this". Bricolage Grotesque for titles and big numbers, Figtree for everything else. Animations mark real moments (opening an invite, joining, the tour, adding a wish, starring a top pick, "I'll get this" confetti, budget numbers counting) and all turn off with the device's Reduce Motion setting.
+
+## Abuse limits
+
+All the numbers live in `src/limits.js` (`LIMITS`), counted in the `rate_limits` table (migration 0024) plus a per-IP burst cap from the `BURST` rate limit binding in `wrangler.jsonc` (240 API calls a minute per IP).
+- **Sign-up:** per IP, 4 new circles and 8 new people a day; whole app, 100 new circles and 300 new people a day. Invite code lookups (including `/join/CODE` previews) 40 an hour per IP, sign-in attempts 30 an hour.
+- **PINs:** 8 tries per 15 minutes and 20 a day per person, 30 an hour per IP. A 4-digit PIN would take over a year to guess.
+- **Caps:** 300 wishes and 500 gift ideas per person, 20 circles per person, 100 people per circle, 15 people you look after (10 new a day), 15 signed-in devices per person (the least recently used is signed out). Request bodies over 400 KB (6 MB for photo search) are refused.
+- **Cost:** per person, link fills 80 an hour and 300 a day, photo searches 15 an hour and 40 a day, plus hourly caps on live prices, details refresh and photo lookups (those quietly return nothing when over). Whole app, Gemini calls are capped at `GEMINI_DAILY_CAP` a day (1,500 by default).
+- **Outbound fetches** (store pages, photos) only go to normal public sites: no IP addresses, internal names or odd ports, every redirect checked, at most 1.5 MB read.
+- **Headers:** every response gets nosniff, no framing, HSTS, a strict referrer policy and a locked-down permissions policy.
+- Over a limit, the API answers 429 with a friendly message the app shows as is.
 
 ## Schema changes
 
