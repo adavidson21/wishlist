@@ -365,6 +365,12 @@ function profileOut(row) {
     // Before 0017, loves was one line of text. Until it's saved again, show it as tags.
     likes: row?.likes != null ? tagsOut(row.likes) : tagsOut(JSON.stringify(String(row?.loves || "").split(/[,;\n]+/))),
     dislikes: tagsOut(row?.dislikes),
+    // "Already has" (migration 0032): so nobody buys a second of the same thing.
+    owns: tagsOut(row?.owns),
+    // When their sizes last changed (null: before migration 0032, or never set).
+    sizesAt: row?.sizes_at || null,
+    // A kid (migration 0033, set by whoever looks after them): Kid chip, Kids filter, size nudges.
+    kid: !!row?.is_kid,
   };
 }
 function tagsOut(v) {
@@ -2018,7 +2024,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.last_name, m.photo_at, m.birthday, m.household_id, m.dislikes, m.managed_by, m.claim_expires, m.pin_hash IS NOT NULL AS has_pin,
+      `SELECT gm.group_id, m.id, m.name, m.last_name, m.photo_at, m.birthday, m.household_id, m.dislikes, m.owns, m.is_kid, m.managed_by, m.claim_expires, m.pin_hash IS NOT NULL AS has_pin,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -2043,6 +2049,9 @@ const handlers = {
       occasions: occasionsFor(p, t), householdId: p.household_id || null, hasPin: !!p.has_pin,
       // Their Nopes (shown on their page anyway), so the app can warn when an idea for them matches one.
       nopes: tagsOut(p.dislikes),
+      // What they already have (warns on a matching idea), and whether they're a kid.
+      owns: tagsOut(p.owns),
+      kid: !!p.is_kid,
       // Someone who doesn't use the app: who added them, and whether you can run their list (canManage, same rule).
       managedBy: p.managed_by || null,
       canManage: manages(p),
@@ -3266,7 +3275,7 @@ const handlers = {
     const t = now();
     await env.DB.batch([
       // onboarded_at: there's no welcome tour for someone who never opens the app.
-      env.DB.prepare("INSERT INTO members (id, name, last_name, created_at, managed_by, household_id, onboarded_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, name, lastName, t, me.id, hh, t),
+      env.DB.prepare("INSERT INTO members (id, name, last_name, created_at, managed_by, household_id, onboarded_at, is_kid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(id, name, lastName, t, me.id, hh, t, b.kid ? 1 : 0),
       ...picked.map((g) => env.DB.prepare(JOIN_DIRECT).bind(g, id, t)),
       ...hhCircles.map((g) => env.DB.prepare(
         "INSERT INTO group_members (group_id, member_id, joined_at, direct) VALUES (?, ?, ?, 0) ON CONFLICT DO NOTHING",
@@ -3630,7 +3639,11 @@ const handlers = {
     if (b.sizes !== undefined) {
       const src = b.sizes && typeof b.sizes === "object" ? b.sizes : {};
       const sizes = Object.fromEntries(SIZE_KEYS.map((k) => [k, text(src[k], LIMITS.size, "Size") || ""]).filter(([, v]) => v));
-      await env.DB.prepare("UPDATE members SET sizes = ? WHERE id = ?").bind(Object.keys(sizes).length ? JSON.stringify(sizes) : null, who).run();
+      const value = Object.keys(sizes).length ? JSON.stringify(sizes) : null;
+      // Only a real change counts as "updated" (saving the profile without touching sizes doesn't), unless
+      // sizesChecked says someone looked and they're still right.
+      await env.DB.prepare("UPDATE members SET sizes = ?1, sizes_at = CASE WHEN ?1 IS NULL THEN NULL WHEN ?4 = 1 OR IFNULL(sizes, '') != ?1 THEN ?2 ELSE sizes_at END WHERE id = ?3")
+        .bind(value, now(), who, b.sizesChecked ? 1 : 0).run();
     }
     if (b.avoid !== undefined) {
       await env.DB.prepare("UPDATE members SET avoid = ? WHERE id = ?").bind(text(b.avoid, LIMITS.avoid, "Dislikes and allergies"), who).run();
@@ -3672,6 +3685,12 @@ const handlers = {
       // Saving likes replaces the old free-text loves for good.
       if (likes !== undefined) await env.DB.prepare("UPDATE members SET likes = ?, loves = NULL WHERE id = ?").bind(likes || "[]", who).run();
       if (dislikes !== undefined) await env.DB.prepare("UPDATE members SET dislikes = ? WHERE id = ?").bind(dislikes, who).run();
+    }
+    if (b.kid !== undefined) {
+      await env.DB.prepare("UPDATE members SET is_kid = ? WHERE id = ?").bind(b.kid ? 1 : 0, who).run();
+    }
+    if (b.owns !== undefined) {
+      await env.DB.prepare("UPDATE members SET owns = ? WHERE id = ?").bind(tagsIn(b.owns, "Already has"), who).run();
     }
     if (b.bio !== undefined) {
       await env.DB.prepare("UPDATE members SET bio = ? WHERE id = ?").bind(text(b.bio, LIMITS.bio, "Bio") || null, who).run();

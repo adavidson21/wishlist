@@ -584,6 +584,14 @@
     background: var(--panel); color: var(--muted); font-size: 13px; font-weight: 700; line-height: 1.2; }
   .pchip > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pchip.hh-chip { padding-left: 3px; color: var(--ink); }
+  .pchip.kid-chip { background: var(--t3); color: var(--t3-ink); font-weight: 700; }
+  .circle-filter { margin: 0 0 14px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .circle-filter::-webkit-scrollbar { display: none; }
+  .circle-filter .chip { flex: none; gap: 6px; }
+  .circle-filter .avatar.xs { width: 22px; height: 22px; font-size: 10px; }
+  .sz-age { margin: 8px 0 0; color: var(--warn); font-size: 14px; font-weight: 600; }
+  .mg-nudge { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--gold-soft); color: var(--gold-ink); font-size: 15px; }
+  .mg-nudge .linkbtn { padding: 0; margin-left: 4px; }
   .pchip.hh-chip .avatar { width: 20px; height: 20px; font-size: 9px; letter-spacing: 0; }
   .pchip.occ-chip { background: var(--soft); color: var(--soft-ink); }
   .set-div { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
@@ -724,6 +732,8 @@
   .tag.love { background: var(--soft); color: var(--soft-ink); }
   .tag.nope { background: transparent; border: 1.5px dashed color-mix(in srgb, var(--muted) 45%, transparent); color: var(--muted); }
   .tag.nope i { background: var(--panel); filter: grayscale(.6); }
+  .tag.owns { background: var(--t1); color: var(--t1-ink); }
+  .hcard-h.owns .ico { background: var(--t1); color: var(--t1-ink); }
   .tag.both { background: var(--gold-soft); color: var(--gold-ink); box-shadow: 0 0 0 1.5px var(--gold) inset; }
   .person-side > :is(.hcard, .careful) { margin-bottom: 14px; }
   .nope-warn { display: flex; gap: 10px; align-items: flex-start; margin: -6px 0 16px; padding: 11px 13px; border-radius: 14px;
@@ -4094,18 +4104,33 @@ async function renderFamily() {
   const plan = new Map((t?.people || []).map((p) => [p.id, p]));
   setHero(heroTitle(state.groups.map((x) => x.name).join(" · "), "Circles"));
   const v = $("#view");
+  // Filter chips: Everyone, Kids (when there are any), then one per household. Remembered while the app is open.
+  const all = [...new Map(state.groups.flatMap((x) => x.members).filter((m) => m.id !== state.me.id).map((m) => [m.id, m])).values()];
+  const kidsN = all.filter((m) => m.kid).length;
+  const mineHh = myHouseholdId();
+  const hhs = [...new Set(all.map((m) => m.householdId).filter(Boolean))]
+    .map((id) => ({ id, label: householdLabel(id) }))
+    .sort((a, b) => (b.id === mineHh) - (a.id === mineHh) || a.label.localeCompare(b.label));
+  const cf = state.circleFilter || "";
+  if ((cf === "kids" && !kidsN) || (cf.startsWith("h:") && !hhs.some((h) => `h:${h.id}` === cf))) state.circleFilter = "";
+  const shows = (m) => !state.circleFilter || (state.circleFilter === "kids" ? m.kid : `h:${m.householdId}` === state.circleFilter);
+  const chip = (val, html) => `<button class="chip" type="button" data-cf="${esc(val)}" aria-pressed="${(state.circleFilter || "") === val}">${html}</button>`;
+  const kidsBar = kidsN || hhs.length > 1 ? `<div class="chips circle-filter" role="group" aria-label="Show">
+      ${chip("", "Everyone")}${kidsN ? chip("kids", `Kids<span class="chip-n">${kidsN}</span>`) : ""}${hhs.length > 1 ? hhs.map((h) => chip(`h:${h.id}`, `${tileAvatar(h.label, `h:${h.id}`, "xs")}${esc(h.id === mineHh ? "My household" : h.label)}`)).join("") : ""}</div>` : "";
   const personBtn = (m, i) => {
+        if (!shows(m)) return "";
         const p = plan.get(m.id);
         const getting = p ? p.occasions.reduce((n, o) => n + o.purchases.length, 0) : 0;
         const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
         const real = m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : "";
         const bday = (m.occasions || []).find((o) => o.birthday);
         const soon = bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}</span>` : "";
+        const age = m.kid ? `<span class="pchip kid-chip">Kid</span>` : "";
         const looked = m.managedBy ? ` · ${m.managedBy === state.me.id ? "you look after" : m.canManage ? "your household looks after" : `looked after by ${esc(personName(m.managedBy))}`}` : "";
         // One wrapping row: what's on their list, then the household chip (other households only) and birthday.
         return `<button class="member slide" style="animation-delay:${Math.min(i, 12) * 0.05}s" type="button" data-id="${esc(m.id)}">
           ${avatar(m.name, m.id)}
-          <span class="who"><strong>${esc(m.name)}${householdChip(m) && dupeTag(m) === householdLabel(m.householdId) ? "" : dupeHtml(m)}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}${real}${looked}</small>${householdChip(m)}${soon}</span>${budgetMini(p)}</span>${CHEV}
+          <span class="who"><strong>${esc(m.name)}${householdChip(m) && dupeTag(m) === householdLabel(m.householdId) ? "" : dupeHtml(m)}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}${real}${looked}</small>${age}${householdChip(m)}${soon}</span>${budgetMini(p)}</span>${CHEV}
         </button>`;
   };
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
@@ -4114,13 +4139,13 @@ async function renderFamily() {
     return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns">${isAdmin(fam) ? `<button class="btn quiet small" type="button" data-manage="${esc(fam.id)}">Manage</button>` : ""}<button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>
       <div class="stack" style="margin-top:12px">${ppl.length ? peopleHtml(ppl, personBtn) : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
   }).join("");
-  v.innerHTML = multi() ? `${sections}
+  v.innerHTML = multi() ? `${kidsBar}${sections}
     <div class="label">You</div>
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
       <button class="add soft" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>
     </div>` : `
-    ${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${isAdmin(g) ? `<button class="btn quiet small" type="button" data-manage="${esc(g.id)}">Manage</button>` : ""}</div><div class="stack" style="margin-top:12px">
+    ${kidsBar}${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${isAdmin(g) ? `<button class="btn quiet small" type="button" data-manage="${esc(g.id)}">Manage</button>` : ""}</div><div class="stack" style="margin-top:12px">
       ${peopleHtml(people, personBtn)}</div>` : `
       <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Their lists show up here once they join.</p></div>`}
     <div class="label">You</div>
@@ -4134,6 +4159,10 @@ async function renderFamily() {
   v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
   $("#meRow").onclick = () => setTab("mine");
   v.querySelectorAll("[data-add-managed]").forEach((b) => (b.onclick = addManaged));
+  v.querySelectorAll("[data-cf]").forEach((b) => (b.onclick = () => { state.circleFilter = b.dataset.cf; renderFamily(); }));
+  // Keep the picked chip in view (the row re-renders scrolled to the start).
+  const picked = v.querySelector('.circle-filter [aria-pressed="true"]');
+  if (picked && state.circleFilter) picked.parentElement.scrollLeft = picked.offsetLeft - 16;
   if (g && !multi()) wireInviteCard(v, g);
   v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((x) => x.id === b.dataset.share))));
   v.querySelectorAll("[data-manage]").forEach((b) => (b.onclick = () => openCircleManage(b.dataset.manage)));
@@ -4797,6 +4826,16 @@ function openChat(personId, opts = {}) {
 }
 
 // ---------- someone you look after ----------
+// On a kid's "You look after" card: no sizes yet, or sizes a few months old (or from before we tracked it).
+function sizesNudge(member, name) {
+  if (!(everyone().find((m) => m.id === member.id)?.kid ?? member.profile?.kid)) return "";
+  const p = member.profile || {};
+  const has = Object.values(p.sizes || {}).some(Boolean);
+  const msg = !has ? `Add ${esc(name)}'s sizes so clothes fit.`
+    : !p.sizesAt ? `Are ${esc(name)}'s sizes still right?`
+    : daysSince(p.sizesAt) >= SIZES_STALE_DAYS ? `${esc(name)}'s sizes were updated ${monthsAgo(p.sizesAt)}. Kids grow fast.` : "";
+  return msg ? `<p class="mg-nudge">${msg}<button class="linkbtn" type="button" data-mg-sizes>${has ? "Update" : "Add sizes"}</button></p>` : "";
+}
 // Their page shows this card: add wishes, edit their profile and gift cards, hand the list over, or remove them.
 function manageCard(list, name) {
   const by = list.member.id && everyone().find((m) => m.id === list.member.id)?.managedBy;
@@ -4808,6 +4847,7 @@ function manageCard(list, name) {
     <p class="sub">${who} ${esc(name)}, who doesn't use the app. You can still see what's been bought.</p>
     <div class="mg-hh">${hhId ? `${tileAvatar(householdLabel(hhId), `h:${hhId}`, "sm")}<span class="mg-txt">Household: <strong>${esc(householdLabel(hhId))}</strong>${mineHh ? '<button class="linkbtn" type="button" id="mgOut">Not in our household?</button>' : ""}</span>`
       : `<span class="mg-txt">Not part of a household</span>`}</div>
+    ${sizesNudge(list.member, name)}
     <div class="mg-btns">
       <button class="btn primary small" type="button" id="mgAdd">${PLUS} Add a wish</button>
       <button class="btn small" type="button" id="mgProfile">${PENCIL} Profile</button>
@@ -4821,6 +4861,7 @@ function wireManageCard(v, list, name, id) {
   $("#mgAdd", v).onclick = add;
   $("#firstWish", v)?.addEventListener("click", add);
   $("#mgProfile", v).onclick = () => editManagedProfile(list.member, name);
+  $("[data-mg-sizes]", v)?.addEventListener("click", () => editManagedProfile(list.member, name));
   $("#mgCards", v).onclick = () => pickGiftCards((list.giftCards || []).filter((c) => !c.removed), id, name);
   v.querySelectorAll("[data-edit-wish]").forEach((b) => (b.onclick = () => {
     const item = list.items.find((x) => x.id === b.dataset.editWish);
@@ -4893,6 +4934,7 @@ function addManaged() {
     <form id="mgForm" autocomplete="off">
       <div class="err" hidden></div>
       ${nameFields("Their")}
+      <label class="check"><span>They're a kid<small>Shows a Kid tag and reminds you about their sizes</small></span><input type="checkbox" name="kid"></label>
       ${hh ? `<label class="check"><span>Add to my household<small>Joins ${esc(hh.label)}, so everyone in it can help with their list</small></span><input type="checkbox" name="liveWithMe"></label>` : ""}
       ${multi() ? `<fieldset class="fsec"><h4 class="fsec-h">Which circles?</h4>
         ${state.groups.map((g) => `<label class="check"><span>${esc(g.name)}</span><input type="checkbox" name="g:${esc(g.id)}" checked></label>`).join("")}</fieldset>` : ""}
@@ -4902,7 +4944,7 @@ function addManaged() {
       wireForm($("#mgForm", el), async (d) => {
         const groupIds = multi() ? state.groups.filter((g) => d[`g:${g.id}`]).map((g) => g.id) : undefined;
         if (groupIds && !groupIds.length) throw new Error("Pick at least one circle.");
-        const { id } = await api("managed/add", { name: d.name, lastName: d.lastName, groupIds, joinHousehold: !!d.liveWithMe });
+        const { id } = await api("managed/add", { name: d.name, lastName: d.lastName, groupIds, joinHousehold: !!d.liveWithMe, kid: !!d.kid });
         closeSheet();
         buzz();
         toast(`Added ${d.name.trim()}. Now add what they'd love.`);
@@ -4924,9 +4966,11 @@ function editManagedProfile(member, name) {
       ${nameFields("", real, member.lastName || "")}
       <div class="two"><label class="field"><span>Birthday month</span><select class="input" name="bm"><option value="">None</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select></label>
         <label class="field"><span>Day</span><select class="input" name="bd"><option value=""></option>${Array.from({ length: 31 }, (_, k) => `<option${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select></label></div>
+      <label class="check"><span>${esc(name)} is a kid<small>Shows a Kid tag and reminds you to keep their sizes up to date</small></span><input type="checkbox" name="kid"${p.kid ? " checked" : ""}></label>
       <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span>${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(p.sizes?.[k] || "")}"></label>`).join("")}</div>
       <label class="field"><span>Loves <em style="font-weight:600;color:var(--muted)">(commas between)</em></span><input class="input" name="likes" value="${esc((p.likes || []).join(", "))}" placeholder="Things they're into"></label>
       <label class="field"><span>Nopes</span><input class="input" name="dislikes" value="${esc((p.dislikes || []).join(", "))}" placeholder="Things to skip"></label>
+      <label class="field"><span>Already has</span><input class="input" name="owns" value="${esc((p.owns || []).join(", "))}" placeholder="So nobody buys a second one"></label>
       <label class="field"><span>Allergies and hard nos</span><textarea class="input" name="avoid" maxlength="300">${esc(p.avoid || "")}</textarea></label>
       <button class="btn primary wide" type="submit">Save</button>
     </form>`, (el) => {
@@ -4937,8 +4981,9 @@ function editManagedProfile(member, name) {
         await api("profile", {
           as: member.id, name: d.name, lastName: d.lastName,
           birthday: d.bm ? `${String(d.bm).padStart(2, "0")}-${String(d.bd).padStart(2, "0")}` : "",
-          sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, d[`size_${k}`].trim()])),
-          likes: tags(d.likes), dislikes: tags(d.dislikes), avoid: d.avoid,
+          kid: !!d.kid,
+          sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, d[`size_${k}`].trim()])), sizesChecked: true,
+          likes: tags(d.likes), dislikes: tags(d.dislikes), owns: tags(d.owns), avoid: d.avoid,
         });
         closeSheet();
         toast("Saved");
@@ -5723,7 +5768,7 @@ function wireIdeaRows(root, ideas) {
 
 // Nopes: someone's "rather not get" list (from their profile). An idea matches a nope when its name or note
 // has the nope's words in order, singular or plural ("fuzzy sock set" matches "Fuzzy socks"; "steak" doesn't match "Tea").
-const nopesOf = (id) => { for (const g of state.groups || []) { const m = g.members.find((x) => x.id === id); if (m) return m.nopes || []; } return []; };
+const nopesOf = (id, key = "nopes") => { for (const g of state.groups || []) { const m = g.members.find((x) => x.id === id); if (m) return m[key] || []; } return []; };
 // One word, singular or plural: candy/candies, tie/ties, box/boxes, sock/socks.
 function nopeWord(w) {
   const q = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -5733,11 +5778,11 @@ function nopeWord(w) {
   if (/s$/.test(w) && !/ss$/.test(w) && w.length > 3) return `${q(w.slice(0, -1))}(?:s|es)?`;
   return `${q(w)}(?:s|es)?`;
 }
-function nopeHits(id, text) {
+function nopeHits(id, text, key = "nopes") {
   const plain = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, ""); // Pokemon = Pokémon
   const s = plain(text);
   if (!id || !s.trim()) return [];
-  return nopesOf(id).filter((n) => {
+  return nopesOf(id, key).filter((n) => {
     const words = plain(n).match(/[\p{L}\p{N}']+/gu);
     if (!words) return false;
     const re = words.map(nopeWord).join("[\\s-]+");
@@ -5810,10 +5855,15 @@ function editIdea(idea, subjectId, opts = {}) {
       const saveBtn = form.querySelector('[type="submit"]'), saveLabel = saveBtn.textContent;
       const checkNopes = () => {
         const who = form.subjectId?.value || idea.subject_id;
-        const hits = nopeHits(who, `${form.title.value} ${form.note.value}`);
+        const nopes = nopeHits(who, `${form.title.value} ${form.note.value}`);
+        const owned = nopeHits(who, `${form.title.value} ${form.note.value}`, "owns");
+        const hits = [...nopes, ...owned];
         const box = $("#nopeWarn", el);
         box.hidden = !hits.length;
-        if (hits.length) box.innerHTML = `${NOPE_I}<span><strong>Heads up:</strong> ${esc(personName(who))} put ${andList(hits.map((h) => `<b>${esc(h)}</b>`))} in their nopes.</span>`;
+        if (hits.length) box.innerHTML = `${nopes.length ? NOPE_I : CHECK_I}<span><strong>Heads up:</strong> ${[
+          nopes.length ? `${esc(personName(who))} put ${andList(nopes.map((h) => `<b>${esc(h)}</b>`))} in their nopes.` : "",
+          owned.length ? `${esc(personName(who))} already has ${andList(owned.map((h) => `<b>${esc(h)}</b>`))}.` : "",
+        ].filter(Boolean).join(" ")}</span>`;
         saveBtn.textContent = hits.length ? "Save anyway" : saveLabel;
         const was = form.dataset.nopeShown === "1";
         form.dataset.nopeShown = hits.length ? "1" : "";
@@ -6165,11 +6215,17 @@ const TAG_IDEAS = ["Animals", "Cats", "Dogs", "Coffee", "Tea", "Chocolate", "Can
 const HEART_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4h2c.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>';
 const NOPE_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>';
 const CAREFUL_I = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>';
+const CHECK_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const SPARK_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
 const tagChip = (t, kind, k, extra = "") => `<span class="tag ${kind}${extra}" style="--i:${k}"><i aria-hidden="true">${tagEmoji(t)}</i><span>${esc(t)}</span></span>`;
 const tagList = (tags, kind, both = new Set()) => `<div class="tags">${tags.map((t, k) => tagChip(t, kind, k, both.has(t.toLowerCase()) ? " both" : "")).join("")}</div>`;
 const andList = (a) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`);
-const hasHints = (p) => !!p && !!(p.bio || p.likes?.length || p.dislikes?.length);
+const hasHints = (p) => !!p && !!(p.bio || p.likes?.length || p.dislikes?.length || p.owns?.length);
+// Kids: under 18, from their birthday and birth year. "Baby" under 1.
+// Sizes older than this get an "Updated 5 months ago" note (kids outgrow them fast).
+const SIZES_STALE_DAYS = 90;
+const daysSince = (iso) => (iso ? Math.floor((Date.now() - Date.parse(iso)) / 86400000) : null);
+const monthsAgo = (iso) => { const d = daysSince(iso); const m = Math.floor(d / 30); return d < 30 ? "this month" : m === 1 ? "a month ago" : `${m} months ago`; };
 const brandChips = (brands, edit) => `<span class="brand-chips${edit ? " edit" : ""}">${brands.map((b, k) => `<span class="brand-chip">${esc(b)}${edit
   ? `<button type="button" data-unbrand="${k}" aria-label="Remove ${esc(b)}">&times;</button>` : ""}</span>`).join("")}</span>`;
 const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || p.colorsNo?.length || p.metals?.length || p.mixedMetals || Object.values(p.sizes || {}).some(Boolean));
@@ -6187,6 +6243,7 @@ function hintsCard(p) {
     ${shared.length ? `<p class="both-line">${SPARK_I}<span>You both love ${andList(named)}</span></p>` : ""}
     ${p.likes?.length ? `<h3 class="hcard-h love"><span class="ico">${HEART_I}</span>Loves</h3>${tagList(p.likes, "love", both)}` : ""}
     ${p.dislikes?.length ? `<h3 class="hcard-h nope"><span class="ico">${NOPE_I}</span>Nopes</h3>${tagList(p.dislikes, "nope")}` : ""}
+    ${p.owns?.length ? `<h3 class="hcard-h owns"><span class="ico">${CHECK_I}</span>Already has</h3>${tagList(p.owns, "owns")}` : ""}
   </section>`;
 }
 function birthdayPill(p) {
@@ -6204,7 +6261,9 @@ function detailsHtml(p) {
   if (p.colors?.length) rows.push(["Favorite colors", colorDots(p.colors)]);
   if (p.colorsNo?.length) rows.push(["Colors to skip", colorDots(p.colorsNo, true)]);
   if (p.metals?.length || p.mixedMetals) rows.push(["Jewelry metals", metalDots(p.metals || [], p.mixedMetals)]);
+  const stale = sizes.length && p.sizesAt && daysSince(p.sizesAt) >= SIZES_STALE_DAYS;
   return `${sizes.length ? `<div class="sz">${sizes.map(([k, l]) => `<div><span>${l.replace(" / top", "")}</span><b>${esc(p.sizes[k])}</b></div>`).join("")}</div>` : ""}
+    ${stale ? `<p class="sz-age">Sizes updated ${monthsAgo(p.sizesAt)}${p.kid ? ". Kids grow fast, so check with their family." : ""}</p>` : ""}
     ${rows.length ? `<div class="det">${rows.map(([t, d]) => `<div class="det-row"><span class="det-l">${t}</span>${d}</div>`).join("")}</div>` : ""}`;
 }
 const carefulHtml = (p) => (p.avoid ? `<div class="careful">${CAREFUL_I}<div><strong>Allergies and hard nos</strong><p>${esc(p.avoid)}</p></div></div>` : "");
@@ -6322,6 +6381,7 @@ async function renderProfileEdit() {
     <div class="set-card" id="ed-sizes">
       <h4>Sizes</h4>
       <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span style="font-size:14px;color:var(--muted);margin-bottom:4px">${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(prof.sizes?.[k] || "")}" placeholder="${SIZE_EG[k]}"></label>`).join("")}</div>
+      <label class="field" style="margin-top:10px"><span style="font-size:14px;color:var(--muted);margin-bottom:4px">Already have <em style="font-weight:600">(commas between)</em></span><input class="input" name="owns" maxlength="400" value="${esc((prof.owns || []).join(", "))}" placeholder="So nobody buys you a second one"></label>
     </div>
 
     <div class="set-card" id="ed-style">
@@ -6502,6 +6562,7 @@ async function renderProfileEdit() {
       mixedMetals: !!f.mixedMetals,
       likes: lists.likes,
       dislikes: lists.dislikes,
+      owns: String(f.owns || "").split(",").map((x) => x.trim()).filter(Boolean),
     });
     done("Profile saved");
   });
