@@ -259,6 +259,73 @@
     background: var(--panel); color: var(--muted); }
   .chip[aria-pressed="true"] .chip-n { background: color-mix(in srgb, var(--brand-ink) 22%, transparent); color: var(--brand-ink); }
 
+  /* My list: compact cards, a toolbar (search, layout, sort, filters), gallery and shelves */
+  .mrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px; }
+  .mrow .tile { width: 64px; height: 64px; }
+  .mrow .row-main { gap: 1px; }
+  .mrow .row-title { font-size: 16px; line-height: 1.25; }
+  .mrow .dchips { gap: 5px; margin: 6px 0 0; }
+  .mrow .dchip { min-height: 22px; padding: 0 8px; font-size: 12px; gap: 4px; }
+  .mrow .dchip small { font-size: 10px; }
+  .dchip.price { background: var(--soft); color: var(--soft-ink); font-family: var(--display); font-weight: 600; font-size: 13px; }
+  .mrow .row-notes { font-size: 14px; margin-top: 4px; }
+  .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+  .mrow .hid-tag { margin-top: 5px; font-size: 12px; padding: 2px 8px; }
+  .mrow-act { align-self: center; }
+  .star-btn.icon { width: 44px; height: 44px; padding: 0; justify-content: center; background: transparent; }
+  .star-btn.icon[aria-pressed="true"] { background: var(--gold-soft); }
+  .publish-btn.sm { min-height: 36px; padding: 0 12px; font-size: 13px; }
+  .row.mrow.is-top, .row.gcard.is-top { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--gold) 70%, transparent), var(--shadow); }
+  .stack.mlist > * + * { margin-top: 10px; }
+  .msum { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+  .msum b { color: var(--ink); font-family: var(--display); font-weight: 600; }
+  .msum i { width: 3px; height: 3px; border-radius: 50%; background: var(--faint); }
+  .mtools { margin: 0 0 12px; }
+  .mtools-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .msearch { flex: 1 1 100%; min-width: 0; position: relative; display: flex; align-items: center; }
+  .msearch svg { position: absolute; left: 12px; color: var(--muted); pointer-events: none; }
+  .msearch input { width: 100%; min-height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--card); padding: 0 12px 0 36px; font: inherit; font-size: 16px; color: var(--ink); }
+  .msearch input:focus { outline: 0; border-color: var(--brand); }
+  .mlayout { display: inline-flex; background: var(--panel); border-radius: 12px; padding: 3px; gap: 2px; flex: none; }
+  .mlayout button { width: 40px; height: 38px; border: 0; background: none; border-radius: 9px; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+  .mlayout button[aria-pressed="true"] { background: var(--card); color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, .1); }
+  .mlayout button:focus-visible { outline: 3px solid var(--brand); outline-offset: 1px; }
+  .msort { margin-left: auto; }
+  .msort select { font-size: 14px; }
+  .mchips { margin: 10px -18px 0; padding: 2px 18px; }
+  .maybe-zone .mchips, .maybe-zone .shelf-row { margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
+  .mchips .chip { min-height: 38px; padding: 0 12px; font-size: 14px; gap: 6px; }
+  .mchips .chip svg { width: 15px; height: 15px; }
+  .mchips .chip[data-mtop] svg path { fill: var(--gold); stroke: var(--gold-ink); }
+  .mchips .chip-n { min-width: 20px; height: 20px; font-size: 12px; }
+  .chip-sep { width: 1.5px; margin: 8px 2px; background: var(--line); flex: none; }
+  .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
+  .gcard { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .gimg { position: relative; aspect-ratio: 1; background: #FFFFFF; flex: none; }
+  .gimg .tile { width: 100%; height: 100%; border-radius: 0; }
+  .gimg .tile.photo { padding: 10px; box-shadow: none; }
+  .gimg .tile.photo img { border-radius: 8px; }
+  .gimg .tile svg { width: 44px; height: 44px; }
+  .gprice { position: absolute; left: 8px; bottom: 8px; background: var(--card); color: var(--soft-ink); font-family: var(--display); font-weight: 600; font-size: 14px;
+    padding: 3px 9px; border-radius: 999px; box-shadow: 0 1px 4px rgba(0, 0, 0, .14); }
+  .gimg .star-btn.icon { position: absolute; top: 4px; right: 4px; background: color-mix(in srgb, var(--card) 88%, transparent); }
+  .gimg .star-btn.icon[aria-pressed="true"] { background: var(--gold-soft); }
+  .gbody { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .gtitle { font-weight: 700; font-size: 15px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .gsub { font-size: 13px; color: var(--muted); }
+  .gbody .publish-btn { margin-top: auto; align-self: flex-start; }
+  .gbody .gsub + .publish-btn, .gbody .gtitle + .publish-btn { margin-top: 8px; }
+  .shelf + .shelf { margin-top: 18px; }
+  .shelf-h { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-family: var(--display); font-size: 17px; font-weight: 600; }
+  .shelf-h svg { color: var(--brand); }
+  .shelf-h small { color: var(--muted); font-family: var(--sans); font-weight: 600; font-size: 13px; }
+  .shelf-row { display: grid; grid-auto-flow: column; grid-auto-columns: 148px; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
+    margin: 0 -18px; padding: 8px 18px 10px; scrollbar-width: none; }
+  .shelf-row::-webkit-scrollbar { display: none; }
+  .shelf-row > * { scroll-snap-align: start; }
+  .maybe-zone.quiet { padding-top: 14px; }
+  @media (min-width: 560px) { .msearch { flex: 1 1 200px; } }
+
   /* Someone's list: summary, filters, wish cards */
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
   .stat { background: var(--card); border-radius: 16px; padding: 12px 12px 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; }
@@ -1115,6 +1182,13 @@
     .empty { padding-top: 40px; }
     .footnote { text-align: left; }
     .toolbar .chips { flex-wrap: wrap; overflow: visible; margin: 0 0 10px; padding: 0; }
+    #view .stack.mlist { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+    .mgrid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+    .shelf-row { grid-auto-columns: 190px; gap: 16px; margin: 0 -8px; padding: 8px 8px 12px; }
+    .maybe-zone .mchips, .maybe-zone .shelf-row { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+    .mchips { flex-wrap: wrap; overflow: visible; margin: 12px 0 0; padding: 0; }
+    .msearch { max-width: 340px; }
+    .msum { max-width: none; }
 
     /* Someone's list: their info and filters on the left, wishes on the right */
     .person-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 32px; align-items: start; }
@@ -1172,6 +1246,9 @@
     .row.mine:hover, .row.taken:hover, .row.draft:hover { box-shadow: 0 14px 28px rgba(74, 14, 34, .1); }
     .tile { transition: transform .4s var(--spring); }
     .row:hover .tile { transform: rotate(-4deg) scale(1.06); }
+    .gcard:hover .tile { transform: none; }
+    .gcard .tile.photo img { transition: transform .4s var(--spring); }
+    .gcard:hover .tile.photo img { transform: scale(1.05); }
     .member:hover .avatar { animation: wiggle .55s ease both; }
     .stat:hover { transform: translateY(-2px); }
     .chip:not([aria-pressed="true"]):hover, .btn:not(.primary):not(.quiet):hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); }
@@ -1368,7 +1445,7 @@ const ICON_RULES = [
   [/lego|puzzle|\btoy|doll|plush|board game|blocks/i, "toy"],
   [/book|novel|journal|notebook|comic|kindle unlimited/i, "book"],
   [/slipper|shoe|sneaker|boot|sandal|heels|loafer|crocs/i, "shoe"],
-  [/shirt|sweater|cardigan|hoodie|jacket|coat|dress|pants|jeans|sock|pajama|scarf|\bhat\b|beanie|glove|legging|robe|sweatshirt/i, "shirt"],
+  [/shirt|\btop\b|\btee\b|blouse|turtleneck|mock neck|sweater|cardigan|hoodie|jacket|coat|dress|pants|jeans|sock|pajama|scarf|\bhat\b|beanie|glove|legging|robe|sweatshirt/i, "shirt"],
   [/necklace|\bring\b|earring|bracelet|jewel|pendant/i, "gem"],
   [/skillet|\bpans?\b|\bpots?\b|cookware|dutch oven|air fryer|wok|griddle/i, "pan"],
   [/mug|coffee|\btea\b|kitchen|knife|blender|baking/i, "mug"],
@@ -1417,7 +1494,8 @@ const photoTile = (src, title, id, fresh) => `<span class="tile photo${fresh ? "
 // kind: "item" or "idea". A link we haven't looked at yet gets its photo fetched after the page draws.
 // Also looks up a missing price from the link, once (price_checked).
 function tile(i, kind) {
-  const html = i.image_url ? photoTile(i.image_url, i.title, i.id) : iconTile(i.title, i.id);
+  const src = i.image_url || (kind && imageFound.get(`${kind}:${i.id}`));
+  const html = src ? photoTile(src, i.title, i.id) : iconTile(i.title, i.id);
   const need = i.url && kind && (!i.image_checked || (i.price_cents == null && !i.price_checked));
   return need ? html.replace('<span class="tile', `<span data-fetch="${kind}:${esc(i.id)}" class="tile`) : html;
 }
@@ -1469,6 +1547,7 @@ async function fetchLive(root) {
 }
 // Fetch photos for items saved before photos existed, two at a time, once per session.
 const imageTried = new Set();
+const imageFound = new Map(); // photos found this session, so cards redrawn by filters keep them
 const imageQueue = [];
 let imageBusy = 0;
 function fetchImages(root) {
@@ -1486,6 +1565,7 @@ function pumpImages() {
     const [kind, id] = key.split(":");
     imageBusy++;
     api("image", { kind, id }).then(({ image, price_cents }) => {
+      if (image) imageFound.set(key, image);
       if (image) document.querySelectorAll(`[data-fetch="${CSS.escape(key)}"]:not(.photo)`).forEach((t) => (t.outerHTML = photoTile(image, t.dataset.tileTitle, t.dataset.tileId, true)));
       if (price_cents != null) document.querySelectorAll(`[data-price-slot="${CSS.escape(key)}"]`).forEach((el) => {
         el.outerHTML = `<span class="wish-price fresh">${money(price_cents)}</span>`;
@@ -2486,6 +2566,133 @@ function wireGiftBox(root, action) {
 // (drafts only you can see; new wishes start here). Publishing is one way: a published wish never goes back to Maybe.
 const MAYBE_NOTE = `<p class="maybe-note">${LOCK}<span><strong>Only you can see this.</strong></span></p>`;
 
+// Filters, sort and layout for My list. Shared by both sides; layout and sort are remembered per device.
+const MINE_PREFS_KEY = "wishlist-mine-view";
+const MINE_SORTS = [["new", "Newest"], ["top", "Top picks first"], ["low", "Lowest price"], ["high", "Highest price"], ["az", "A to Z"], ["store", "By store"]];
+const MINE_LAYOUTS = [
+  ["list", "List", '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><rect x="3" y="4.5" width="3" height="3" rx="1"/><rect x="3" y="10.5" width="3" height="3" rx="1"/><rect x="3" y="16.5" width="3" height="3" rx="1"/></svg>'],
+  ["grid", "Gallery", '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>'],
+  ["shelves", "Shelves", '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9h18M3 20h18"/><rect x="5" y="3" width="4" height="6" rx="1"/><rect x="11" y="5" width="3" height="4" rx="1"/><rect x="6" y="13" width="5" height="7" rx="1"/><rect x="14" y="14" width="4" height="6" rx="1"/></svg>'],
+];
+const SEARCH_I = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>';
+function mineFilter() {
+  if (!state.mineF) {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(MINE_PREFS_KEY) || "{}"); } catch {}
+    state.mineF = {
+      q: "", cat: "all", price: "all", top: false,
+      sort: MINE_SORTS.some(([k]) => k === saved.sort) ? saved.sort : "new",
+      layout: MINE_LAYOUTS.some(([k]) => k === saved.layout) ? saved.layout : "list",
+    };
+  }
+  return state.mineF;
+}
+function saveMinePrefs() {
+  const f = mineFilter();
+  try { localStorage.setItem(MINE_PREFS_KEY, JSON.stringify({ sort: f.sort, layout: f.layout })); } catch {}
+}
+// Explainers ("Only you can see these") show the first few times, then the dashed look and lock icon carry it.
+const HINT_SEEN_KEY = "wishlist-hints-seen";
+function hintSeen(name, max = 3) {
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem(HINT_SEEN_KEY) || "{}"); } catch {}
+  return (seen[name] || 0) >= max;
+}
+function bumpHint(name) {
+  try {
+    const seen = JSON.parse(localStorage.getItem(HINT_SEEN_KEY) || "{}");
+    seen[name] = (seen[name] || 0) + 1;
+    localStorage.setItem(HINT_SEEN_KEY, JSON.stringify(seen));
+  } catch {}
+}
+
+function mineVisible(items) {
+  const f = mineFilter();
+  const q = f.q.trim().toLowerCase();
+  const byPrice = (dir) => (a, b) => (a.price_cents == null) - (b.price_cents == null) || dir * ((a.price_cents ?? 0) - (b.price_cents ?? 0));
+  const newest = (a, b) => String(b.created_at).localeCompare(String(a.created_at));
+  const sorter = {
+    new: newest,
+    top: (a, b) => (b.priority === "must") - (a.priority === "must") || newest(a, b),
+    low: byPrice(1),
+    high: byPrice(-1),
+    az: (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+    store: (a, b) => (!a.url) - (!b.url) || host(a.url || "").localeCompare(host(b.url || "")) || newest(a, b),
+  }[f.sort] || newest;
+  return items
+    .filter((i) => f.cat === "all" || catOf(i) === f.cat)
+    .filter((i) => f.price === "all" || inBucket(i.price_cents, f.price))
+    .filter((i) => !f.top || i.priority === "must")
+    .filter((i) => !q || [i.title, i.brand, i.notes, i.size, i.color, i.url && host(i.url), CAT[catOf(i)].label].some((s) => s && String(s).toLowerCase().includes(q)))
+    .slice().sort(sorter);
+}
+
+// Toolbar: search (longer lists), layout, sort, then filter chips that only offer what's on this side.
+function mineToolbar(items, side) {
+  const f = mineFilter();
+  if (items.length < 2) return "";
+  const catCount = {};
+  for (const i of items) { const k = catOf(i); catCount[k] = (catCount[k] || 0) + 1; }
+  const cats = CATS.filter(([k]) => catCount[k]);
+  const buckets = PRICE_BUCKETS.filter(([k]) => items.some((i) => inBucket(i.price_cents, k)));
+  if (f.cat !== "all" && !catCount[f.cat]) f.cat = "all";
+  if (f.price !== "all" && !buckets.some(([k]) => k === f.price)) f.price = "all";
+  const topN = side === "list" ? items.filter((i) => i.priority === "must").length : 0;
+  if (!topN) f.top = false;
+  const chip = (attr, k, label, on, count, icon = "") =>
+    `<button class="chip" type="button" data-${attr}="${k}" aria-pressed="${on}">${icon}${esc(label)}${count != null ? `<span class="chip-n">${count}</span>` : ""}</button>`;
+  const chips = [
+    chip("mcat", "all", "All", f.cat === "all" && !f.top, items.length),
+    topN ? chip("mtop", "1", "Top picks", f.top, topN, STAR) : "",
+    ...(cats.length > 1 ? cats.map(([k, label]) => chip("mcat", k, label, f.cat === k, catCount[k], catIcon(k))) : []),
+    ...(buckets.length > 1 ? ['<span class="chip-sep" aria-hidden="true"></span>', ...buckets.map(([k, label]) => chip("mprice", k, label, f.price === k))] : []),
+  ].join("");
+  return `<div class="mtools">
+    <div class="mtools-row">
+      ${items.length >= 5 ? `<label class="msearch">${SEARCH_I}<span class="vh">Search your ${side === "maybe" ? "maybes" : "wishes"}</span>
+        <input type="search" id="mSearch" placeholder="Search" value="${esc(f.q)}" autocomplete="off" enterkeyhint="search"></label>` : '<span class="spacer"></span>'}
+      <div class="mlayout" role="group" aria-label="Layout">${MINE_LAYOUTS.map(([k, label, icon]) => `<button type="button" data-mlayout="${k}" aria-pressed="${f.layout === k}" title="${label}">${icon}<span class="vh">${label}</span></button>`).join("")}</div>
+      <label class="sort msort"><span class="vh">Sort by</span>
+        <select id="mSort">${MINE_SORTS.map(([k, l]) => `<option value="${k}"${f.sort === k ? " selected" : ""}>${l}</option>`).join("")}</select>${CHEV_D}</label>
+    </div>
+    ${cats.length > 1 || topN || buckets.length > 1 ? `<div class="chips mchips" role="group" aria-label="Filter">${chips}</div>` : ""}
+  </div>`;
+}
+
+// A quiet line of fun numbers for the published side: total, top picks, stores.
+function mineSummary(items) {
+  if (items.length < 2) return "";
+  const priced = items.filter((i) => i.price_cents != null);
+  const total = priced.reduce((s, i) => s + i.price_cents, 0);
+  const stores = new Set(items.filter((i) => i.url).map((i) => host(i.url))).size;
+  const bits = [];
+  if (priced.length) bits.push(`<b>${money(total)}</b> total`);
+  if (stores > 1) bits.push(`<b>${stores}</b> stores`);
+  const cats = new Set(items.map(catOf)).size;
+  if (cats > 1) bits.push(`<b>${cats}</b> categories`);
+  return bits.length ? `<p class="msum">${bits.join('<i aria-hidden="true"></i>')}</p>` : "";
+}
+
+// Draws the cards for one side in the chosen layout.
+function mineItemsHtml(items, all, anim) {
+  const f = mineFilter();
+  if (!items.length) return `<div class="nomatch"><strong>Nothing matches</strong><p>Try another filter or search.</p><button class="btn small" type="button" data-mclear>Show everything</button></div>`;
+  if (f.layout === "grid") return `<div class="mgrid">${items.map((i, k) => galleryCard(i, anim ? k : -1)).join("")}</div>`;
+  if (f.layout === "shelves") {
+    const groups = new Map();
+    for (const i of items) { const k = catOf(i); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); }
+    const order = CATS.map(([k]) => k).filter((k) => groups.has(k)).sort((a, b) => groups.get(b).length - groups.get(a).length);
+    let n = 0;
+    return order.map((k) => {
+      const g = groups.get(k);
+      const total = g.reduce((s, i) => s + (i.price_cents || 0), 0);
+      return `<section class="shelf"><h3 class="shelf-h">${catIcon(k, 17)}<span>${esc(CAT[k].label)}</span><small>${g.length}${total ? ` · ${money(total)}` : ""}</small></h3>
+        <div class="shelf-row">${g.map((i) => galleryCard(i, anim ? n++ : -1)).join("")}</div></section>`;
+    }).join("");
+  }
+  return `<div class="stack mlist">${items.map((i, k) => itemRow(i, anim ? k : -1)).join("")}</div>`;
+}
+
 async function renderMine() {
   const data = await load("list");
   state.myItems = data.items;
@@ -2499,6 +2706,7 @@ async function renderMine() {
   const n = live.length;
   if (!n) writeStarter(true);
   let starter = "", celebrate = false;
+  const learning = n < 3 && readStarter();
   if (n && readStarter()) {
     if (n < 3) starter = `<div class="starter slide"><strong>${n} of 3 on your wish list</strong><p>${n === 1 ? "Two more" : "One more"} and everyone has plenty of ideas.</p>
       <div class="segs">${[0, 1, 2].map((k) => `<i class="${k < n ? "on" : ""}${k === n - 1 && state.flash ? " new" : ""}"></i>`).join("")}</div></div>`;
@@ -2516,25 +2724,31 @@ async function renderMine() {
     <button type="button" role="tab" id="msList" data-mview="list" aria-selected="${view === "list"}" aria-controls="mPanel">Wish list<span class="chip-n${bump === "list" ? " bump" : ""}">${n}</span></button>
     <button type="button" role="tab" id="msMaybe" data-mview="maybe" aria-selected="${view === "maybe"}" aria-controls="mPanel">${LOCK} Maybe<span class="chip-n${bump === "maybe" ? " bump" : ""}">${drafts.length}</span></button>
   </div>`;
-  const maybeSection = `<div class="maybe-zone slide">
-    <div class="maybe-head"><span class="lockdot">${LOCK}</span><strong>Only you can see these</strong></div>
-    ${drafts.length ? `<div class="stack">${drafts.map((i, k) => itemRow(i, k)).join("")}</div>` : `<div class="maybe-empty">
+  // "Only you can see these" for the first few visits to Maybe (or while still getting started).
+  if (view === "maybe" && state.lastMineView !== "maybe") bumpHint("maybe");
+  state.lastMineView = view;
+  const maybeExplain = learning || !hintSeen("maybe");
+  const sideItems = view === "maybe" ? drafts : live;
+  const anim = true;
+  const itemsBlock = `<div id="mItems">${mineItemsHtml(mineVisible(sideItems), sideItems, anim)}</div>`;
+  const maybeSection = `<div class="maybe-zone slide${maybeExplain ? "" : " quiet"}">
+    ${maybeExplain ? `<div class="maybe-head"><span class="lockdot">${LOCK}</span><strong>Only you can see these</strong></div>` : ""}
+    ${drafts.length ? mineToolbar(drafts, "maybe") + itemsBlock : `<div class="maybe-empty">
       <strong>No maybes right now</strong>
       <button class="add" type="button" id="maybeAdd">${PLUS} Add a maybe</button></div>`}
   </div>`;
-  const maybeHint = drafts.length ? `<div class="maybe-hint slide"><span>${LOCK} ${plural(drafts.length, "maybe", "maybes")} waiting for you</span><button type="button" data-mview="maybe">Review</button></div>` : "";
   const liveSection = n ? `
-    ${maybeHint}
     ${starter}
     ${showStaleNudge(live) ? `<div class="starter slide" id="staleNudge" style="margin:0 0 14px"><strong>Your list hasn't changed since last year</strong>
       <p>Everyone's starting to shop. Tap a wish to update or remove it, and add anything new you'd love.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="staleOk">Looks good</button><button class="btn primary" type="button" id="staleAdd">${PLUS} Drop a hint</button></div></div>` : ""}
-    <p class="count-line">${plural(n, "wish", "wishes")} your circles can see</p>
-    <div class="stack">${live.map((i, k) => itemRow(i, k + drafts.length)).join("")}</div>
+    ${mineSummary(live)}
+    ${mineToolbar(live, "list")}
+    ${itemsBlock}
     ${showBdayNudge() ? `<div class="starter slide" id="bdayNudge" style="margin:18px 0 0"><strong>When's your birthday?</strong>
       <p>Add it so everyone can plan for it too, not just Christmas.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="bdayLater">Not now</button><button class="btn primary" type="button" id="bdayAdd">Add birthday</button></div></div>` : ""}
-    <p class="footnote">Surprises stay hidden from you.</p>` : `
+    ${learning ? '<p class="footnote">Surprises stay hidden from you.</p>' : ""}` : `
     <div class="maybe-empty slide">
       ${giftBox("Drop a hint")}
       <strong>Nothing on your wish list yet</strong>
@@ -2577,18 +2791,60 @@ async function renderMine() {
   v.querySelectorAll("[data-gc-edit]").forEach((b) => (b.onclick = () => pickGiftCards(data.giftCards)));
   if (celebrate) setTimeout(() => { const r = $(".starter", v)?.getBoundingClientRect(); if (r) party(r.left + r.width / 2, r.top + r.height / 2, 30); }, 250);
   wireGiftBox(v, () => addThing());
-  v.querySelectorAll(".row[data-id]").forEach((el) => {
-    const item = data.items.find((i) => i.id === el.dataset.id);
+  wireMineItems(v, data.items);
+  wireMineTools(v, sideItems, data.items);
+}
+
+// Clicks on cards: open to edit, Top pick, Publish.
+function wireMineItems(root, all) {
+  root.querySelectorAll(".row[data-id]").forEach((el) => {
+    const item = all.find((i) => i.id === el.dataset.id);
     el.onclick = (e) => { if (!e.target.closest("a, button")) editItem(item); };
+    el.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); editItem(item); } };
   });
-  v.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => toggleTopPick(data.items.find((i) => i.id === b.dataset.star), b)));
-  v.querySelectorAll("[data-publish]").forEach((b) => (b.onclick = () => confirmPublish(data.items.find((i) => i.id === b.dataset.publish))));
+  root.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => toggleTopPick(all.find((i) => i.id === b.dataset.star), b)));
+  root.querySelectorAll("[data-publish]").forEach((b) => (b.onclick = () => confirmPublish(all.find((i) => i.id === b.dataset.publish))));
+}
+
+// Filters repaint just the cards (no refetch, no re-animating the page), so typing in search keeps focus.
+function wireMineTools(v, sideItems, all) {
+  const f = mineFilter();
+  const box = $("#mItems", v);
+  if (!box) return;
+  const repaint = () => {
+    box.innerHTML = mineItemsHtml(mineVisible(sideItems), sideItems, false);
+    wireMineItems(box, all);
+    fetchImages(box);
+    $("[data-mclear]", box)?.addEventListener("click", clear);
+    v.querySelectorAll("[data-mcat]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mcat === f.cat && !(b.dataset.mcat === "all" && f.top))));
+    v.querySelectorAll("[data-mtop]").forEach((b) => b.setAttribute("aria-pressed", String(f.top)));
+    v.querySelectorAll("[data-mprice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mprice === f.price)));
+    v.querySelectorAll("[data-mlayout]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mlayout === f.layout)));
+  };
+  const clear = () => {
+    Object.assign(f, { q: "", cat: "all", price: "all", top: false });
+    const s = $("#mSearch", v);
+    if (s) s.value = "";
+    repaint();
+  };
+  $("[data-mclear]", box)?.addEventListener("click", clear);
+  v.querySelectorAll("[data-mcat]").forEach((b) => (b.onclick = () => {
+    f.cat = b.dataset.mcat;
+    if (f.cat === "all") { f.top = false; f.price = "all"; }
+    repaint();
+  }));
+  v.querySelectorAll("[data-mtop]").forEach((b) => (b.onclick = () => { f.top = !f.top; repaint(); }));
+  v.querySelectorAll("[data-mprice]").forEach((b) => (b.onclick = () => { f.price = f.price === b.dataset.mprice ? "all" : b.dataset.mprice; repaint(); }));
+  v.querySelectorAll("[data-mlayout]").forEach((b) => (b.onclick = () => { f.layout = b.dataset.mlayout; saveMinePrefs(); repaint(); }));
+  $("#mSort", v)?.addEventListener("change", (e) => { f.sort = e.target.value; saveMinePrefs(); repaint(); });
+  $("#mSearch", v)?.addEventListener("input", (e) => { f.q = e.target.value; repaint(); });
 }
 
 // Switch sides on My list without refetching (the list is cached by load()).
 function setMineView(view) {
   if (state.mineView === view) return;
   state.mineView = view;
+  if (state.mineF) state.mineF.q = "";
   window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
   render();
 }
@@ -2615,27 +2871,49 @@ function flyToList(id) {
   });
 }
 
+// Compact card for My list: photo, name, one line of details, and a small action on the right.
+// n < 0 skips the entrance animation (repaints from filters).
 function itemRow(i, n = 0) {
   const top = i.priority === "must";
-  const anim = state.flash === i.id ? " drop" : " slide";
+  const anim = state.flash === i.id ? " drop" : n < 0 ? "" : " slide";
   const action = i.draft
-    ? `<button class="publish-btn" type="button" data-publish="${esc(i.id)}">${PUBLISH_ICON} Publish</button>`
-    : `<button class="star-btn${state.pop === i.id ? " pop" : ""}" type="button" data-star="${esc(i.id)}" aria-pressed="${top}">${STAR} Top pick${state.pop === i.id && top ? SPARKS : ""}</button>`;
-  return `<div class="row${i.draft ? " draft" : ""}${anim}" style="animation-delay:${anim === " slide" ? n * 0.04 : 0}s" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
-    <div class="row-top">${tile(i, "item")}
-      <div class="row-main">
-        ${nameBlock(i)}
-        ${detailChips(i, { store: true })}
-        ${i.notes ? `<span class="row-notes">${esc(i.notes)}</span>` : ""}
-        ${i.draft ? "" : hiddenTag(i)}
-        <div class="row-foot">
-          ${i.price_cents != null ? `<span class="price-tag">${money(i.price_cents)}</span>` : '<span class="anyprice">Any price</span>'}
-          <span class="spacer"></span>
-          ${action}
-        </div>
-      </div>
+    ? `<button class="publish-btn sm" type="button" data-publish="${esc(i.id)}">${PUBLISH_ICON}<span>Publish</span></button>`
+    : starBtn(i);
+  return `<div class="row mrow${i.draft ? " draft" : ""}${top && !i.draft ? " is-top" : ""}${anim}" style="${anim === " slide" ? `animation-delay:${Math.min(n, 12) * 0.035}s` : ""}" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
+    ${tile(i, "item")}
+    <div class="row-main">
+      ${nameBlock(i)}
+      ${detailChips(i, { store: true, price: true })}
+      ${i.notes ? `<span class="row-notes clamp">${esc(i.notes)}</span>` : ""}
+      ${i.draft ? "" : hiddenTag(i)}
     </div>
+    <div class="mrow-act">${action}</div>
     ${state.burst === "pub:" + i.id && !reduceMotion() ? `<span class="burst" aria-hidden="true">${CONFETTI}</span>` : ""}
+  </div>`;
+}
+const starBtn = (i) => {
+  const top = i.priority === "must";
+  return `<button class="star-btn icon${state.pop === i.id ? " pop" : ""}" type="button" data-star="${esc(i.id)}" aria-pressed="${top}" aria-label="Top pick" title="Top pick">${STAR}${state.pop === i.id && top ? SPARKS : ""}</button>`;
+};
+// Gallery and shelf card: the photo leads, like a storefront.
+function galleryCard(i, n = 0) {
+  const top = i.priority === "must";
+  const anim = state.flash === i.id ? " drop" : n < 0 ? "" : " slide";
+  const brand = brandOf(i);
+  let title = i.title;
+  if (brand && title.toLowerCase().startsWith(brand.toLowerCase() + " ")) title = title.slice(brand.length + 1).replace(/^[-|:,]\s*/, "");
+  const sub = [i.size, i.color].filter(Boolean).map(esc).join(" · ");
+  return `<div class="row gcard${i.draft ? " draft" : ""}${top && !i.draft ? " is-top" : ""}${anim}" style="${anim === " slide" ? `animation-delay:${Math.min(n, 12) * 0.03}s` : ""}" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
+    <div class="gimg">${tile(i, "item")}
+      ${i.price_cents != null ? `<span class="gprice">${money(i.price_cents)}</span>` : ""}
+      ${i.draft ? "" : starBtn(i)}
+    </div>
+    <div class="gbody">
+      ${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}
+      <span class="gtitle">${esc(title)}</span>
+      ${sub ? `<span class="gsub">${sub}</span>` : ""}
+      ${i.draft ? `<button class="publish-btn sm" type="button" data-publish="${esc(i.id)}">${PUBLISH_ICON}<span>Publish</span></button>` : ""}
+    </div>
   </div>`;
 }
 
@@ -2694,6 +2972,7 @@ async function toggleTopPick(item, btn) {
   const next = item.priority === "must" ? null : "must";
   item.priority = next;
   btn.setAttribute("aria-pressed", String(!!next));
+  btn.closest(".row")?.classList.toggle("is-top", !!next && !item.draft);
   btn.classList.remove("pop");
   void btn.offsetWidth;
   btn.classList.add("pop");
@@ -2786,8 +3065,9 @@ function nameBlock(i) {
   return `${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}<span class="row-title">${esc(title)}</span>`;
 }
 // Size, color, category and (optionally) the store as small chips under a wish's name.
-function detailChips(i, { store = false } = {}) {
+function detailChips(i, { store = false, price = false } = {}) {
   const out = [];
+  if (price && i.price_cents != null) out.push(`<span class="dchip price">${money(i.price_cents)}</span>`);
   if (i.size) out.push(`<span class="dchip var"><small>Size</small>${esc(i.size)}</span>`);
   if (i.color) {
     const sw = swatchOf(i.color);
