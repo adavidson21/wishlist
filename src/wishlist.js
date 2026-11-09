@@ -1180,7 +1180,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id,
+      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -1194,6 +1194,8 @@ const handlers = {
     const person = (p) => ({
       id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null,
       occasions: occasionsFor(p, t), householdId: p.household_id || null,
+      // Their Nopes (shown on their page anyway), so the app can warn when an idea for them matches one.
+      nopes: tagsOut(p.dislikes),
     });
     // Households of anyone you can see. Labels use only people you can see (and your nicknames for them),
     // except your own household, which lists everyone in it.

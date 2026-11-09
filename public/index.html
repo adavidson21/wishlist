@@ -535,6 +535,11 @@
   .tag.nope i { background: var(--panel); filter: grayscale(.6); }
   .tag.both { background: var(--gold-soft); color: var(--gold-ink); box-shadow: 0 0 0 1.5px var(--gold) inset; }
   .person-side > :is(.hcard, .careful) { margin-bottom: 14px; }
+  .nope-warn { display: flex; gap: 10px; align-items: flex-start; margin: -6px 0 16px; padding: 11px 13px; border-radius: 14px;
+    background: var(--warn-soft); color: var(--ink); font-size: 15px; line-height: 1.35; animation: avPop .35s var(--spring) both; }
+  .nope-warn[hidden] { display: none; }
+  .nope-warn svg { flex: none; color: var(--warn); margin-top: 1px; }
+  .nope-warn b { font-weight: 800; }
   .tags-empty { margin: 0; color: var(--faint); font-size: 15px; }
   .both-line { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 12px; border-radius: 14px; background: var(--gold-soft); color: var(--gold-ink); font-size: 15px; line-height: 1.35; }
   .both-line b { font-weight: 800; }
@@ -3757,6 +3762,30 @@ function wireIdeaRows(root, ideas) {
   });
 }
 
+// Nopes: someone's "rather not get" list (from their profile). An idea matches a nope when its name or note
+// has the nope's words in order, singular or plural ("fuzzy sock set" matches "Fuzzy socks"; "steak" doesn't match "Tea").
+const nopesOf = (id) => { for (const g of state.groups || []) { const m = g.members.find((x) => x.id === id); if (m) return m.nopes || []; } return []; };
+// One word, singular or plural: candy/candies, tie/ties, box/boxes, sock/socks.
+function nopeWord(w) {
+  const q = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (/[^aeiou]ies$/.test(w) && w.length > 4) return `${q(w.slice(0, -3))}(?:y|ies)`;
+  if (/[^aeiou]y$/.test(w) && w.length > 2) return `${q(w.slice(0, -1))}(?:y|ies)`;
+  if (/(ss|sh|ch|x|z)es$/.test(w)) return `${q(w.slice(0, -2))}(?:es)?`;
+  if (/s$/.test(w) && !/ss$/.test(w) && w.length > 3) return `${q(w.slice(0, -1))}(?:s|es)?`;
+  return `${q(w)}(?:s|es)?`;
+}
+function nopeHits(id, text) {
+  const plain = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, ""); // Pokemon = Pokémon
+  const s = plain(text);
+  if (!id || !s.trim()) return [];
+  return nopesOf(id).filter((n) => {
+    const words = plain(n).match(/[\p{L}\p{N}']+/gu);
+    if (!words) return false;
+    const re = words.map(nopeWord).join("[\\s-]+");
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${re}(?=$|[^\\p{L}\\p{N}])`, "u").test(s);
+  });
+}
+
 // A gift idea for someone. With { purchase: true } it's "Add a purchase": an idea already marked bought.
 function editIdea(idea, subjectId, opts = {}) {
   const isNew = !idea;
@@ -3776,6 +3805,7 @@ function editIdea(idea, subjectId, opts = {}) {
         : `<p class="what">For ${esc(personName(idea.subject_id))}</p>`}
       ${isNew ? linkField(idea.url, true) : ""}
       <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : isNew ? "Or type the idea" : "That book she mentioned"}" required></label>
+      <div class="nope-warn" id="nopeWarn" role="status" hidden></div>
       ${isNew ? "" : linkField(idea.url)}
       ${photoField()}
       <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}"></label>
@@ -3811,7 +3841,22 @@ function editIdea(idea, subjectId, opts = {}) {
         box.innerHTML = who ? occPicker(who, want) : "";
         occasion = wireOccPicker(box);
       };
+      // Heads up when the idea matches one of their Nopes. Never blocks: the button just says Save anyway.
+      const saveBtn = form.querySelector('[type="submit"]'), saveLabel = saveBtn.textContent;
+      const checkNopes = () => {
+        const who = form.subjectId?.value || idea.subject_id;
+        const hits = nopeHits(who, `${form.title.value} ${form.note.value}`);
+        const box = $("#nopeWarn", el);
+        box.hidden = !hits.length;
+        if (hits.length) box.innerHTML = `${NOPE_I}<span><strong>Heads up:</strong> ${esc(personName(who))} put ${andList(hits.map((h) => `<b>${esc(h)}</b>`))} in their nopes.</span>`;
+        saveBtn.textContent = hits.length ? "Save anyway" : saveLabel;
+        const was = form.dataset.nopeShown === "1";
+        form.dataset.nopeShown = hits.length ? "1" : "";
+        if (hits.length && !was) buzz();
+        return { hits, was };
+      };
       const sync = () => {
+        checkNopes();
         syncOcc();
         const shared = form.shared.checked;
         $("#shareHint", el).textContent = shared
@@ -3825,6 +3870,9 @@ function editIdea(idea, subjectId, opts = {}) {
       form.addEventListener("input", sync);
       sync();
       wireForm(form, async (d) => {
+        // Filled in by a link without typing: show the heads up first, save on the next tap.
+        const { hits, was } = checkNopes();
+        if (hits.length && !was) return $("#nopeWarn", el).scrollIntoView({ block: "center", behavior: "smooth" });
         const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, note: d.note, shared: d.shared, image: imageFor(form) };
         if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; if (d.bought) payload.occasion = occasion(); }
         if (!payload.subjectId) throw new Error("Choose who it's for.");
