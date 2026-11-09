@@ -708,18 +708,19 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
   }
 
   title = cleanTitle(title, finalUrl.hostname, siteName);
+  // Last resort for the name: the link's words. The app says it's a guess.
+  const guess = !title ? titleFromPath(finalUrl) || titleFromPath(url) : null;
+  // Same rule as before the lookup existed: keep the page's photo whenever we have any name for it.
   let imageUrl = null;
-  if (image && title) {
+  if (image && (title || guess)) {
     try { imageUrl = imageLink(new URL(image, finalUrl).toString()); } catch {}
   }
   const site = finalUrl.hostname.replace(/^www\./, "");
-  // The page gave us nothing usable (blocked, a bot check, or an empty shell): try the lookup.
+  // The page gave us no name (blocked, a bot check, or an empty shell): try the lookup.
   if (!title && ai) {
     const found = await lookupLink(env, finalUrl.toString()).catch(() => null);
-    if (found) return { url: finalUrl.toString(), title: found.title, price: found.price, image: found.image, site, found: true, via: "search" };
+    if (found) return { url: finalUrl.toString(), title: found.title, price: found.price ?? price, image: found.image || imageUrl, site, found: true, via: "search" };
   }
-  // Last resort: a name guessed from the link's words. The app says it's a guess.
-  const guess = !title ? titleFromPath(finalUrl) || titleFromPath(url) : null;
   return { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !!guess };
 }
 
