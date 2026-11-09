@@ -139,6 +139,10 @@
   .hero-row .avatar { border: 2px solid var(--hero-muted); }
   .hero-row h1 { margin: 0; }
   .hero-row .who-name { flex: 1; min-width: 0; }
+  /* Someone's list: "Nickname & budget" drops under the name when both don't fit on one line. */
+  .hero-row:has(#editBtn) { flex-wrap: wrap; row-gap: 10px; }
+  .hero-row:has(#editBtn) .who-name { min-width: 55%; }
+  .hero-row #editBtn { margin-left: auto; }
   .realname { display: block; color: var(--hero-muted); font-size: 14px; margin-top: 2px; }
   .hero-meter { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; }
   .hero-meter .bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .16); overflow: hidden; }
@@ -148,11 +152,11 @@
     border: 1.5px solid color-mix(in srgb, var(--hero-muted) 55%, transparent); background: transparent; color: var(--hero-ink); font-weight: 700; font-size: 15px; }
   .hero-edit:active { transform: scale(.96); }
   .hero-edit:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
-  @media (max-width: 380px) { .hero-edit span { display: none; } .hero-edit { padding: 0; width: 40px; justify-content: center; } }
-  .hero-gear { position: absolute; top: -4px; right: 0; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  @media (max-width: 380px) { .hero-edit:not(#editBtn) span { display: none; } .hero-edit:not(#editBtn) { padding: 0; width: 40px; justify-content: center; } }
+  .hero-gear { position: absolute; top: -4px; right: 0; min-width: 44px; height: 44px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px 0 11px; font: inherit; font-size: 15px; font-weight: 700;
     border: 1.5px solid color-mix(in srgb, var(--hero-muted) 55%, transparent); background: transparent; color: var(--hero-ink); transition: transform .3s var(--spring); }
-  .hero-in:has(.hero-gear) :is(h1, .kicker) { padding-right: 56px; }
-  .hero-gear:active { transform: rotate(60deg) scale(.94); }
+  .hero-in:has(.hero-gear) :is(h1, .kicker) { padding-right: 130px; }
+  .hero-gear:active { transform: scale(.96); }
   .hero-gear:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
   .hero-btn { margin-top: 16px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid color-mix(in srgb, var(--hero-muted) 55%, transparent);
     background: transparent; color: var(--hero-ink); font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; }
@@ -1496,7 +1500,7 @@
 
   /* Desktop (1024px and up): the bottom tabs become a sidebar, content spreads into a grid, cards lift on hover.
      Phones and tablets keep the layout above untouched. */
-  .nav-brand, .nav-me, .tab-ind, .add-long, .kbd { display: none; }
+  .nav-brand, .nav-me, .nav-set, .tab-ind, .add-long, .kbd { display: none; }
   .person-side > :last-child { margin-bottom: 16px; }
   @media (min-width: 1024px) {
     :root { --side: 264px; }
@@ -1539,6 +1543,12 @@
     .nav-me { display: flex; align-items: center; gap: 12px; margin-top: auto; width: 100%; border: 0; border-radius: 16px; padding: 10px 10px 10px 12px;
       background: var(--panel); text-align: left; transition: transform .25s var(--spring), background-color .2s ease; }
     .nav-me[hidden] { display: none; }
+    .nav-set { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 6px; border: 1.5px solid var(--line); border-radius: 14px; padding: 9px 12px;
+      background: none; color: var(--ink); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .nav-set[hidden] { display: none; }
+    .nav-set:hover { background: var(--soft); }
+    .nav-set[aria-current="page"] { border-color: var(--brand); color: var(--brand); }
+    .nav-set:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
     .nav-me .avatar { width: 40px; height: 40px; font-size: 17px; }
     .nav-me .who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
     .nav-me strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1809,6 +1819,7 @@
     </button>
   </div>
   <button class="nav-me" type="button" id="navMe" hidden></button>
+  <button class="nav-set" type="button" id="navSet" hidden>Settings</button>
 </nav>
 
 <dialog class="tour" id="tour" aria-label="Welcome tour"></dialog>
@@ -2629,9 +2640,12 @@ function fillNavMe() {
   const b = $("#navMe");
   if (!b || !state.me) return;
   b.hidden = false;
+  $("#navSet").hidden = false;
+  $("#navSet").setAttribute("aria-current", state.tab === "settings" ? "page" : "false");
   b.innerHTML = `${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>${esc(state.groups.map((g) => g.name).join(" · "))}</small></span>${CHEV}`;
 }
 $("#navMe").onclick = () => setTab("profile");
+$("#navSet").onclick = () => { state.setSec = "app"; setTab("settings"); };
 $(".nav-brand").onclick = (e) => { e.preventDefault(); setTab("mine"); };
 // Replays the entrance animation (desktop only, see .enter in the CSS).
 function enter(...els) {
@@ -2791,7 +2805,7 @@ async function renderWelcome(step = "code", info = {}) {
     return;
   }
 
-  // New people are the usual case, so "I'm new" comes first; returning people tap their name.
+  // Names first, so someone back on a new phone taps their name instead of making a second list; "I'm new" sits below.
   if (step === "who") {
     notePhotos(info.members);
     // Someone set up lists for people before they joined: lead with the names, so nobody makes a second one.
@@ -2802,12 +2816,11 @@ async function renderWelcome(step = "code", info = {}) {
             <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}${m.household ? `<span class="dupe-tag">${esc(m.household)}</span>` : ""}</strong>${m.waiting ? `<small>Ready for you${m.by ? `, set up by ${esc(m.by)}` : ""}</small>` : m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
           </button>`).join("")}
       </div>` : "";
-    setHero(backBtn + heroTitle(info.group.name, waiting ? "Find your name" : "Are you new here?"));
-    v.innerHTML = waiting
-      ? `<p class="lead" style="margin-top:0">Tap your name to get started.</p>${picker}
-        <div class="or">Not on the list?</div><button class="add slide" type="button" id="newBtn">${PLUS} Add me</button>`
-      : `<button class="add big shine slide" type="button" id="newBtn">${PLUS} Yes, add me</button>
-      ${picker ? `<div class="or">or, already joined? Tap your name</div>${picker}` : ""}`;
+    setHero(backBtn + heroTitle(info.group.name, picker ? "Find your name" : "Are you new here?"));
+    v.innerHTML = picker
+      ? `<p class="lead" style="margin-top:0">${waiting ? "Tap your name to get started." : "Been here before? Tap your name."}</p>${picker}
+        <div class="or">${waiting ? "Not on the list?" : "New here?"}</div><button class="add slide" type="button" id="newBtn">${PLUS} I'm new, add me</button>`
+      : `<button class="add big shine slide" type="button" id="newBtn">${PLUS} Yes, add me</button>`;
     $("#backBtn").onclick = () => renderWelcome(invite ? "invite" : "code");
     $("#newBtn").onclick = () => renderWelcome("new", info);
     v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = async () => {
@@ -3001,6 +3014,7 @@ let pinAsked = false;
 function requirePin() {
   if (pinAsked || state.me.hasPin || tourEl.open) return;
   pinAsked = true;
+  guidedThisVisit = true;
   const pc = state.me.pinCleared;
   closeSheet();
   openSheet(`<form id="needPin" autocomplete="off">
@@ -3177,6 +3191,13 @@ const ADD_HOME = '<svg class="ico-in" width="18" height="18" viewBox="0 0 24 24"
 const DOTS = '<svg class="ico-in" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="More"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
 const KEBAB = '<svg class="ico-in" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="Menu"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 
+// My list shows one nudge card at a time, most useful first. The rest wait their turn (a later visit, or once this
+// one is answered). Called after each card paints.
+function oneNudge() {
+  const cards = ["#lastNotice", "#staleNudge", "#installCard", "#pushNudge", "#bdayNudge"].map((sel) => $(sel)).filter(Boolean);
+  cards.forEach((el, n) => { el.style.display = n ? "none" : ""; });
+}
+
 function paintInstallCard() {
   const slot = $("#installSlot");
   if (!slot) return;
@@ -3184,6 +3205,7 @@ function paintInstallCard() {
   const way = installWay();
   const sub = way === "prompt" ? "Open it in one tap, full screen, like any other app."
     : way === "inapp" ? `This page is open inside another app. Open it in ${isAppleMobile() ? "Safari" : "Chrome"} to add it to your home screen.`
+    : way === "ios" ? "Keeps you signed in and opens in one tap. In a Safari tab, you may be signed out after a week away."
     : "Put it on your home screen so it opens in one tap. It takes a few seconds.";
   slot.innerHTML = `<div class="install-card slide" id="installCard">
     <div class="install-top"><img class="install-icon" src="/icons/icon-192.png" alt="">
@@ -3192,11 +3214,13 @@ function paintInstallCard() {
       <button class="btn quiet small" type="button" id="installLater">Not now</button>
       <button class="btn primary small" type="button" id="installGo">${way === "prompt" ? "Install" : "Show me how"}</button>
     </div></div>`;
+  oneNudge();
   $("#installGo", slot).onclick = () => startInstall();
   $("#installLater", slot).onclick = () => {
     const st = readInstall(), snoozes = (st.snoozes || 0) + 1;
     saveInstall({ ...st, snoozes, until: Date.now() + (snoozes === 1 ? 7 : 30) * 864e5, off: snoozes >= 3 });
     slot.innerHTML = "";
+    oneNudge();
     toast(snoozes >= 3 ? "Okay, I'll stop asking. It's in Settings anytime." : "No problem. It's also in Settings.");
   };
 }
@@ -3323,7 +3347,11 @@ const notifyScene = () => `<div class="scene"><span class="blob"></span><div cla
 const installScene = () => `<div class="scene"><span class="blob"></span><div class="phone"><div class="grid">
     ${Array.from({ length: 9 }, (_, i) => (i === 4 ? `<span class="app ours">${GIFT_W}</span>` : '<span class="app"></span>')).join("")}</div></div></div>`;
 
+// One walkthrough per visit: once the welcome tour, the PIN sheet or a page tour has shown, page tours wait for
+// another visit. Page tours that start on their own show one tip, with "Show me around" for the rest.
+let guidedThisVisit = false;
 function openTour() {
+  guidedThisVisit = true;
   state.toured = true;
   const w = state.welcome || {};
   const fam = w.joined || w.started || "";
@@ -3571,9 +3599,11 @@ function mineVisible(items) {
 }
 
 // Toolbar: search (longer lists), layout, sort, then filter chips that only offer what's on this side.
+const MINE_TOOLS_AT = 8;
 function mineToolbar(items, side) {
   const f = mineFilter();
-  if (items.length < 2) return "";
+  // Short lists don't need search, sort or filters (and a leftover filter would hide wishes with no way to clear it).
+  if (items.length < MINE_TOOLS_AT) { Object.assign(f, { q: "", cat: "all", price: "all", top: false }); return ""; }
   const catCount = {};
   for (const i of items) { const k = catOf(i); catCount[k] = (catCount[k] || 0) + 1; }
   const cats = CATS.filter(([k]) => catCount[k]);
@@ -3722,6 +3752,7 @@ async function renderMine() {
     ${receivedSection(data.received)}`);
   paintInstallCard();
   paintPushNudge();
+  oneNudge();
   $("#addFirst")?.addEventListener("click", () => addThing());
   $("#listAdd")?.addEventListener("click", () => addThing());
   $("#maybeAdd")?.addEventListener("click", () => addThing());
@@ -3737,6 +3768,7 @@ async function renderMine() {
     await api("profile", { lastName });
     state.me.lastName = lastName.trim();
     $("#lastNotice")?.remove();
+    oneNudge();
     toast("Last name saved");
   });
   $("#staleAdd")?.addEventListener("click", () => addThing());
@@ -3745,9 +3777,10 @@ async function renderMine() {
     state.me.staleOk = Math.floor((state.today || 0) / 10000);
     api("stale/ok", {}).catch(() => {});
     $("#staleNudge")?.remove();
+    oneNudge();
     toast("Great. Your list is ready for the holidays.");
   });
-  $("#bdayLater")?.addEventListener("click", () => { try { localStorage.setItem(BDAY_NUDGE_KEY, state.me.id); } catch {} $("#bdayNudge")?.remove(); });
+  $("#bdayLater")?.addEventListener("click", () => { try { localStorage.setItem(BDAY_NUDGE_KEY, state.me.id); } catch {} $("#bdayNudge")?.remove(); oneNudge(); });
   v.querySelectorAll("[data-idea]").forEach((b) => (b.onclick = () => {
     const opts = STARTER_IDEAS[b.dataset.idea][2];
     opts.giftCards ? pickGiftCards(data.giftCards) : addThing(undefined, opts);
@@ -5383,14 +5416,16 @@ async function renderPerson(id) {
   setHero(`${helpBtn ? `<div class="hero-top"><button class="back" type="button" id="backBtn">${BACK} Circles</button>${helpBtn}</div>` : `<button class="back" type="button" id="backBtn">${BACK} Circles</button>`}
     <div class="hero-row">${avatar(name, id, true)}
       <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}${dupeTag(everyone().find((m) => m.id === id)) ? `<span class="realname">${esc(dupeTag(everyone().find((m) => m.id === id)))}</span>` : ""}</div>
-      <button class="hero-edit" type="button" id="editBtn" aria-label="Edit nickname and budget for ${esc(name)}">${PENCIL}<span>Edit</span></button></div>${meter}`, heroCover(list.member));
+      <button class="hero-edit" type="button" id="editBtn" aria-label="Nickname and budget for ${esc(name)}">${PENCIL}<span>Nickname &amp; budget</span></button></div>${meter}`, heroCover(list.member));
 
   // Summary cards double as quick filters: tap one to show just those wishes, tap again (or "wishes") for all.
   const statBtn = (k, n, label, cls = "") =>
     `<button class="stat${cls ? ` ${cls}` : ""}" type="button" data-stat="${k}"${k === "all" ? "" : ` aria-pressed="${!!view[k]}"`}${!n && k !== "all" ? " disabled" : ""}><b>${n}</b><span>${label}</span></button>`;
   const chip = (group, k, label, count, icon = "") =>
     `<button class="chip" type="button" data-${group}="${k}" aria-pressed="${view[group] === k}">${icon}${esc(label)}${count != null ? `<span class="chip-n">${count}</span>` : ""}</button>`;
-  const toolbar = all.length < 2 ? "" : `
+  // Short lists get the summary tiles only (they filter too); category, price and sort show from 8 wishes.
+  if (all.length < MINE_TOOLS_AT) { view.cat = "all"; view.price = "all"; }
+  const toolbar = all.length < MINE_TOOLS_AT ? "" : `
     <div class="toolbar">
       ${cats.length > 1 ? `<div class="chips" role="group" aria-label="Filter by category">
         ${chip("cat", "all", "All", all.length)}${cats.map(([k, label]) => chip("cat", k, label, catCount[k], catIcon(k))).join("")}</div>` : ""}
@@ -5661,7 +5696,7 @@ async function renderHousehold(id) {
 const PERSON_TOUR_KEY = "wishlist-person-tour";
 function personTourSeen() { try { return !!localStorage.getItem(PERSON_TOUR_KEY); } catch { return true; } }
 function personTour(name, force = false) {
-  if ($(".coach") || (!force && personTourSeen())) return;
+  if ($(".coach") || (!force && (personTourSeen() || guidedThisVisit))) return;
   try { localStorage.setItem(PERSON_TOUR_KEY, "1"); } catch {}
   const n = name; // coachTour escapes titles and text
   const OPEN = ".wish:not(.mine):not(.taken)";
@@ -5682,7 +5717,7 @@ function personTour(name, force = false) {
     { sel: ".wish.taken", title: "Already covered", text: "Someone else is getting this one, so pick something else." },
     { sel: `${OPEN} [data-ask]`, title: "Not sure about something?", text: `Ask the circle, like what size. ${n} can't see the chat.` },
     { sel: "#openOnly", title: "Only what's left", text: "Turn this on to hide wishes someone's already getting." },
-  ], `How ${name}'s list works`);
+  ], `How ${name}'s list works`, !force);
 }
 
 // ---------- chat about a person ----------
@@ -6736,7 +6771,7 @@ function personCard(p, o, view, n = 0, still = false) {
 const BUDGET_TOUR_KEY = "wishlist-budget-tour";
 function budgetTourSeen() { try { return !!localStorage.getItem(BUDGET_TOUR_KEY); } catch { return true; } }
 function budgetTour(force = false) {
-  if ($(".coach") || (!force && budgetTourSeen())) return;
+  if ($(".coach") || (!force && (budgetTourSeen() || guidedThisVisit))) return;
   try { localStorage.setItem(BUDGET_TOUR_KEY, "1"); } catch {}
   const names = sharedNames();
   const hasHh = !!$(".pcard[data-household]");
@@ -6749,14 +6784,17 @@ function budgetTour(force = false) {
     { sel: "#whoIn", title: "Not doing gifts with someone?", text: "Tap Change to turn people off. They come off your budget and gift reminders. Only you see this." },
     { sel: "#addPurchase", title: "Bought something?", text: "Add it here. It comes out of their budget, and you can tap a name to see what you got them." },
   ];
-  coachTour(steps, "How Budget works");
+  coachTour(steps, "How Budget works", !force);
 }
 
 // Spotlight walkthrough shared by Budget and someone's list: dims the page, cuts a hole around each step's element
 // and shows a little card next to it. Steps whose element isn't on the page are dropped.
-function coachTour(allSteps, label) {
+// brief: started on its own (not from "How it works"), so show the first tip only, with "Show me around" for the rest.
+function coachTour(allSteps, label, brief = false) {
   const steps = allSteps.filter((x) => $(x.sel));
   if (!steps.length || $(".coach")) return;
+  guidedThisVisit = true;
+  let more = brief && steps.length > 1;
   const wrap = document.createElement("div");
   wrap.className = "coach";
   wrap.setAttribute("role", "dialog");
@@ -6778,12 +6816,14 @@ function coachTour(allSteps, label) {
     pop.style.top = `${below + h < innerHeight - 16 ? below : Math.max(16, r.top - pad - 14 - h)}px`;
   }
   function show() {
-    const st = steps[i], last = i === steps.length - 1;
+    const st = steps[i], last = more || i === steps.length - 1;
     pop.innerHTML = `<h4>${esc(st.title)}</h4><p>${esc(st.text)}</p>
-      <div class="coach-foot"><span class="coach-dots" aria-label="Step ${i + 1} of ${steps.length}">${steps.map((_, n) => `<i class="${n === i ? "on" : ""}"></i>`).join("")}</span>
-        ${last ? "" : '<button class="coach-skip" type="button" data-skip>Skip</button>'}
+      <div class="coach-foot">${more ? '<button class="coach-skip" type="button" data-more>Show me around</button>'
+        : `<span class="coach-dots" aria-label="Step ${i + 1} of ${steps.length}">${steps.map((_, n) => `<i class="${n === i ? "on" : ""}"></i>`).join("")}</span>
+        ${last ? "" : '<button class="coach-skip" type="button" data-skip>Skip</button>'}`}
         <button class="btn primary small" type="button" data-next>${last ? "Got it" : "Next"}</button></div>`;
     $("[data-next]", pop).onclick = () => { if (last) done(); else { i++; show(); } };
+    $("[data-more]", pop)?.addEventListener("click", () => { more = false; i++; show(); });
     $("[data-skip]", pop)?.addEventListener("click", done);
     $(steps[i].sel).scrollIntoView({ block: "center", behavior: document.documentElement.dataset.motion === "off" ? "auto" : "smooth" });
     place();
@@ -6795,7 +6835,7 @@ function coachTour(allSteps, label) {
   addEventListener("resize", place);
   addEventListener("scroll", place, { capture: true, passive: true });
   document.addEventListener("keydown", onKey);
-  wrap.addEventListener("click", () => { if (i === steps.length - 1) done(); else { i++; show(); } });
+  wrap.addEventListener("click", () => { if (more || i === steps.length - 1) done(); else { i++; show(); } });
   show();
 }
 
@@ -7525,7 +7565,7 @@ async function renderProfile() {
   if (state.profileEdit) return renderProfileEdit();
   const p = state.me.profile || { sizes: {} };
   const likes = p.likes || [], nopes = p.dislikes || [];
-  setHero(`<button class="hero-gear" type="button" id="gearBtn" aria-label="Settings">${GEAR}</button>${heroTitle("What your people see", "Profile")}`);
+  setHero(`<button class="hero-gear" type="button" id="gearBtn">${GEAR}<span>Settings</span></button>${heroTitle("What your people see", "Profile")}`);
   const details = detailsHtml(p);
   const edit = (focus, label) => `<button class="linkbtn" type="button" data-edit="${focus}">${label}</button>`;
   const v = $("#view");
@@ -7974,11 +8014,13 @@ function paintPushNudge() {
   slot.innerHTML = `<div class="starter slide" id="pushNudge" style="margin:0 0 14px"><strong>Want a heads up when your people add wishes?</strong>
     <p>Hints can tell you when someone adds to their list or a birthday is coming up. Never between 9 pm and 8 am.</p>
     <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pushLater">Not now</button><button class="btn primary" type="button" id="pushYes">Turn on</button></div></div>`;
+  oneNudge();
   $("#pushYes", slot).onclick = async (e) => {
     e.currentTarget.disabled = true;
     try {
       const ok = await enablePush();
       slot.innerHTML = "";
+      oneNudge();
       if (ok) toast("Notifications are on. Change them anytime in Settings.");
       else { try { localStorage.setItem(PUSH_NUDGE_KEY, JSON.stringify({ off: true })); } catch {} toast("No problem. You can turn them on in Settings."); }
     } catch (err) { oops(err.message || "That didn't work. Try again."); e.currentTarget.disabled = false; }
@@ -7987,6 +8029,7 @@ function paintPushNudge() {
     const st = readPushNudge(), snoozes = (st.snoozes || 0) + 1;
     try { localStorage.setItem(PUSH_NUDGE_KEY, JSON.stringify({ snoozes, until: Date.now() + (snoozes === 1 ? 7 : 30) * 864e5, off: snoozes >= 3 })); } catch {}
     slot.innerHTML = "";
+    oneNudge();
     toast(snoozes >= 3 ? "Okay, I'll stop asking. It's in Settings anytime." : "No problem. It's also in Settings.");
   };
 }
