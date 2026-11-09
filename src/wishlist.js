@@ -456,6 +456,31 @@ async function settleReceived(env, ownerId = null) {
   ]);
 }
 
+// ---------- gift history ----------
+// Purchases for occasions that have passed, copied into gift_history (migration 0035) so they outlive edits and
+// deletes. Spent follows the tracker: what you paid, else the listed price (times how many), and a group gift
+// share counts only what you entered. Runs hourly and right before a wish or idea is deleted.
+async function snapshotGifts(env) {
+  const t = today(), at = now();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO gift_history (buyer_id, subject_id, season, kind, ref_id, title, url, image_url, spent_cents, qty, chip_in, created_at)
+       SELECT c.buyer_id, i.owner_id, c.season, 'item', i.id, i.title, i.url, i.image_url,
+              COALESCE(c.price_cents, CASE WHEN c.chip_in = 1 THEN 0 ELSE COALESCE(i.price_cents, 0) * COALESCE(c.qty, 1) END), COALESCE(c.qty, 1), c.chip_in, ?
+         FROM claims c JOIN items i ON i.id = c.item_id WHERE c.season < ?`,
+    ).bind(at, t),
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO gift_history (buyer_id, subject_id, season, kind, ref_id, title, url, image_url, spent_cents, created_at)
+       SELECT c.buyer_id, p.subject_id, c.season, 'idea', p.id, p.title, p.url, p.image_url, COALESCE(c.price_cents, p.price_cents, 0), ?
+         FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id WHERE c.season < ?`,
+    ).bind(at, t),
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO gift_history (buyer_id, subject_id, season, kind, ref_id, title, spent_cents, created_at)
+       SELECT buyer_id, member_id, season, 'card', brand, brand, COALESCE(amount_cents, 0), ? FROM gift_card_gifts WHERE season < ?`,
+    ).bind(at, t),
+  ]);
+}
+
 // ---------- chat about a person ----------
 // One thread per circle and person. Messages older than this are swept and never returned.
 const CHAT_KEEP_DAYS = 183;
@@ -1921,6 +1946,7 @@ export async function runSchedule(env) {
       .bind(new Date(Date.now() - 2 * 86_400_000).toISOString(), new Date(Date.now() - 400 * 86_400_000).toISOString()).run().catch(() => {});
   }
   await settleReceived(env).catch((err) => console.error("settle", err));
+  await snapshotGifts(env).catch((err) => console.error("history", err));
   const later = isQuiet(hour) ? 0 : await flushLater(env, budget).catch((err) => (console.error("later", err), 0));
   const wishes = await wishDigest(env, budget, hour).catch((err) => (console.error("digest", err), 0));
   // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
@@ -2456,6 +2482,7 @@ const handlers = {
     if (!item) fail(404, "Item not found.");
     // Any mark, past or upcoming, keeps the wish (removed) so gift history and buyers' views survive.
     const claimed = await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ?").bind(id).first();
+    if (claimed) await snapshotGifts(env);
     if (claimed) {
       await env.DB.prepare("UPDATE items SET removed_at = ? WHERE id = ?").bind(now(), id).run();
     } else {
@@ -2654,6 +2681,8 @@ const handlers = {
     const { id } = await body(req);
     const idea = await env.DB.prepare("SELECT id FROM private_ideas WHERE id = ? AND author_id = ?").bind(id, me.id).first();
     if (!idea) fail(404, "Idea not found.");
+    // Past purchases of it go into gift history first.
+    if (await env.DB.prepare("SELECT 1 FROM idea_claims WHERE idea_id = ? AND season < ?").bind(id, today()).first()) await snapshotGifts(env);
     await env.DB.batch([
       env.DB.prepare("DELETE FROM idea_claims WHERE idea_id = ?").bind(id),
       env.DB.prepare("DELETE FROM private_ideas WHERE id = ?").bind(id),
@@ -2961,6 +2990,33 @@ const handlers = {
   // open ideas. Only ever about other people. For people outside your household the budget and purchases are
   // your household's (see sharesBudget); at Christmas the budget covers their whole household, so their
   // Christmas occasion carries that household's budget and spending (with `household` set).
+  // Gifts given for occasions that have passed, newest first: yours, plus your household's for people outside
+  // it (the same rule as shared budgets). member: only gifts for them.
+  async "GET history"(req, env, url) {
+    const me = await auth(req, env);
+    const member = url.searchParams.get("member");
+    const myHh = await householdOf(env, me.id);
+    const team = await givers(env, me, myHh);
+    const ids = team.map((x) => x.id);
+    const { results } = await env.DB.prepare(
+      `SELECT h.*, s.name AS subject_name, s.household_id, b.name AS buyer_name FROM gift_history h
+         JOIN members s ON s.id = h.subject_id JOIN members b ON b.id = h.buyer_id
+        WHERE h.buyer_id IN (${ids.map(() => "?").join(",")}) ${member ? "AND h.subject_id = ?" : ""}
+        ORDER BY h.season DESC, s.name COLLATE NOCASE, h.created_at`,
+    ).bind(...ids, ...(member ? [String(member)] : [])).all();
+    const nicks = await nicknamesFor(env, me.id);
+    return {
+      gifts: results
+        .filter((r) => r.buyer_id === me.id || sharesBudget(myHh, r))
+        .map((r) => ({
+          kind: r.kind, id: r.ref_id, season: r.season, subjectId: r.subject_id, subjectName: nicks.get(r.subject_id) || r.subject_name,
+          title: r.kind === "card" ? `${GIFT_CARD_NAMES.get(r.title) || r.title} gift card` : r.title,
+          url: r.url, image_url: r.image_url, spent_cents: r.spent_cents, qty: r.qty, chipIn: !!r.chip_in,
+          by: r.buyer_id === me.id ? null : nicks.get(r.buyer_id) || r.buyer_name,
+        })),
+    };
+  },
+
   async "GET tracker"(req, env) {
     const me = await auth(req, env);
     const t = today();

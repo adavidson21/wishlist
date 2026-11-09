@@ -1,6 +1,6 @@
 # Plan: Gift history
 
-Status: building (Nov 2026).
+Status: shipped (Nov 2026).
 
 ## Problem
 
@@ -10,7 +10,7 @@ Budget and Purchases only show upcoming occasions. After Christmas there's no re
 
 - **Budget > Past gifts:** everything you've given, by year, then occasion, then person, with what you spent and a total per year. Searchable by name or gift.
 - **On someone's page:** "You've given Sam" with your last few gifts to them, and a See all link.
-- Only your own gifts. Gifts from others in your household aren't included (they can see their own).
+- Your gifts, plus your household's gifts to people outside it (labeled "from Mike"), matching shared budgets.
 - Wishes, ideas, suggestions, group gift shares and gift cards all count. A group gift shows your share.
 
 ## How
