@@ -1,12 +1,20 @@
-// hints.alexisdavidson.org (and the old wishlist.alexisdavidson.org): static files in public/ are served first (see wrangler.jsonc);
-// anything else comes here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
+// hints.alexisdavidson.org. The Worker runs before static files (run_worker_first in wrangler.jsonc) so the
+// retired wishlist.alexisdavidson.org can redirect everything here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
 // with a link preview for that circle, everything else is a static file.
 import { routes, inviteInfo } from "./wishlist.js";
 import { json } from "./gemini.js";
 
+const HOST = "hints.alexisdavidson.org";
+const OLD_HOST = "wishlist.alexisdavidson.org"; // retired November 2026 (the app was called Wishlist)
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.hostname === OLD_HOST) {
+      url.protocol = "https:";
+      url.hostname = HOST;
+      return Response.redirect(url.toString(), 301);
+    }
     const handler = routes[url.pathname];
     if (handler) return handler(request, env);
     if (url.pathname.startsWith("/api/")) return json({ error: "Not found." }, 404);

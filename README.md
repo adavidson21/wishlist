@@ -1,6 +1,6 @@
 # Hints
 
-Wish lists for family and friends at **hints.alexisdavidson.org** (the old **wishlist.alexisdavidson.org** still works: same app and data, but sign-ins are per domain, so people stay signed in where they started). Mark what you're getting someone (hidden from the list owner) and keep private gift notes per person. Installable on phones as a PWA.
+Wish lists for family and friends at **hints.alexisdavidson.org** (the old **wishlist.alexisdavidson.org** redirects there, invite links included; sign-ins are per domain, so people sign in once on the new one). Mark what you're getting someone (hidden from the list owner) and keep private gift notes per person. Installable on phones as a PWA.
 
 One Cloudflare Worker with a D1 database. No build step.
 
