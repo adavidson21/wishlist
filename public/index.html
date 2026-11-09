@@ -276,6 +276,29 @@
   /* My list: compact cards, a toolbar (search, layout, sort, filters), gallery and shelves */
   .mrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px; }
   .mrow .tile { width: 64px; height: 64px; }
+  .row .side { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
+  .side-price { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; max-width: 100%; padding: 0 9px; border-radius: 999px;
+    background: var(--soft); color: var(--soft-ink); font-family: var(--display); font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .side-price.est { background: none; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--muted); }
+  .side-price.pending { display: none; }
+  .side-price.fresh { animation: fade .45s ease both; }
+  .wish .side-price { font-size: 16px; min-height: 28px; padding: 0 11px; }
+  .wish.taken .side-price { color: var(--muted); }
+  .gprice.est { color: var(--muted); }
+  .wish[data-key] { cursor: pointer; }
+  .wd-img { display: grid; place-items: center; height: 240px; margin: 4px 0 14px; border-radius: 16px; background: var(--panel); overflow: hidden; }
+  .wd-img.photo { background: #FFFFFF; box-shadow: inset 0 0 0 1px var(--line); }
+  .wd-img img { max-width: 100%; max-height: 100%; object-fit: contain; padding: 12px; }
+  .wd-img .tile { width: 120px; height: 120px; border-radius: 24px; } .wd-img .tile svg { width: 56px; height: 56px; }
+  .wd-title { margin: 2px 0 6px; font-size: 21px; line-height: 1.25; overflow-wrap: anywhere; }
+  .wd-prices { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 4px; }
+  .wd-price { font-family: var(--display); font-weight: 600; font-size: 24px; color: var(--soft-ink); }
+  .wd-price.est { color: var(--muted); }
+  .wd-est { font-size: 13px; color: var(--muted); }
+  .wd .dchips { margin: 10px 0 0; }
+  .wd-meta { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+  .wd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .wd-actions .btn { min-height: 44px; }
   .mrow .row-main { gap: 1px; }
   .mrow .row-title { font-size: 16px; line-height: 1.25; }
   .mrow .dchips { gap: 5px; margin: 6px 0 0; }
@@ -368,9 +391,6 @@
   .wish .tile.photo { padding: 7px; }
   .wish .row-main { gap: 4px; }
   .wish .row-title { font-size: 18px; }
-  .wish-price { font-family: var(--display); font-weight: 600; font-size: 21px; line-height: 1.2; color: var(--soft-ink); font-variant-numeric: tabular-nums; }
-  .wish-price.none { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--faint); }
-  .wish-price.fresh { animation: fade .45s ease both; }
   .live { display: block; font-size: 13px; font-weight: 700; margin-top: 2px; color: var(--muted); animation: fade .45s ease both; }
   .live.down { color: var(--ok); }
   .live.out { color: var(--warn); }
@@ -390,7 +410,6 @@
   .top-ribbon { position: absolute; top: -9px; right: 14px; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 7px; border-radius: 12px;
     background: var(--gold); color: #3B2A06; font-size: 13px; font-weight: 800; box-shadow: 0 2px 6px rgba(74, 14, 34, .15); }
   .top-ribbon svg { width: 14px; height: 14px; } .top-ribbon path { fill: #FFF6DE; stroke: #3B2A06; }
-  .wish.taken .wish-price { color: var(--muted); }
   @media (max-width: 380px) { .wish .tile { width: 72px; height: 72px; } .stat b { font-size: 22px; } }
 
   /* People */
@@ -1679,6 +1698,20 @@ function tile(i, kind) {
   const need = i.url && kind && (!i.image_checked || (i.price_cents == null && !i.price_checked));
   return need ? html.replace('<span class="tile', `<span data-fetch="${kind}:${esc(i.id)}" class="tile`) : html;
 }
+// Price under the photo: the real one, a "~$40" guess when the store's price can't be read, or an empty slot that
+// fills in when the store price or the guess comes back. cents: the price to show (your own price paid, say).
+const estFound = new Map(); // guesses that came back this session, so redrawn cards keep them
+const estTag = (c, extra = "") => `<span class="side-price est"${extra} title="Estimated price">~${money(Math.max(100, Math.round(c / 100) * 100))}</span>`;
+function sidePrice(i, kind, cents = i.price_cents) {
+  if (cents != null) return `<span class="side-price">${money(cents)}</span>`;
+  const key = kind ? `${kind}:${i.id}` : "";
+  const lookingUp = !!(kind && i.url && !i.price_checked);
+  const slot = lookingUp ? ` data-price-slot="${esc(key)}"` : "";
+  const est = i.price_est ?? (key && estFound.get(key));
+  if (est) return estTag(est, slot);
+  if (kind && (!i.est_checked || lookingUp)) return `<span class="side-price pending"${slot}${i.est_checked ? "" : ` data-est="${esc(key)}"`}></span>`;
+  return "";
+}
 // A store image that won't load (moved, blocked) falls back to the drawing.
 document.addEventListener("error", (e) => {
   const img = e.target;
@@ -1738,6 +1771,32 @@ function fetchImages(root) {
     imageQueue.push(key);
   });
   pumpImages();
+  root.querySelectorAll("[data-est]").forEach((el) => {
+    const key = el.dataset.est;
+    if (estTried.has(key)) return;
+    estTried.add(key);
+    estQueue.push(key);
+  });
+  pumpEstimates();
+}
+// Price guesses for wishes with no price, two at a time, once per session.
+const estTried = new Set(), estQueue = [];
+let estBusy = 0;
+function pumpEstimates() {
+  while (estBusy < 2 && estQueue.length) {
+    const key = estQueue.shift();
+    const [kind, id] = key.split(":");
+    estBusy++;
+    api("estimate", { kind, id }).then(({ price_est }) => {
+      if (!price_est) return;
+      estFound.set(key, price_est);
+      // Filled in place so a store price that turns up later (data-price-slot) still replaces it.
+      document.querySelectorAll(`[data-est="${CSS.escape(key)}"]`).forEach((el) => {
+        el.removeAttribute("data-est");
+        el.outerHTML = estTag(price_est, el.dataset.priceSlot ? ` data-price-slot="${esc(el.dataset.priceSlot)}"` : "").replace('class="side-price est"', 'class="side-price est fresh"');
+      });
+    }, () => {}).finally(() => { estBusy--; pumpEstimates(); });
+  }
 }
 function pumpImages() {
   while (imageBusy < 2 && imageQueue.length) {
@@ -1748,7 +1807,7 @@ function pumpImages() {
       if (image) imageFound.set(key, image);
       if (image) document.querySelectorAll(`[data-fetch="${CSS.escape(key)}"]:not(.photo)`).forEach((t) => (t.outerHTML = photoTile(image, t.dataset.tileTitle, t.dataset.tileId, true)));
       if (price_cents != null) document.querySelectorAll(`[data-price-slot="${CSS.escape(key)}"]`).forEach((el) => {
-        el.outerHTML = `<span class="wish-price fresh">${money(price_cents)}</span>`;
+        el.outerHTML = `<span class="side-price fresh">${money(price_cents)}</span>`;
       });
     }, () => {}).finally(() => { imageBusy--; pumpImages(); });
   }
@@ -3245,10 +3304,10 @@ function itemRow(i, n = 0) {
     ? `<button class="publish-btn sm" type="button" data-publish="${esc(i.id)}">${PUBLISH_ICON}<span>Publish</span></button>`
     : starBtn(i);
   return `<div class="row mrow${i.draft ? " draft" : ""}${top && !i.draft ? " is-top" : ""}${anim}" style="${anim === " slide" ? `animation-delay:${Math.min(n, 12) * 0.035}s` : ""}" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
-    ${tile(i, "item")}
+    <div class="side">${tile(i, "item")}${sidePrice(i, "item")}</div>
     <div class="row-main">
       ${nameBlock(i)}
-      ${detailChips(i, { store: true, price: true })}
+      ${detailChips(i, { store: true })}
       ${i.notes ? `<span class="row-notes clamp">${esc(i.notes)}</span>` : ""}
       ${i.draft ? "" : hiddenTag(i)}
     </div>
@@ -3270,7 +3329,8 @@ function galleryCard(i, n = 0) {
   const sub = [i.size, i.color].filter(Boolean).map(esc).join(" · ");
   return `<div class="row gcard${i.draft ? " draft" : ""}${top && !i.draft ? " is-top" : ""}${anim}" style="${anim === " slide" ? `animation-delay:${Math.min(n, 12) * 0.03}s` : ""}" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
     <div class="gimg">${tile(i, "item")}
-      ${i.price_cents != null ? `<span class="gprice">${money(i.price_cents)}</span>` : ""}
+      ${i.price_cents != null ? `<span class="gprice">${money(i.price_cents)}</span>`
+        : i.price_est || estFound.get(`item:${i.id}`) ? `<span class="gprice est" title="Estimated price">~${money(Math.max(100, Math.round((i.price_est || estFound.get(`item:${i.id}`)) / 100) * 100))}</span>` : ""}
       ${i.draft ? "" : starBtn(i)}
     </div>
     <div class="gbody">
@@ -3561,7 +3621,7 @@ function editItem(item, opts = {}) {
   item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, notes: c.notes } : {};
   const draft = !asId && (isNew || !!item.draft);
   const hasDetails = item.price_cents != null || !!item.notes || !!item.category || !!item.brand;
-  const priceField = `<label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="${isNew ? "Fills in from the link" : "From the link"}"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>`;
+  const priceField = `<label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="${isNew ? "Fills in from the link" : item.price_est ? `About ${money(item.price_est)} (a guess)` : "From the link"}"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>`;
   const catField = `<label class="field"><span>Category</span>
     <select class="input" name="category"><option value="">${isNew ? "Pick for me" : "Auto"}${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
       ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>`;
@@ -4521,6 +4581,16 @@ async function renderPerson(id) {
   wireIdeaRows(v, mine);
   v.querySelectorAll("[data-give]").forEach((b) => (b.onclick = () => giveGiftCard(list.giftCards.find((c) => c.brand === b.dataset.give), list.member, name, id)));
   const byKind = { item: all, idea: sugg };
+  // Tapping a card (not one of its buttons or links) opens the full details, read only.
+  v.querySelectorAll("article.wish[data-key]").forEach((el) => {
+    const open = () => {
+      const [kind, itemId] = el.dataset.key.split(":");
+      const x = byKind[kind]?.find((r) => r.id === itemId);
+      if (x) wishDetails(el, kind, x, name);
+    };
+    el.onclick = (e) => { if (!e.target.closest("a, button, input, label, .tip")) open(); };
+    el.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); open(); } };
+  });
   v.querySelectorAll("[data-mark]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.mark.split(":");
     markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name, id);
@@ -4959,21 +5029,17 @@ function personRow(i, kind, n = 0) {
   const notes = kind === "idea" ? i.note : i.notes;
   // Your own price paid replaces the listed one, except a group gift share (the wish's price still matters there).
   const paid = i.claim?.mine && !i.claim.chipIn && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
-  const lookingUp = paid == null && i.url && !i.price_checked;
-  const price = paid != null ? `<span class="wish-price">${money(paid)}</span>`
-    : `<span class="wish-price none"${lookingUp ? ` data-price-slot="${esc(key)}"` : ""}>No price listed</span>`;
   const meta = [
     kind === "idea" ? `<span>Idea from ${esc(i.author_name)}</span>` : i.created_at ? `<span>${addedOn(i.created_at)}</span>` : "",
     (i.claim || i.removed) && i.url ? `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : "",
   ].filter(Boolean).join('<span class="dot" aria-hidden="true"></span>');
   const whose = kind === "idea" ? `${esc(i.author_name)}'s note` : `${esc(personName(state.person))}'s note`;
-  return `<article class="row wish${cls}${top ? " is-top" : ""} ${fresh ? "" : "slide"}" data-key="${esc(key)}" style="animation-delay:${n * 0.05}s">
+  return `<article class="row wish${cls}${top ? " is-top" : ""} ${fresh ? "" : "slide"}" data-key="${esc(key)}" tabindex="0" aria-label="Details for ${esc(i.title)}" style="animation-delay:${n * 0.05}s">
     ${top ? `<span class="top-ribbon">${STAR} Top pick</span>` : ""}
-    <div class="row-top">${tile(i, kind)}
+    <div class="row-top"><div class="side">${tile(i, kind)}${sidePrice(i, kind, paid)}</div>
       <div class="row-main">
         ${nameBlock(i)}
         ${detailChips(i)}
-        ${price}
         ${i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" hidden></span>` : ""}
         <div class="wish-meta">${meta}</div>
       </div>
@@ -4983,6 +5049,44 @@ function personRow(i, kind, n = 0) {
     <div class="row-foot">${foot}</div>
     ${fresh && !reduceMotion() ? `<span class="burst" aria-hidden="true">${CONFETTI}</span>` : ""}
   </article>`;
+}
+
+// Full details for a wish or suggestion on someone else's list, read only. The card's own buttons (I'll get this,
+// chip in, ask the circle, edit for lists you manage) are repeated at the bottom and do exactly what they do there.
+function wishDetails(card, kind, i, name) {
+  const key = `${kind}:${i.id}`;
+  const src = i.image_url || imageFound.get(key);
+  const paid = i.claim?.mine && !i.claim.chipIn && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
+  const est = i.price_est ?? estFound.get(key);
+  const priceLine = paid != null ? `<span class="wd-price">${money(paid)}</span>`
+    : est ? `<span class="wd-price est">~${money(Math.max(100, Math.round(est / 100) * 100))}</span><span class="wd-est">estimated, the store didn't list a price</span>` : "";
+  const brand = brandOf(i);
+  const notes = kind === "idea" ? i.note : i.notes;
+  const meta = [
+    kind === "idea" ? `Idea from ${esc(i.author_name)}` : i.created_at ? addedOn(i.created_at) : "",
+    i.claim ? `${esc(i.claim.buyerName)} ${i.claim.many ? "are" : "is"} getting this` : "",
+  ].filter(Boolean).join(" · ");
+  const btns = [...card.querySelectorAll(".row-foot button")];
+  openSheet(`
+    <div class="wd">
+      <div class="wd-img${src ? " photo" : ""}">${src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer">` : iconTile(i.title, i.id)}</div>
+      ${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}
+      <h3 class="wd-title">${esc(brand && i.title.toLowerCase().startsWith(brand.toLowerCase() + " ") ? i.title.slice(brand.length + 1).replace(/^[-|:,]\s*/, "") : i.title)}</h3>
+      ${priceLine ? `<div class="wd-prices">${priceLine}</div>` : ""}
+      ${i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" hidden></span>` : ""}
+      ${detailChips(i)}
+      ${notes ? `<div class="wish-note"><span>${kind === "idea" ? `${esc(i.author_name)}'s note` : `${esc(name)}'s note`}</span>${esc(notes)}</div>` : ""}
+      ${meta ? `<p class="wd-meta">${meta}</p>` : ""}
+      <div class="wd-actions">
+        ${i.url ? `<a class="btn" href="${esc(i.url)}" target="_blank" rel="noopener">View at ${esc(host(i.url))} ${EXT_I}</a>` : ""}
+        ${btns.map((b, n) => `<button type="button" class="${esc(b.className)}" data-wd="${n}"${b.getAttribute("aria-label") ? ` aria-label="${esc(b.getAttribute("aria-label"))}"` : ""}>${b.innerHTML}</button>`).join("")}
+      </div>
+    </div>`, (el) => {
+    const live = el.querySelector("[data-live]");
+    if (live && liveSeen.get(key)) paintLive(live, liveSeen.get(key));
+    el.querySelectorAll("[data-wd]").forEach((b) => (b.onclick = () => { closeSheet(); btns[+b.dataset.wd].click(); }));
+    el.querySelector(".wd-img img")?.addEventListener("error", (e) => { const box = e.target.parentElement; box.classList.remove("photo"); box.innerHTML = iconTile(i.title, i.id); });
+  });
 }
 
 // "I'll get this" (or edit what you paid / take it back) for a list item or a shared idea.
