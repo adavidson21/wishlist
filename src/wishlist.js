@@ -3155,6 +3155,51 @@ const handlers = {
     return { ok: true };
   },
 
+  // Hand someone you look after to another person in their circle, who uses the app (a cousin takes over her
+  // baby's list). They become the one who added them, and the person moves into their household (or out of
+  // yours, if they have none) so their household can run the list too. They stay in every circle they share
+  // with the new manager. Any pending personal invite link stops working. { memberId, toId }
+  async "POST managed/handoff"(req, env) {
+    const me = await auth(req, env);
+    const { memberId, toId } = await body(req);
+    if (!(await canManage(env, me.id, memberId))) fail(404, "Person not found.");
+    const id = String(memberId);
+    const [them, to] = await Promise.all([
+      env.DB.prepare("SELECT id, name, household_id FROM members WHERE id = ?").bind(id).first(),
+      env.DB.prepare("SELECT id, name, managed_by, household_id FROM members WHERE id = ?").bind(String(toId || "")).first(),
+    ]);
+    if (!to || to.id === id || to.managed_by) fail(400, "Pick someone who uses the app.");
+    if (!(await sharesGroup(env, to.id, id))) fail(400, `${to.name} isn't in a circle with ${them.name}.`);
+    if (them.household_id !== to.household_id) {
+      if (to.household_id) {
+        const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(to.household_id).all();
+        const fresh = [];
+        for (const r of results) {
+          const inIt = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(r.group_id, id).first();
+          if (!inIt) fresh.push(r.group_id);
+        }
+        const clash = await nameClash(env, fresh, [id]);
+        if (clash) fail(409, `Someone named ${them.name} is already in ${clash}. Add a last initial to ${them.name} first.`);
+        for (const g of fresh) await circleRoom(env, g);
+      }
+      // Keep them in every circle they share with the new manager, even ones they were only in through the old household.
+      await env.DB.prepare(
+        "UPDATE group_members SET direct = 1 WHERE member_id = ? AND group_id IN (SELECT group_id FROM group_members WHERE member_id = ?)",
+      ).bind(id, to.id).run();
+      await leaveHousehold(env, id);
+      if (to.household_id) {
+        await env.DB.batch([
+          env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(to.household_id, id),
+          env.DB.prepare(
+            "INSERT INTO group_members (group_id, member_id, joined_at, direct) SELECT group_id, ?, ?, 0 FROM group_households WHERE household_id = ? ON CONFLICT DO NOTHING",
+          ).bind(id, now(), to.household_id),
+        ]);
+      }
+    }
+    await env.DB.prepare("UPDATE members SET managed_by = ?, claim_hash = NULL, claim_expires = NULL WHERE id = ?").bind(to.id, id).run();
+    return { ok: true, name: to.name };
+  },
+
   // A personal invite link for someone who isn't on Hints yet. Opening it signs them in as themselves and hands
   // the list over (POST claim), so there's no shared PIN and they don't pick their name. A new link replaces the
   // old one. Returns { token, expires }; the app builds /join/CODE?from=ME&hi=TOKEN.
