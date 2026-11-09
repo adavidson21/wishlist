@@ -1,6 +1,6 @@
 # Plan: Hidden chat about a person ("the back channel")
 
-Status: shipped (Nov 2026). Phase 1 and 2 built together. Phone notifications wait for `notifications.md`.
+Status: shipped (Nov 2026), including phone notifications (#44).
 
 ## Problem
 
@@ -75,8 +75,18 @@ Also:
 - [x] A non-admin can't remove someone else's message; the admin can.
 - [x] Edits and removals show up for others on their next poll.
 
+## Phone notifications (shipped, #44)
+
+- Everyone in the circle except the person it's about and the sender gets "Ann in the chat about Sam" with the
+  message text, through the Web Push setup from `notifications.md` (`chatPosted()` in `src/wishlist.js`).
+- Once per unread stretch: if you already have unread messages from the past week in that thread, you aren't
+  pinged again until you open it. A new one replaces the last on the device (tag `chat:<circle>:<person>`).
+- Quiet hours (9 pm to 8 am New York) hold it until 8 am. "Chats" switch in Settings > Notifications.
+- Tapping it opens that chat (`#person/<id>/chat/<circle>`).
+- Open question: the notification shows the message text and "chat about Sam" on the lock screen. If Sam picks up
+  someone's phone, that's the one place the subject could see it. Option: leave the text out ("New message about
+  Sam") or add a "Show message text" switch, off by default.
+
 ## Later
 
-- **Phone notifications** for new messages, once Web Push from `notifications.md` exists. One push per thread per
-  hour at most, text "New message about Mom in the Davidsons", never the message body. Never to the subject.
 - **Occasion dividers** ("Christmas 2026") if date dividers aren't enough.
