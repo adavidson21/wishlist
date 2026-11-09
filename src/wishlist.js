@@ -556,10 +556,10 @@ async function householdOf(env, memberId) {
 const isXmasCode = (code) => code % 10000 === 1225;
 const sharesBudget = (myHh, subject) => !!myHh && subject.household_id !== myHh;
 const budgetTarget = (subject, code) => (isXmasCode(code) && subject.household_id ? `h:${subject.household_id}` : `m:${subject.id}`);
-// You plus everyone in your household (the people whose purchases count toward shared budgets).
+// You plus everyone in your household who uses the app (the people whose purchases count toward shared budgets).
 async function givers(env, me, myHh) {
   if (!myHh) return [{ id: me.id, name: me.name }];
-  const { results } = await env.DB.prepare("SELECT id, name FROM members WHERE household_id = ?").bind(myHh).all();
+  const { results } = await env.DB.prepare("SELECT id, name FROM members WHERE household_id = ? AND managed_by IS NULL").bind(myHh).all();
   return results.some((r) => r.id === me.id) ? results : [{ id: me.id, name: me.name }, ...results];
 }
 
@@ -2036,6 +2036,8 @@ const handlers = {
           photo: h.photo_at || null,
           label: householdLabel(h.name, list.map((p) => (p.id === me.id ? me.name : nicks.get(p.id) || p.name))),
           circles: inCircles.filter((c) => c.household_id === h.id).map((c) => c.group_id),
+          // Who's in it (that you can see), you first, for the split household picture.
+          memberIds: [...list.filter((p) => p.id === me.id), ...list.filter((p) => p.id !== me.id)].map((p) => p.id),
         };
         if (h.id === myHh) {
           myHousehold = {
@@ -3177,7 +3179,8 @@ const handlers = {
     const name = text(b.name, LIMITS.name, "Their first name", true);
     const lastName = lastNameOf(b.lastName);
     const mine = await myGroupIds(env, me.id);
-    const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
+    // Your household only when they live with you (joinHousehold); older apps don't send it and keep the old default.
+    const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : b.joinHousehold === false ? null : await householdOf(env, me.id);
     const picked = Array.isArray(b.groupIds) ? [...new Set(b.groupIds.map(String))].filter((g) => mine.includes(g)) : b.householdId ? [] : mine;
     const hhCircles = hh ? (await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all()).results.map((r) => r.group_id) : [];
     if (!picked.length && !hhCircles.length) fail(400, "Pick at least one circle.");
@@ -3449,6 +3452,10 @@ const handlers = {
     const memberId = b.memberId || me.id;
     const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
     if (!hh || (await householdOf(env, memberId)) !== hh) fail(404, "They aren't in that household.");
+    // Someone who doesn't use the app can't rejoin a circle themselves, so they keep the ones they're in.
+    if (memberId !== me.id && (await canManage(env, me.id, memberId))) {
+      await env.DB.prepare("UPDATE group_members SET direct = 1 WHERE member_id = ?").bind(String(memberId)).run();
+    }
     await leaveHousehold(env, memberId);
     return { ok: true };
   },
