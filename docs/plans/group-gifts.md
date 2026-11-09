@@ -1,6 +1,6 @@
 # Plan: Group gifts and "more than one"
 
-Status: building (Nov 2026).
+Status: shipped (Nov 2026).
 
 ## Problem
 
@@ -18,7 +18,7 @@ A wish can only have one buyer. So people can't split a pricey gift ("Mom and I 
 
 - On any open wish, besides **I'll get this**, there's **Go in on it together**. That starts a group gift: it covers one of the wish, and you can say how much you're putting in (optional).
 - Others see "Sam started a group gift · $40 of $120 so far" with **Chip in**. Chipping in adds you with your own amount.
-- Everyone in the group gift sees who's in and the running total. Leaving is one tap. When the last person leaves, the wish is open again.
+- Everyone sees who's in and the running total. A group gift is never shown as taken: anyone can still chip in. Leaving is one tap. When the last person leaves, the wish is open again.
 - A group gift uses one occasion: whoever joins goes with the occasion it was started for.
 - Your share shows in your Budget and Purchases (and the Excel export) as your amount, labeled "Group gift". With no amount entered it counts as $0 so it doesn't inflate your total.
 

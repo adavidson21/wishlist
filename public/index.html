@@ -248,6 +248,15 @@
   .chk { width: 26px; height: 26px; border-radius: 50%; background: var(--ok); color: var(--card); display: grid; place-items: center; flex: none; }
   .chk.new { animation: checkpop .45s var(--spring) both; }
   .taken-line { color: var(--muted); font-size: 14px; font-weight: 600; }
+  /* Group gifts and "more than one": a status line above the row's buttons. */
+  .row-sub { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .row-sub .left-line { color: var(--muted); font-size: 14px; font-weight: 600; }
+  .group-line { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--gold, #C9A227) 14%, transparent); font-size: 14px; }
+  .group-line b { font-weight: 800; }
+  .group-line .gbar { flex: 0 0 64px; height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--gold, #C9A227) 25%, transparent); overflow: hidden; }
+  .group-line .gbar i { display: block; height: 100%; background: var(--gold, #C9A227); border-radius: inherit; }
+  .row-sub .linkbtn { align-self: flex-start; padding: 0; }
+  .dchip.qty { font-weight: 700; }
   .burst { position: absolute; left: 40px; bottom: 30px; width: 0; height: 0; pointer-events: none; }
   .bit { position: absolute; left: 0; top: 0; width: 9px; height: 5px; border-radius: 2px; animation: burst .85s cubic-bezier(.15, .7, .4, 1) both; }
   .chips { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; scrollbar-width: none; }
@@ -3082,6 +3091,7 @@ function detailChips(i, { store = false, price = false } = {}) {
     const sw = swatchOf(i.color);
     out.push(`<span class="dchip var">${sw ? `<i class="sw" style="background:${esc(sw)}"></i>` : ""}${esc(i.color)}</span>`);
   }
+  if (i.quantity != null && i.quantity !== 1) out.push(`<span class="dchip qty">${i.quantity ? `Wants ${i.quantity}` : "As many as you like"}</span>`);
   const c = catOf(i);
   out.push(`<span class="dchip cat">${catIcon(c, 13)}${esc(CAT[c].label)}</span>`);
   if (store && i.url) out.push(`<a class="dchip store" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}${EXT_I}</a>`);
@@ -3169,6 +3179,12 @@ function editItem(item, opts = {}) {
       ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>`;
   const brandField = `<label class="field"><span>Brand</span><input class="input" name="brand" maxlength="40" value="${esc(item.brand || "")}" placeholder="Zara, Nike, LEGO" autocomplete="off"></label>`;
   const notesField = `<label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>`;
+  // How many: 1 to 10, or 0 for "as many as I like" (books from a series, LEGO minifigures).
+  const qtyNow = item.quantity ?? 1;
+  const qtyField = `<label class="field"><span>How many?</span><select class="input" name="quantity">
+    ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}"${qtyNow === n ? " selected" : ""}>${n}</option>`).join("")}
+    ${qtyNow > 10 ? `<option value="${qtyNow}" selected>${qtyNow}</option>` : ""}
+    <option value="0"${qtyNow === 0 ? " selected" : ""}>As many as ${asId ? "they" : "I"} like</option></select></label>`;
   openSheet(`
     <h3>${asId ? (isNew ? `Add a wish for ${esc(asName)}` : `Edit ${esc(asName)}'s wish`) : isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser && !asId ? whoChips(state.me.id) : ""}
@@ -3184,9 +3200,9 @@ function editItem(item, opts = {}) {
       ${isNew && !asId ? `<p class="hint" style="margin-top:-6px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       ${isNew ? `<details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes)</span></summary>
-        <div>${brandField}${priceField}${catField}${notesField}</div>
+        <div>${brandField}${priceField}${catField}${qtyField}${notesField}</div>
       </details>` : `<section class="fsec"><h4 class="fsec-h">Details</h4>
-        <div class="two pc">${priceField}${catField}</div>${notesField}</section>`}
+        <div class="two pc">${priceField}${catField}</div>${qtyField}${notesField}</section>`}
       ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">${asId ? `On ${esc(asName)}'s list` : "On your list"}</h4>
         <label class="check"><span>Top pick<small>Gold star on ${asId ? "their" : "your"} list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
         ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
@@ -3219,7 +3235,7 @@ function editItem(item, opts = {}) {
       });
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), quantity: Number(d.quantity ?? 1), ...sc.values() };
         if (multi() && !draft && !asId) payload.hiddenFrom = hiddenFromForm(form);
         if (asId) {
           payload.as = asId;
@@ -3879,6 +3895,10 @@ async function renderPerson(id) {
     const [kind, itemId] = b.dataset.mark.split(":");
     markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name, id);
   }));
+  v.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => {
+    const itemId = b.dataset.chip.split(":")[1];
+    markPurchased("item", all.find((x) => x.id === itemId), name, id, { chip: true });
+  }));
 }
 
 // ---------- someone you look after ----------
@@ -4013,16 +4033,40 @@ function editPerson(member, plan) {
 function personRow(i, kind, n = 0) {
   const key = `${kind}:${i.id}`;
   const fresh = state.burst === key;
-  let foot = "", cls = "";
+  let foot = "", cls = "", sub = "";
   const visit = i.url ? `<a class="open" href="${esc(i.url)}" target="_blank" rel="noopener">View at ${esc(host(i.url))} ${OUT}</a>` : "";
+  // Wishes can want more than one, and can have a group gift (gift: see giftOut in src/wishlist.js). Ideas can't.
+  const g = kind === "item" ? i.gift : null;
+  const grp = g?.group;
+  const groupLine = () => {
+    const pct = i.price_cents ? Math.min(100, Math.round((grp.pledged_cents / i.price_cents) * 100)) : 0;
+    const who = grp.people.filter((p) => !p.mine).map((p) => p.name);
+    const people = grp.people.some((p) => p.mine) ? (who.length ? `You and ${andList(who.map(esc))}` : "Just you so far") : andList(who.map(esc));
+    return `<div class="group-line"><span aria-hidden="true">👥</span><span><b>Group gift</b> · ${people}${grp.pledged_cents ? ` · ${money(grp.pledged_cents)}${i.price_cents ? ` of ${money(i.price_cents)}` : ""} so far` : ""}</span>
+      ${i.price_cents && grp.pledged_cents ? `<span class="gbar" aria-hidden="true"><i style="width:${pct}%"></i></span>` : ""}</div>`;
+  };
+  const leftLine = () => !g || g.quantity === 1 || i.claim?.mine && !g.left ? ""
+    : g.quantity === 0 ? (g.taken ? `<span class="left-line">${g.taken} being given so far</span>` : "")
+    : `<span class="left-line">${g.left} of ${g.quantity} still needed</span>`;
   if (i.claim?.mine) {
     cls = " mine";
-    foot = `<span class="mine-line"><span class="chk${fresh ? " new" : ""}">${CHECK}</span>You're getting this${occTag(state.person, i.claim.occasion) || " one"}</span><span class="spacer"></span>
+    const what = i.claim.chipIn ? "You're in on the group gift" : i.claim.qty > 1 ? `You're getting ${i.claim.qty}` : `You're getting this${occTag(state.person, i.claim.occasion) || " one"}`;
+    foot = `<span class="mine-line"><span class="chk${fresh ? " new" : ""}">${CHECK}</span>${what}</span><span class="spacer"></span>
       <button class="btn small quiet" type="button" data-mark="${key}">Edit</button>`;
+    sub = (grp ? groupLine() : "") + leftLine();
   } else if (i.claim) {
     cls = " taken";
-    foot = `<span class="taken-line">${esc(i.claim.buyerName)} is getting this${occTag(state.person, i.claim.occasion)}</span>`;
+    const these = g && g.quantity !== 1;
+    foot = `<span class="taken-line">${esc(i.claim.buyerName)} ${i.claim.many ? "are" : "is"} getting ${these ? "these" : "this"}${occTag(state.person, i.claim.occasion)}</span>`;
+  } else if (grp) {
+    // A group gift is open to anyone. Buying one on your own is only offered while more are left.
+    sub = groupLine() + leftLine();
+    foot = `${visit}<span class="spacer"></span>
+      ${g.left !== 0 ? `<button class="btn small" type="button" data-mark="${key}">${GIFT_SM} I'll get one</button>` : ""}
+      <button class="btn small primary" type="button" data-chip="${key}">Chip in</button>`;
   } else {
+    // Group gifts are for one bigger thing, so wishes that want several don't offer one.
+    sub = leftLine() + (kind === "item" && g?.quantity === 1 ? `<button class="linkbtn" type="button" data-chip="${key}">Go in on it together</button>` : "");
     foot = `${visit}<span class="spacer"></span>
       <button class="btn small primary" type="button" data-mark="${key}">${GIFT_SM} I'll get this</button>`;
   }
@@ -4030,7 +4074,8 @@ function personRow(i, kind, n = 0) {
   else if (kind === "item" && state.manageList) foot += `<button class="btn small quiet" type="button" data-edit-wish="${esc(i.id)}" aria-label="Edit this wish">${PENCIL}</button>`;
   const top = kind === "item" && i.priority === "must" && !i.claim;
   const notes = kind === "idea" ? i.note : i.notes;
-  const paid = i.claim?.mine && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
+  // Your own price paid replaces the listed one, except a group gift share (the wish's price still matters there).
+  const paid = i.claim?.mine && !i.claim.chipIn && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
   const lookingUp = paid == null && i.url && !i.price_checked;
   const price = paid != null ? `<span class="wish-price">${money(paid)}</span>`
     : `<span class="wish-price none"${lookingUp ? ` data-price-slot="${esc(key)}"` : ""}>No price listed</span>`;
@@ -4051,46 +4096,65 @@ function personRow(i, kind, n = 0) {
       </div>
     </div>
     ${notes ? `<div class="wish-note"><span>${whose}</span>${esc(notes)}</div>` : ""}
+    ${sub && !i.removed ? `<div class="row-sub">${sub}</div>` : ""}
     <div class="row-foot">${foot}</div>
     ${fresh && !reduceMotion() ? `<span class="burst" aria-hidden="true">${CONFETTI}</span>` : ""}
   </article>`;
 }
 
 // "I'll get this" (or edit what you paid / take it back) for a list item or a shared idea.
-function markPurchased(kind, x, name, personId) {
+// opts.chip: start or join the wish's group gift instead of buying it yourself. Wishes that want more than one
+// ask how many you're getting.
+function markPurchased(kind, x, name, personId, opts = {}) {
   const path = kind === "item" ? "claim" : "idea/claim";
-  const occ = occasionsOf(personId);
   const key = kind === "item" ? "itemId" : "ideaId";
   const editing = !!x.claim?.mine;
-  const paid = editing ? x.claim.price_cents ?? x.price_cents : x.price_cents;
+  const g = kind === "item" ? x.gift : null;
+  const chip = editing ? !!x.claim.chipIn : !!opts.chip;
+  const grp = g?.group;
+  const joining = chip && grp && !grp.people.some((p) => p.mine);
+  const othersInGroup = grp ? grp.people.filter((p) => !p.mine).length : 0;
+  // How many you could get: what's left plus what you already have.
+  const mineQty = editing && !x.claim.chipIn ? x.claim.qty || 1 : 0;
+  const maxQty = !g || chip ? 1 : g.quantity === 0 ? 20 : Math.min(20, (g.left ?? 0) + mineQty);
+  const paid = chip ? (editing ? x.claim.price_cents : null) : editing ? x.claim.price_cents ?? x.price_cents : x.price_cents;
   const who = name || "them";
+  const title = chip ? (editing ? "Your share" : joining ? "Chip in on this gift?" : "Go in on it together?") : editing ? "Your gift" : "Getting this one?";
+  const chipHint = joining ? `${esc(grp.startedBy)} started this group gift${grp.pledged_cents ? `, ${money(grp.pledged_cents)} so far` : ""}. Add what you're putting in.`
+    : `Start a group gift and anyone in your circle can chip in. ${esc(who)} won't see any of it.`;
   openSheet(`
-    <h3>${editing ? "Your gift" : "Getting this one?"}</h3>
+    <h3>${title}</h3>
     <p class="what">${esc(x.title)}</p>
+    ${chip && !editing ? `<p class="hint" style="margin-top:0">${chipHint}</p>` : ""}
     <form id="markForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>${editing ? "Price you paid" : "Price"}</span>
-        <div class="input money-in"><span>$</span><input name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="0" aria-label="Price"></div></label>
-      ${occPicker(personId, x.claim?.occasion)}
-      ${editing ? "" : `<p class="hint">Not bought yet? Mark it anyway so nobody doubles up.</p>`}
-      ${editing ? `<div class="actions"><button class="btn danger" type="button" id="unmark">Not getting it</button><button class="btn primary" type="submit">Save</button></div>`
-        : `<button class="btn primary wide" type="submit">Yes, I'm getting it</button><button class="btn quiet wide" type="button" id="cancelMark" style="margin-top:6px">Cancel</button>`}
+      ${maxQty > 1 ? `<label class="field"><span>How many are you getting?</span><select class="input" name="qty">
+        ${Array.from({ length: maxQty }, (_, k) => `<option value="${k + 1}"${(mineQty || 1) === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select></label>` : ""}
+      <label class="field"><span>${chip ? "Your share" : editing ? "Price you paid" : "Price"}</span>
+        <div class="input money-in"><span>$</span><input name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="${chip ? "Optional" : "0"}" aria-label="${chip ? "Your share" : "Price"}"></div></label>
+      ${chip && grp && (joining || othersInGroup) ? "" : occPicker(personId, x.claim?.occasion)}
+      ${editing || chip ? "" : `<p class="hint">Not bought yet? Mark it anyway so nobody doubles up.</p>`}
+      ${editing ? `<div class="actions"><button class="btn danger" type="button" id="unmark">${chip ? "Leave group gift" : "Not getting it"}</button><button class="btn primary" type="submit">Save</button></div>`
+        : `<button class="btn primary wide" type="submit">${chip ? (joining ? "Chip in" : "Start a group gift") : "Yes, I'm getting it"}</button><button class="btn quiet wide" type="button" id="cancelMark" style="margin-top:6px">Cancel</button>`}
     </form>`, (el) => {
       $("#cancelMark", el)?.addEventListener("click", closeSheet);
       const occasion = wireOccPicker(el);
-      wireForm($("#markForm", el), async ({ price }) => {
-        await api(path, { [key]: x.id, on: true, price, occasion: occasion() });
+      wireForm($("#markForm", el), async ({ price, qty }) => {
+        const payload = { [key]: x.id, on: true, price, occasion: occasion() };
+        if (kind === "item") { payload.chipIn = chip; if (!chip) payload.qty = Number(qty || 1); }
+        const res = await api(path, payload);
         closeSheet();
         if (editing) { toast("Saved"); return render(); }
         buzz();
         const amount = price && parseFloat(price) > 0 ? money(Math.round(parseFloat(price) * 100)) : "";
-        toast(amount ? `Added ${amount} to ${who}'s budget` : "It's yours. Nobody else will get it.",
-          () => api(path, { [key]: x.id, on: false }).then(render, (e) => toast(e.message)));
+        const undo = () => api(path, { [key]: x.id, on: false }).then(render, (e) => toast(e.message));
+        if (chip) toast(res.started ? "Group gift started. Others can chip in now." : `You're in${amount ? ` for ${amount}` : ""}`, undo);
+        else toast(amount ? `Added ${amount} to ${who}'s budget` : x.gift && x.gift.quantity !== 1 ? "Marked so nobody doubles up." : "It's yours. Nobody else will get it.", undo);
         state.burst = `${kind}:${x.id}`;
         render();
       });
       $("#unmark", el)?.addEventListener("click", async () => {
-        try { await api(path, { [key]: x.id, on: false }); closeSheet(); toast("Taken back"); render(); }
+        try { await api(path, { [key]: x.id, on: false }); closeSheet(); toast(chip ? "You left the group gift" : "Taken back"); render(); }
         catch (e) { toast(e.message); }
       });
     });
@@ -4275,7 +4339,7 @@ function buyRow({ x, p }, n, still) {
   return `<div class="row buy${still ? "" : " slide"}" style="animation-delay:${Math.min(n, 8) * 0.04}s" role="button" tabindex="0" data-buy="${n}" aria-label="${esc(x.title)} for ${esc(p.name)}, ${STAGES[at][1]}">
     <div class="row-top">${avatar(p.name, p.id)}
       <div class="row-main">
-        <div class="row-head"><span class="row-title">${esc(x.title)}</span>${x.spent_cents ? `<span class="row-price">${money(x.spent_cents)}</span>` : ""}</div>
+        <div class="row-head"><span class="row-title">${esc(x.title)}${x.qty > 1 ? ` <small>×${x.qty}</small>` : ""}</span>${x.spent_cents ? `<span class="row-price">${money(x.spent_cents)}</span>` : ""}</div>
         <span class="from">For ${esc(p.name)} · ${esc(x.from)}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(host(x.url))}</a>` : ""}</span>
         ${x.stash ? `<span class="stash">${PIN}${esc(x.stash)}</span>` : ""}
       </div>

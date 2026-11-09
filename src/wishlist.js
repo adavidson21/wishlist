@@ -7,7 +7,7 @@
 // Each signed-in device gets a random token (header X-Wishlist-Token) that maps to a member.
 //
 // Privacy rules enforced here:
-//   - An item's owner never gets its claims (purchased marks).
+//   - An item's owner never gets its claims (purchased marks), including how many were bought and group gifts.
 //   - Ideas are private to their author unless shared as a suggestion. A shared suggestion is visible to
 //     everyone in the family except the person it's for. The person it's for never gets it in any response.
 //   - Budgets and the spending tracker are only returned to their author.
@@ -538,6 +538,47 @@ async function giftCardsFor(env, memberId, meId) {
   });
 }
 
+// How many of a wish someone wants: 1 to 99, or 0 for "as many as you like".
+function quantityValue(v) {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 99) fail(400, "How many should be a number from 1 to 99.");
+  return n;
+}
+const peopleList = (names) => (names.length < 2 ? names.join("") : names.length === 2 ? `${names[0]} and ${names[1]}`
+  : names.length === 3 ? `${names[0]}, ${names[1]} and ${names[2]}` : `${names[0]}, ${names[1]} and ${names.length - 2} more`);
+// A wish's purchases as someone other than its owner sees them (never sent to the owner).
+// rows: its active claims, oldest first, with buyer_name. A wish can have several buyers (qty each) plus one
+// group gift (chip_in rows, which together count as one).
+// gift: { quantity, taken, left (null = no limit), buyers: [{ name, qty, mine }], group: { people, pledged_cents, occasion, startedBy } }.
+// claim: your own mark, or (when nothing is left and there's no group gift to join) a summary, so "still
+// available" is simply !claim.
+function giftOut(item, rows, meId, nicks) {
+  const name = (r) => nicks.get(r.buyer_id) || r.buyer_name;
+  const quantity = item.quantity ?? 1;
+  const solo = rows.filter((r) => !r.chip_in), group = rows.filter((r) => r.chip_in);
+  const taken = solo.reduce((n, r) => n + (r.qty || 1), 0) + (group.length ? 1 : 0);
+  const left = quantity === 0 ? null : Math.max(0, quantity - taken);
+  const gift = {
+    quantity, taken, left,
+    buyers: solo.map((r) => ({ name: name(r), qty: r.qty || 1, mine: r.buyer_id === meId })),
+    group: group.length ? {
+      people: group.map((r) => ({ name: name(r), mine: r.buyer_id === meId })),
+      pledged_cents: group.reduce((n, r) => n + (r.price_cents || 0), 0),
+      occasion: group[0].season,
+      startedBy: name(group[0]),
+    } : null,
+  };
+  const mine = rows.find((r) => r.buyer_id === meId);
+  let claim = null;
+  if (mine) {
+    claim = { buyerId: meId, buyerName: name(mine), mine: true, price_cents: mine.price_cents, occasion: mine.season, qty: mine.qty || 1, chipIn: !!mine.chip_in };
+  } else if (left === 0 && rows.length && !group.length) {
+    // A group gift is never "taken": anyone can still chip in. The app shows only Chip in once nothing else is left.
+    claim = { buyerId: rows[0].buyer_id, buyerName: peopleList([...new Set(rows.map(name))]), mine: false, occasion: rows[0].season, many: new Set(rows.map((r) => r.buyer_id)).size > 1 };
+  }
+  return { gift, claim };
+}
+
 const itemOut = (r) => ({
   id: r.id,
   title: r.title,
@@ -549,6 +590,7 @@ const itemOut = (r) => ({
   brand: r.brand || null,
   priority: r.priority,
   category: r.category || null,
+  quantity: r.quantity ?? 1, // how many they want; 0 = as many as you like
   draft: !!r.draft,
   created_at: r.created_at,
   updated_at: r.updated_at,
@@ -1403,17 +1445,22 @@ const handlers = {
       };
     }
 
+    const t = today();
+    // A removed wish only stays while someone still has it marked; a hidden one only for its buyers.
     const { results } = await env.DB.prepare(
-      `SELECT i.*, c.buyer_id, b.name AS buyer_name, c.price_cents AS paid_cents, c.season AS claim_season
-         FROM items i
-         LEFT JOIN claims c ON c.item_id = i.id AND ${ACTIVE_CLAIM("claims", "item_id", "i.id")}
-         LEFT JOIN members b ON b.id = c.buyer_id
-        WHERE i.owner_id = ? AND (i.removed_at IS NULL OR c.item_id IS NOT NULL)
-          AND (${ITEM_VISIBLE} OR c.buyer_id = ?)
-        ORDER BY (c.item_id IS NOT NULL), (i.priority = 'must') DESC, i.created_at`,
+      `SELECT i.* FROM items i
+        WHERE i.owner_id = ?
+          AND (i.removed_at IS NULL OR EXISTS (SELECT 1 FROM claims c WHERE c.item_id = i.id AND c.season >= ?))
+          AND (${ITEM_VISIBLE} OR EXISTS (SELECT 1 FROM claims c WHERE c.item_id = i.id AND c.season >= ? AND c.buyer_id = ?))
+        ORDER BY (i.priority = 'must') DESC, i.created_at`,
     )
-      .bind(today(), memberId, me.id, me.id)
+      .bind(memberId, t, me.id, t, me.id)
       .all();
+    const { results: marks } = await env.DB.prepare(
+      `SELECT c.item_id, c.season, c.buyer_id, c.qty, c.chip_in, c.price_cents, m.name AS buyer_name
+         FROM claims c JOIN items i ON i.id = c.item_id JOIN members m ON m.id = c.buyer_id
+        WHERE i.owner_id = ? AND c.season >= ? ORDER BY c.created_at, c.buyer_id`,
+    ).bind(memberId, t).all();
     // Suggestions shared by others, plus your own ideas (shared or not) for this person.
     const { results: ideas } = await env.DB.prepare(
       `${IDEA_SELECT}
@@ -1432,9 +1479,7 @@ const handlers = {
       items: results.map((r) => ({
         ...itemOut(r),
         removed: !!r.removed_at,
-        claim: r.buyer_id
-          ? { buyerId: r.buyer_id, buyerName: nicks.get(r.buyer_id) || r.buyer_name, mine: r.buyer_id === me.id, price_cents: r.paid_cents, occasion: r.claim_season }
-          : null,
+        ...giftOut(r, marks.filter((c) => c.item_id === r.id), me.id, nicks),
       })),
       suggestions: visible.filter((i) => !i.mine),
       myIdeas: visible.filter((i) => i.mine),
@@ -1487,6 +1532,7 @@ const handlers = {
       // A full save from the wish form also counts as reviewed, so the details refresh leaves it alone.
       if (b.category !== undefined) rows.push(env.DB.prepare("UPDATE items SET category = ?, details_v = ? WHERE id = ?").bind(category(b.category), DETAILS_V, b.id));
       rows.push(env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), b.id));
+      if (b.quantity !== undefined) rows.push(env.DB.prepare("UPDATE items SET quantity = ? WHERE id = ?").bind(quantityValue(b.quantity), b.id));
       if (rows.length) await env.DB.batch(rows);
       return { id: b.id };
     }
@@ -1496,6 +1542,7 @@ const handlers = {
         `INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft, details_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${DETAILS_V})`,
       ).bind(id, owner, ...fields, t, t, image, image ? t : null, category(b.category), isDraft ? 1 : 0),
       env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), id),
+      env.DB.prepare("UPDATE items SET quantity = ? WHERE id = ?").bind(b.quantity === undefined ? 1 : quantityValue(b.quantity), id),
       ...(await hideRows(id)()),
       ...sizeColorRows(env, id, b),
     ]);
@@ -1539,40 +1586,61 @@ const handlers = {
     return { ok: true };
   },
 
-  // Mark (on: true) or unmark someone else's item as purchased. Only the buyer can unmark.
-  // price: what you paid (optional). Marking again with a new price updates it.
+  // Mark (on: true) or unmark someone else's item as purchased. Only the buyer can unmark their own mark.
+  // A wish can have several buyers, up to items.quantity (0 = no limit), plus one group gift.
+  // price: what you paid, or your share of a group gift (optional). qty: how many you're getting (default 1).
+  // chipIn: true starts the group gift (needs one left) or joins it (same occasion as the group).
   // occasion: which of the owner's occasions it's for (YYYYMMDD; absent = keep it, or the soonest).
+  // Returns started: true when this started a new group gift.
   async "POST claim"(req, env) {
     const me = await auth(req, env);
-    const { itemId, on, price, occasion } = await body(req);
+    const { itemId, on, price, occasion, qty, chipIn } = await body(req);
     const paid = cents(price);
-    const item = await env.DB.prepare(`SELECT i.id, i.owner_id, i.removed_at, ${ITEM_VISIBLE} AS visible FROM items i WHERE i.id = ?`)
+    const item = await env.DB.prepare(`SELECT i.id, i.owner_id, i.title, i.removed_at, i.quantity, ${ITEM_VISIBLE} AS visible FROM items i WHERE i.id = ?`)
       .bind(me.id, itemId)
       .first();
     if (!item) fail(404, "Item not found.");
     if (item.owner_id === me.id) fail(400, "You can't mark your own items.");
-    const existing = await env.DB.prepare("SELECT buyer_id, season FROM claims WHERE item_id = ? AND season >= ? ORDER BY season LIMIT 1")
-      .bind(itemId, today()).first();
-    // Hidden from all your shared families: only the person who already bought it can still change their mark.
-    if (!item.visible && existing?.buyer_id !== me.id) fail(404, "Item not found.");
+    const t = today();
+    const { results: rows } = await env.DB.prepare("SELECT buyer_id, season, qty, chip_in FROM claims WHERE item_id = ? AND season >= ? ORDER BY created_at, buyer_id")
+      .bind(itemId, t).all();
+    const existing = rows.find((r) => r.buyer_id === me.id);
+    // Hidden from all your shared families: only someone who already bought it can still change their mark.
+    if (!item.visible && !existing) fail(404, "Item not found.");
     if (on) {
-      if (existing && existing.buyer_id !== me.id) fail(409, "Someone already marked this as purchased.");
-      const s = await pickOccasion(env, item.owner_id, occasion, existing?.season);
+      const others = rows.filter((r) => r.buyer_id !== me.id);
+      const groupOthers = others.filter((r) => r.chip_in);
+      const usedByOthers = others.filter((r) => !r.chip_in).reduce((n, r) => n + (r.qty || 1), 0) + (groupOthers.length ? 1 : 0);
+      const quantity = item.quantity ?? 1;
+      const wantChip = chipIn === undefined ? !!existing?.chip_in : !!chipIn;
+      let n = 1;
+      if (!wantChip) {
+        n = qty === undefined || qty === null || qty === "" ? (existing && !existing.chip_in ? existing.qty || 1 : 1) : Number(qty);
+        if (!Number.isInteger(n) || n < 1 || n > 99) fail(400, "How many should be a number from 1 to 99.");
+      }
+      const need = wantChip ? (groupOthers.length ? 0 : 1) : n;
+      if (quantity !== 0 && usedByOthers + need > quantity) {
+        const left = Math.max(0, quantity - usedByOthers);
+        fail(409, left ? `Only ${left} left to get.` : "Someone already marked this as purchased.");
+      }
+      if (!existing && item.removed_at) fail(400, "This item was removed from the list.");
+      // Everyone in a group gift goes with the occasion it was started for.
+      const s = wantChip && groupOthers.length ? groupOthers[0].season : await pickOccasion(env, item.owner_id, occasion, existing?.season);
       if (existing) {
-        await env.DB.prepare("UPDATE claims SET price_cents = ?, season = ? WHERE item_id = ? AND season = ?")
-          .bind(paid, s, itemId, existing.season).run();
+        await env.DB.prepare("UPDATE claims SET price_cents = ?, season = ?, qty = ?, chip_in = ? WHERE item_id = ? AND season = ? AND buyer_id = ?")
+          .bind(paid, s, n, wantChip ? 1 : 0, itemId, existing.season, me.id).run();
       } else {
-        if (item.removed_at) fail(400, "This item was removed from the list.");
-        await env.DB.prepare("INSERT INTO claims (item_id, season, buyer_id, price_cents, created_at) VALUES (?, ?, ?, ?, ?)")
-          .bind(itemId, s, me.id, paid, now())
+        await env.DB.prepare("INSERT INTO claims (item_id, season, buyer_id, price_cents, created_at, qty, chip_in) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .bind(itemId, s, me.id, paid, now(), n, wantChip ? 1 : 0)
           .run();
       }
+      return { ok: true, started: wantChip && !groupOthers.length && !existing?.chip_in };
     } else if (existing) {
-      if (existing.buyer_id !== me.id) fail(403, "Only the person who marked it can undo that.");
-      await env.DB.prepare("DELETE FROM claims WHERE item_id = ? AND season = ?").bind(itemId, existing.season).run();
+      await env.DB.prepare("DELETE FROM claims WHERE item_id = ? AND season = ? AND buyer_id = ?").bind(itemId, existing.season, me.id).run();
       // An item the owner already removed disappears once nobody has bought it.
-      if (item.removed_at) {
+      if (item.removed_at && rows.length === 1) {
         await env.DB.batch([
+          env.DB.prepare("DELETE FROM claims WHERE item_id = ?").bind(itemId),
           env.DB.prepare("DELETE FROM item_hidden WHERE item_id = ?").bind(itemId),
           env.DB.prepare("DELETE FROM items WHERE id = ?").bind(itemId),
         ]);
@@ -1908,7 +1976,7 @@ const handlers = {
       ).bind(me.id, me.id).all(),
       env.DB.prepare("SELECT subject_id, season, amount_cents FROM budgets WHERE author_id = ? AND season >= ?").bind(me.id, t).all(),
       env.DB.prepare(
-        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash
+        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.qty, c.chip_in
            FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
       ).bind(me.id, t).all(),
       env.DB.prepare(
@@ -1932,11 +2000,14 @@ const handlers = {
       url: r.url,
       list_cents: r.list_cents,
       paid_cents: r.paid_cents,
-      spent_cents: r.paid_cents ?? r.list_cents ?? 0,
+      // A group gift counts only your share (nothing until you enter it). Several of one wish count each one.
+      spent_cents: r.paid_cents ?? (r.chip_in ? 0 : r.list_cents == null ? 0 : r.list_cents * (r.qty || 1)),
+      qty: r.qty || 1,
+      chipIn: !!r.chip_in,
       date: r.created_at,
       status: r.status || null,
       stash: r.stash || null,
-      from: kind === "item" ? "Their list" : r.author_id === me.id ? "My idea" : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
+      from: kind === "item" ? (r.chip_in ? "Group gift" : "Their list") : r.author_id === me.id ? "My idea" : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
     });
     const cardBuy = (r) => ({
       kind: "giftcard",
