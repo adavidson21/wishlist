@@ -15,6 +15,7 @@ What you can get, each with its own switch:
 - **New wishes:** "Sam added 2 wishes", at most once an hour (an hourly digest, so adding 10 wishes is one notification).
 - **Birthdays and Christmas:** "Sam's birthday is in 2 weeks" (14 and 3 days before). For Christmas, on Dec 1 and Dec 18, but only if you still need gifts: "Christmas is in 7 days. Still need a gift for Sam and Jen."
 - **Group gifts:** "Alexis started a group gift for Sam: Stand mixer. Chip in?" Never sent to the person the gift is for.
+- **Chats:** "Ann in the chat about Sam" with the message. Never sent to the person the chat is about. One per unread stretch, so a busy thread doesn't buzz your phone for every message. Tapping it opens that chat.
 
 Tapping a notification opens the right screen (their list, or Circles). All of it respects the usual privacy rules: you're only told about people you share a circle with, only about wishes you can see, and never about your own gifts.
 

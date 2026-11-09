@@ -1456,7 +1456,7 @@ async function refreshRow(env, table, row) {
 // (members.notify, NULL = all on): new wishes (hourly digest), birthday and Christmas reminders (9am New York),
 // and group gifts (sent when one starts). Everything follows the privacy rules: only people you share a circle
 // with, only wishes you can see, never anything about your own gifts.
-const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts"];
+const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts", "chat"];
 function notifyPrefs(v) {
   let o = {};
   try { o = JSON.parse(v || "{}") || {}; } catch {}
@@ -1582,6 +1582,32 @@ async function groupGiftStarted(env, starter, item) {
     await pushTo(env, r.id, {
       title: `${nicks.get(starter.id) || starter.name} started a group gift for ${nicks.get(item.owner_id) || owner?.name || "someone"}`,
       body: `${item.title}. Want to chip in?`, url: `/#person/${item.owner_id}`, tag: `group:${item.id}`,
+    });
+  }
+}
+
+// A new chat message: tell everyone in that circle except the person it's about and the sender. One
+// notification per unread stretch: someone who already has unread messages from the past week in that thread
+// isn't told again until they open it. The notification for a thread replaces the last one (same tag).
+async function chatPosted(env, author, groupId, subjectId, msg) {
+  const { results: people } = await env.DB.prepare(
+    `SELECT m.id, m.notify, r.last_read_at FROM group_members gm JOIN members m ON m.id = gm.member_id
+       LEFT JOIN chat_reads r ON r.member_id = m.id AND r.group_id = gm.group_id AND r.subject_id = ?2
+      WHERE gm.group_id = ?1 AND m.id NOT IN (?2, ?3) AND EXISTS (SELECT 1 FROM push_subs s WHERE s.member_id = m.id)`,
+  ).bind(groupId, subjectId, author.id).all();
+  for (const r of people) {
+    if (!notifyPrefs(r.notify).chat) continue;
+    const older = await env.DB.prepare(
+      `SELECT 1 FROM chat_messages WHERE group_id = ? AND subject_id = ? AND author_id != ? AND id != ? AND deleted_at IS NULL
+          AND created_at > ? AND created_at > ? LIMIT 1`,
+    ).bind(groupId, subjectId, r.id, msg.id, r.last_read_at || "", new Date(Date.now() - 7 * 86_400_000).toISOString()).first();
+    if (older) continue;
+    const nicks = await nicknamesFor(env, r.id);
+    const subject = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(subjectId).first();
+    const text = msg.body.length > 140 ? `${msg.body.slice(0, 137)}...` : msg.body;
+    await pushTo(env, r.id, {
+      title: `${nicks.get(author.id) || author.name} in the chat about ${nicks.get(subjectId) || subject?.name || "someone"}`,
+      body: text, url: `/#person/${subjectId}/chat/${groupId}`, tag: `chat:${groupId}:${subjectId}`,
     });
   }
 }
@@ -1813,7 +1839,7 @@ const handlers = {
   },
 
   // { group, member, body, itemId?, ideaId? }
-  async "POST chat/send"(req, env) {
+  async "POST chat/send"(req, env, url, ctx) {
     const me = await auth(req, env);
     const b = await body(req);
     const groupId = String(b.group || "");
@@ -1828,6 +1854,7 @@ const handlers = {
       "INSERT INTO chat_messages (id, group_id, subject_id, author_id, item_id, idea_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     ).bind(id, groupId, subjectId, me.id, tag.item, tag.idea, msg, t).run();
     await markChatRead(env, me.id, groupId, subjectId);
+    ctx?.waitUntil(chatPosted(env, me, groupId, subjectId, { id, body: msg }).catch((err) => console.error("chat push", err)));
     // Sweep messages past the keep window now and then.
     if (Math.random() < 0.05) await env.DB.prepare("DELETE FROM chat_messages WHERE created_at < ?").bind(chatCutoff()).run().catch(() => {});
     const r = await env.DB.prepare(`${CHAT_SELECT} WHERE c.id = ?`).bind(id).first();
