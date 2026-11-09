@@ -1205,6 +1205,48 @@
   .add.big { min-height: 60px; font-size: 18px; border-radius: 18px; }
   .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; font-weight: 600; margin: 22px 0 12px; }
   .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  /* Landing (no invite): a peek at a list, the pitch, how it works, and two ways in. */
+  .land-sub { max-width: 420px; margin: 12px auto 0; font-size: 17px; }
+  .landing .demo { position: relative; margin: 4px auto 40px; max-width: 400px; }
+  .demo-card { background: var(--card); border-radius: 20px; box-shadow: var(--shadow); padding: 14px; rotate: -1.5deg; border: 1px solid var(--line); }
+  .demo-head { display: flex; align-items: center; gap: 10px; margin: 0 2px 10px; }
+  .demo-head .avatar { width: 38px; height: 38px; font-size: 17px; }
+  .demo-head > span:last-child { display: flex; flex-direction: column; line-height: 1.2; }
+  .demo-head small, .demo-t small { color: var(--muted); font-size: 13px; font-weight: 500; }
+  .demo-item { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border-radius: 14px; }
+  .demo-item + .demo-item { border-top: 1px solid var(--line); }
+  .demo-item.got { background: var(--ok-soft); border-top-color: transparent; }
+  .demo-item.got + .demo-item { border-top-color: transparent; }
+  .demo-thumb { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 21px; flex: none; }
+  .demo-t { flex: 1; min-width: 0; display: flex; flex-direction: column; font-weight: 700; font-size: 15px; line-height: 1.25; }
+  .demo-star { color: var(--gold); font-size: 20px; }
+  .demo-tag { display: inline-flex; align-items: center; gap: 5px; flex: none; background: var(--ok); color: var(--card); font-size: 12px; font-weight: 800; padding: 5px 9px; border-radius: 999px; }
+  .demo-note { position: absolute; right: -6px; bottom: -16px; display: inline-flex; align-items: center; gap: 7px; rotate: 2deg;
+    background: var(--gold-soft); color: var(--gold-ink); border: 1.5px solid var(--gold); font-size: 14px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
+    box-shadow: var(--shadow); animation: checkpop .5s var(--spring) .7s both; }
+  .land-cta { margin: 0 0 30px; }
+  .land-fine { text-align: center; color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+  .land-h { font-size: 23px; margin: 8px 0 14px; }
+  .land-feats .perk { align-items: flex-start; }
+  .land-steps { list-style: none; padding: 0; margin: 0 0 26px; display: grid; gap: 14px; }
+  .land-steps li { display: flex; gap: 14px; align-items: flex-start; font-weight: 700; }
+  .land-steps b { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--gold); color: #3A2608; font-family: var(--display); font-size: 17px; }
+  .land-steps span { padding-top: 5px; }
+  .land-steps small { display: block; font-weight: 500; color: var(--muted); font-size: 15px; margin-top: 2px; }
+  label.field > .land-code-row { display: flex; gap: 8px; margin: 0; font-size: inherit; font-weight: inherit; }
+  .land-code { margin-bottom: 0; }
+  .land-code label.field { margin-bottom: 0; }
+  .land-code-row .input { flex: 1; min-width: 0; }
+  .land-code-row .btn { flex: none; }
+  @media (min-width: 720px) {
+    body:has(.landing) main { max-width: 860px !important; }
+    .land-feats { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .land-steps { grid-template-columns: repeat(3, 1fr); }
+    .land-steps li { flex-direction: column; gap: 8px; }
+    .land-steps span { padding-top: 0; }
+    .land-cta, .landing .or, .land-code { max-width: 480px; margin-inline: auto; }
+    .land-h { text-align: center; }
+  }
   .name-preview { display: flex; justify-content: center; margin: 0 0 16px; }
   .name-preview .avatar { width: 72px; height: 72px; font-size: 32px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); transition: background-color .3s ease; }
   .name-preview .avatar.bump { animation: checkpop .4s var(--spring) both; }
@@ -2577,9 +2619,12 @@ async function renderWelcome(step = "code", info = {}) {
     return;
   }
 
+  // No invite at all: someone found Hints on their own. Sell it, then make starting a circle the obvious next step.
+  if (step === "code") return renderLanding();
+
   // The link didn't match a family (old, mistyped, or the family was renamed). Offer the code box.
-  if (step === "badInvite" || step === "code") {
-    const bad = step === "badInvite";
+  if (step === "badInvite") {
+    const bad = true;
     setHero(bad ? envelope(true) + heroTitle("Hmm", "That invite didn't work")
       : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("", "Welcome to Hints")}`);
     v.innerHTML = `
@@ -2591,7 +2636,9 @@ async function renderWelcome(step = "code", info = {}) {
           <input class="input code-in" name="code" maxlength="8" value="${esc(bad ? "" : invite?.code || "")}" placeholder="ABC234" autocapitalize="characters" required></label>
         <button class="btn primary wide" type="submit">Continue</button>
       </form>
-      <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="startBtn">Start a new circle</button></p>`;
+      <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="startBtn">Start a new circle</button>
+        <br><button class="btn quiet" type="button" id="aboutBtn">What's Hints?</button></p>`;
+    $("#aboutBtn").onclick = () => renderLanding();
     wireForm($("#codeForm"), async ({ code }) => {
       const res = await api("lookup", { code });
       renderWelcome("who", { code, ...res });
@@ -2668,8 +2715,9 @@ async function renderWelcome(step = "code", info = {}) {
   // Your name, with your avatar updating as you type. The PIN comes later, in the welcome tour.
   if (step === "new" || step === "start") {
     const starting = step === "start";
-    setHero(backBtn + heroTitle(starting ? "You'll get a link to share" : `Join ${info.group.name}`, starting ? "Start a new circle" : "Nice to meet you"));
+    setHero(backBtn + heroTitle(starting ? "Free, and takes a minute" : `Join ${info.group.name}`, starting ? "Start a new circle" : "Nice to meet you"));
     v.innerHTML = `
+      ${starting ? `<p class="lead" style="margin-top:0">A circle is the group you swap gifts with: your family, your friends, your book club. Name it, add your name, and you'll get one link to send everyone.</p>` : ""}
       <form class="card slide" id="newForm" autocomplete="off">
         <div class="err" hidden></div>
         <div class="name-preview" id="namePrev">${avatar("?", "new", true)}</div>
@@ -2694,6 +2742,74 @@ async function renderWelcome(step = "code", info = {}) {
       else finishJoin(await api("join", { code: info.code, name: d.name, lastName: d.lastName }), { joined: info.group.name });
     });
   }
+}
+
+// The front door for someone with no invite: what Hints is, why it's nicer than the group text, and how to start.
+// Invite links skip this and open straight to their circle.
+const L_ICON = (d) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const L_LINK = L_ICON('<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>');
+const L_CHECK = L_ICON('<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>');
+const L_CHAT = L_ICON('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>');
+const L_BELL = L_ICON('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>');
+const L_HOME = L_ICON('<path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>');
+
+function renderLanding() {
+  const v = $("#view");
+  invite = null;
+  $("#hero").classList.add("tall");
+  setHero(`<img class="welcome-logo" src="/icons/icon.svg" alt="" style="margin-inline:auto">${heroTitle("Hints", "Wish lists that keep the surprise")}
+    <p class="hero-sub land-sub">Everyone shares what they'd love. Nobody sees what's been bought for them.</p>`);
+  const feat = (bg, icon, title, text, i) => `<div class="perk slide" style="animation-delay:${0.15 + i * 0.06}s"><span class="pi" style="background:var(--${bg});color:var(--${bg}-ink)">${icon}</span><span>${title}<small>${text}</small></span></div>`;
+  const start = (id, label) => `<button class="add big shine" type="button" id="${id}">${PLUS} ${label}</button>`;
+  v.innerHTML = `<div class="landing">
+    <div class="demo slide" aria-hidden="true">
+      <div class="demo-card">
+        <div class="demo-head">${avatar("Mom", "demo-mom")}<span><strong>Mom's wish list</strong><small>4 wishes</small></span></div>
+        <div class="demo-item"><span class="demo-thumb" style="background:var(--t2)">🧣</span><span class="demo-t">Cashmere scarf<small>$68 · Nordstrom</small></span><span class="demo-star">★</span></div>
+        <div class="demo-item got"><span class="demo-thumb" style="background:var(--t1)">📚</span><span class="demo-t">Book club pick<small>$18 · Bookshop</small></span><span class="demo-tag">${PERK_GIFT.replace(/width="22" height="22"/, 'width="14" height="14"')} You're getting this</span></div>
+        <div class="demo-item"><span class="demo-thumb" style="background:var(--t3)">🕯️</span><span class="demo-t">Fig candle<small>$32</small></span></div>
+      </div>
+      <div class="demo-note">${EYE_OFF} Mom never sees who's getting what</div>
+    </div>
+
+    <div class="land-cta">
+      ${start("startTop", "Start a circle")}
+      <p class="land-fine">Free, no ads, nothing to download. Takes about a minute.</p>
+    </div>
+
+    <h2 class="land-h">No more "what do you want this year?" texts</h2>
+    <div class="perks land-feats">
+      ${feat("t0", PERK_GIFT, "Everyone keeps a wish list", "Paste a link from any store or app and the photo and price fill in for you. Or just type a name.", 0)}
+      ${feat("t1", L_CHECK, "No doubles, no spoilers", "Quietly mark what you're getting so nobody buys the same thing. The person never sees it.", 1)}
+      ${feat("t2", LOCK.replace(/width="14" height="14"/, 'width="22" height="22"'), "Plan in secret", "Private gift ideas and a budget for each person, hidden from the people you shop for.", 2)}
+      ${feat("t3", L_CHAT, "A chat they can't see", "Talk about someone's gifts with the rest of the circle (\"Is she still a size M?\") without tipping them off.", 3)}
+      ${feat("t0", L_BELL, "A heads up when it matters", "Get a nudge when someone adds wishes, a birthday is two weeks out, or Christmas is close.", 4)}
+      ${feat("t1", L_HOME, "Room for everyone", "Group people into households. Set up lists for kids and grandparents who'll never download an app.", 5)}
+    </div>
+
+    <h2 class="land-h">How it works</h2>
+    <ol class="land-steps">
+      <li><b>1</b><span>Start a circle<small>Give it a name, like "Family Christmas", and add your name.</small></span></li>
+      <li><b>2</b><span>Drop a few hints<small>Add things you'd love. You can even start lists for the people you shop for.</small></span></li>
+      <li><b>3</b><span>Send one link<small>Everyone taps it, picks their name, and they're in. No passwords to remember.</small></span></li>
+    </ol>
+
+    <div class="land-cta">${start("startBottom", "Start your circle")}</div>
+
+    <div class="or">Already in a circle?</div>
+    <form class="card land-code" id="codeForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Enter your invite code</span>
+        <span class="land-code-row"><input class="input code-in" name="code" maxlength="8" placeholder="ABC234" autocapitalize="characters" required>
+        <button class="btn primary" type="submit">Join</button></span></label>
+      <p class="hint" style="margin:8px 0 0">Got an invite link instead? Just open it. It brings you right in.</p>
+    </form>
+  </div>`;
+  wireForm($("#codeForm"), async ({ code }) => {
+    const res = await api("lookup", { code });
+    renderWelcome("who", { code, ...res });
+  });
+  $("#startTop").onclick = $("#startBottom").onclick = () => { scrollTo(0, 0); renderWelcome("start"); };
 }
 
 // Signed in: clean up the URL, then the welcome tour (for new people) plays over My list.
