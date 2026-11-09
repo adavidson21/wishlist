@@ -2082,8 +2082,9 @@ const handlers = {
     const group = await groupByCode(env, b.code);
     const info = b.from ? await inviteInfo(env, b.code, b.from) : null;
     const { results } = await env.DB.prepare(
-      // People someone looks after can't be picked: they don't sign in until their list is handed over.
-      "SELECT m.id, m.name, m.last_name, m.household_id, m.pin_hash, m.photo_at FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.managed_by IS NULL ORDER BY m.name COLLATE NOCASE",
+      // People set up by someone else (managed) show as waiting: tapping their name takes the list over. Kids
+      // someone looks after never show: they stay looked after until a manager hands them over.
+      "SELECT m.id, m.name, m.last_name, m.household_id, m.pin_hash, m.photo_at, m.managed_by FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND (m.managed_by IS NULL OR m.is_kid = 0) ORDER BY m.name COLLATE NOCASE",
     )
       .bind(group.id)
       .all();
@@ -2102,7 +2103,9 @@ const handlers = {
       group: { name: group.name, admin: results.find((m) => m.id === adminId)?.name || null },
       inviter: info?.inviter || null,
       members: results.map((m) => ({
-        id: m.id, name: m.name, hasPin: !!m.pin_hash, photo: m.photo_at || null,
+        id: m.id, name: m.name, hasPin: !!m.pin_hash && !m.managed_by, photo: m.photo_at || null,
+        // Set up by someone else and not claimed yet: tapping it makes the list theirs.
+        waiting: !!m.managed_by, by: m.managed_by ? results.find((x) => x.id === m.managed_by)?.name || null : null,
         lastInitial: twice(m) && m.last_name ? m.last_name[0].toUpperCase() : null,
         household: twice(m) && !m.last_name ? hhTag.get(m.household_id) || null : null,
       })),
@@ -2117,11 +2120,19 @@ const handlers = {
     let member;
     if (b.memberId) {
       member = await env.DB.prepare(
-        "SELECT m.id, m.name, m.pin_hash, m.managed_by FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
+        "SELECT m.id, m.name, m.pin_hash, m.managed_by, m.is_kid FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
       )
         .bind(group.id, b.memberId)
         .first();
       if (!member) fail(404, "That person isn't in this circle.");
+      // A list someone set up for you, opened from the circle link: it becomes yours (like a personal link),
+      // and the welcome tour offers a PIN. Kids someone looks after can't be taken over this way.
+      if (member.managed_by && !member.is_kid) {
+        const done = await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL WHERE id = ? AND managed_by IS NOT NULL")
+          .bind(member.id).run();
+        if (!done.meta?.changes) fail(409, `${member.name} just joined. Go back and tap your name again.`);
+        return { token: await signIn(env, member.id), claimed: true };
+      }
       await notManaged(env, member);
     } else {
       const name = text(b.name, LIMITS.name, "First name", true);

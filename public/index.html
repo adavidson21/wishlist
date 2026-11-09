@@ -2603,24 +2603,48 @@ async function renderWelcome(step = "code", info = {}) {
   // New people are the usual case, so "I'm new" comes first; returning people tap their name.
   if (step === "who") {
     notePhotos(info.members);
-    setHero(backBtn + heroTitle(info.group.name, "Are you new here?"));
-    v.innerHTML = `
-      <button class="add big shine slide" type="button" id="newBtn">${PLUS} Yes, add me</button>
-      ${info.members.length ? `<div class="or">or, already joined? Tap your name</div>
-      <div class="picker">
+    // Someone set up lists for people before they joined: lead with the names, so nobody makes a second one.
+    const waiting = info.members.some((m) => m.waiting);
+    const picker = info.members.length ? `<div class="picker">
         ${info.members.map((m, i) => `<button class="member slide" style="animation-delay:${0.1 + i * 0.05}s" type="button" data-id="${esc(m.id)}">
             ${avatar(m.name, m.id)}
-            <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}${m.household ? `<span class="dupe-tag">${esc(m.household)}</span>` : ""}</strong>${m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
+            <span class="who"><strong>${esc(m.name)}${m.lastInitial ? ` ${esc(m.lastInitial)}.` : ""}${m.household ? `<span class="dupe-tag">${esc(m.household)}</span>` : ""}</strong>${m.waiting ? `<small>Ready for you${m.by ? `, set up by ${esc(m.by)}` : ""}</small>` : m.hasPin ? `<small>${LOCK} PIN protected</small>` : ""}</span>${CHEV}
           </button>`).join("")}
-      </div>` : ""}`;
+      </div>` : "";
+    setHero(backBtn + heroTitle(info.group.name, waiting ? "Find your name" : "Are you new here?"));
+    v.innerHTML = waiting
+      ? `<p class="lead" style="margin-top:0">Tap your name to get started.</p>${picker}
+        <div class="or">Not on the list?</div><button class="add slide" type="button" id="newBtn">${PLUS} Add me</button>`
+      : `<button class="add big shine slide" type="button" id="newBtn">${PLUS} Yes, add me</button>
+      ${picker ? `<div class="or">or, already joined? Tap your name</div>${picker}` : ""}`;
     $("#backBtn").onclick = () => renderWelcome(invite ? "invite" : "code");
     $("#newBtn").onclick = () => renderWelcome("new", info);
     v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = async () => {
       const m = info.members.find((x) => x.id === b.dataset.id);
+      if (m.waiting) return renderWelcome("mine", { ...info, member: m });
       if (m.hasPin) return renderWelcome("pin", { ...info, member: m });
       try { finishJoin(await api("join", { code: info.code, memberId: m.id }), { returning: true }); }
       catch (e) { oops(e.message); }
     }));
+    return;
+  }
+
+  // A list someone set up for you, picked from the circle link: confirm it's you, then it's yours.
+  if (step === "mine") {
+    const m = info.member;
+    setHero(backBtn + envelope() + heroTitle(info.group.name, `Hi ${m.name}!`));
+    v.innerHTML = `
+      <p class="lead" style="text-align:center">${m.by ? `${esc(m.by)} set up` : "Someone set up"} your wish list. Tap below and it's yours. You can add a PIN next, so only you can sign in as you.</p>
+      ${perks()}
+      <button class="add big shine slide" type="button" id="mineBtn">I'm ${esc(m.name)}, let's go</button>
+      <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="notMine">Not ${esc(m.name)}?</button></p>`;
+    $("#backBtn").onclick = () => renderWelcome("who", info);
+    $("#notMine").onclick = () => renderWelcome("who", info);
+    $("#mineBtn").onclick = async (e) => {
+      e.currentTarget.disabled = true;
+      try { finishJoin(await api("join", { code: info.code, memberId: m.id }), { joined: info.group.name }); }
+      catch (err) { oops(err.message); renderWelcome("who", info); }
+    };
     return;
   }
 
@@ -4640,7 +4664,10 @@ function budgetMini(p) {
 // ---------- invites ----------
 // The link opens a landing page for that family, and `from` lets it say who sent it.
 const inviteLink = (g) => `${location.origin}/join/${encodeURIComponent(g.code)}?from=${encodeURIComponent(state.me.id)}`;
-const inviteText = (g) => `${state.me.name} invited you to ${g.name} on Hints 🎁 Add what you'd love this year, see what everyone's hoping for, and keep gifts a surprise.`;
+// When lists are already set up for people (not kids), the message tells them to tap their name.
+const inviteText = (g) => `${state.me.name} invited you to ${g.name} on Hints 🎁 ${(g.members || []).some((m) => m.managedBy && !m.kid)
+  ? "Your list is already set up: open the link, tap your name, and add a PIN so only you can sign in as you."
+  : "Add what you'd love this year, see what everyone's hoping for, and keep gifts a surprise."}`;
 const COPY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const SEND = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>';
 const QR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>';
