@@ -1,7 +1,7 @@
 // hints.alexisdavidson.org. The Worker runs before static files (run_worker_first in wrangler.jsonc) so the
 // retired wishlist.alexisdavidson.org can redirect everything here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
 // with a link preview for that circle, everything else is a static file.
-// Every response gets the security headers below. API calls and invite pages also pass a per-IP burst cap (src/limits.js).
+// Every response gets the security headers below and an x-app-version header (the deploy id). API calls and invite pages also pass a per-IP burst cap (src/limits.js).
 import { routes, inviteInfo, runSchedule } from "./wishlist.js";
 import { json } from "./gemini.js";
 import { LIMITS, burstOk, hit, ipOf } from "./limits.js";
@@ -40,7 +40,11 @@ export default {
       url.hostname = HOST;
       return Response.redirect(url.toString(), 301);
     }
-    return secure(await route(request, env, url, ctx));
+    const res = secure(await route(request, env, url, ctx));
+    // Which deploy answered. The app compares it across API calls and offers a refresh when it changes.
+    const version = env.CF_VERSION_METADATA?.id;
+    if (version) res.headers.set("x-app-version", version);
+    return res;
   },
   // Hourly Cron Trigger (wrangler.jsonc): notifications (new-wish digest, and reminders at 9am New York).
   async scheduled(event, env, ctx) {
