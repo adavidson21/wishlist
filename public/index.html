@@ -6866,6 +6866,7 @@ const PUSH_KINDS = [["wishes", "New wishes", "When someone adds to their list (a
   ["birthdays", "Birthdays and Christmas", "Two weeks and two days before, and in December if you still need gifts"],
   ["groupGifts", "Group gifts", "When someone starts one you can chip in on"],
   ["chat", "Chats", "New messages in a chat about someone (once until you read it)"],
+  ["chatText", "Show message text", "Put what was said in chat notifications. Off, they just say \"New message about Mom\", in case they see your lock screen"],
   ["reminders", "Your list", "Once in November if your list hasn't changed since last year"]];
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 function keyBytes(b64) {
@@ -6977,7 +6978,7 @@ async function paintPush(card) {
   api("push/subscribe", { subscription: sub.toJSON() }).catch(() => {});
   const prefs = state.me.notify || {};
   card.innerHTML = `<p class="sub">On for this device. Nothing comes between 9 pm and 8 am; anything that came up overnight arrives in the morning.</p>
-    ${PUSH_KINDS.map(([k, t, d]) => swRow(`push_${k}`, t, d, prefs[k] !== false).replace('type="button"', `type="button" data-push-kind="${k}"`)).join("")}
+    ${PUSH_KINDS.map(([k, t, d]) => swRow(`push_${k}`, t, d, k === "chatText" ? prefs[k] === true : prefs[k] !== false).replace('type="button"', `type="button" data-push-kind="${k}"`)).join("")}
     <div class="actions"><button class="btn" type="button" id="pushTest">Send a test</button><button class="btn quiet danger" type="button" id="pushOff">Turn off here</button></div>`;
   card.querySelectorAll("[data-push-kind]").forEach((b) => (b.onclick = async () => {
     const on = b.getAttribute("aria-checked") !== "true";

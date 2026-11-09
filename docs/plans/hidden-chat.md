@@ -77,15 +77,15 @@ Also:
 
 ## Phone notifications (shipped, #44)
 
-- Everyone in the circle except the person it's about and the sender gets "Ann in the chat about Sam" with the
-  message text, through the Web Push setup from `notifications.md` (`chatPosted()` in `src/wishlist.js`).
+- Everyone in the circle except the person it's about and the sender gets "New message about Sam" ("Tap to read
+  it"), through the Web Push setup from `notifications.md` (`chatPosted()` in `src/wishlist.js`).
+- **Show message text** (Settings > Notifications, off by default, `chatText` in `members.notify`): the
+  notification says "Ann in the chat about Sam" with the message instead. Off by default so Sam can't read the
+  chat on someone else's lock screen (decided Nov 9, 2026).
 - Once per unread stretch: if you already have unread messages from the past week in that thread, you aren't
   pinged again until you open it. A new one replaces the last on the device (tag `chat:<circle>:<person>`).
 - Quiet hours (9 pm to 8 am New York) hold it until 8 am. "Chats" switch in Settings > Notifications.
 - Tapping it opens that chat (`#person/<id>/chat/<circle>`).
-- Open question: the notification shows the message text and "chat about Sam" on the lock screen. If Sam picks up
-  someone's phone, that's the one place the subject could see it. Option: leave the text out ("New message about
-  Sam") or add a "Show message text" switch, off by default.
 
 ## Later
 

@@ -1752,7 +1752,9 @@ const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts", "chat", "reminders"];
 function notifyPrefs(v) {
   let o = {};
   try { o = JSON.parse(v || "{}") || {}; } catch {}
-  return Object.fromEntries(NOTIFY_KINDS.map((k) => [k, o[k] !== false]));
+  // chatText (off unless turned on): put the message itself in chat notifications. Off, they just say
+  // "New message about Sam", so nothing readable sits on a lock screen the person it's about might see.
+  return { ...Object.fromEntries(NOTIFY_KINDS.map((k) => [k, o[k] !== false])), chatText: o.chatText === true };
 }
 // A subscription (alias s) only counts while the device that turned it on is still signed in as that person.
 // Signing out, being bumped by the device cap, or being removed ends it, so the next person on that phone never
@@ -1992,10 +1994,14 @@ async function chatPosted(env, author, groupId, subjectId, msg) {
     if (older) continue;
     const nicks = await nicknamesFor(env, r.id);
     const subject = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(subjectId).first();
+    const prefs = notifyPrefs(r.notify);
+    const about = nicks.get(subjectId) || subject?.name || "someone";
     const text = msg.body.length > 140 ? `${msg.body.slice(0, 137)}...` : msg.body;
     await pushTo(env, r.id, {
-      title: `${nicks.get(author.id) || author.name} in the chat about ${nicks.get(subjectId) || subject?.name || "someone"}`,
-      body: text, url: `/#person/${subjectId}/chat/${groupId}`, tag: `chat:${groupId}:${subjectId}`,
+      // Message text only for people who turned on "Show message text" (Settings > Notifications).
+      title: prefs.chatText ? `${nicks.get(author.id) || author.name} in the chat about ${about}` : `New message about ${about}`,
+      body: prefs.chatText ? text : "Tap to read it.",
+      url: `/#person/${subjectId}/chat/${groupId}`, tag: `chat:${groupId}:${subjectId}`,
     });
   }
 }
@@ -3419,7 +3425,7 @@ const handlers = {
     const b = await body(req);
     const row = await env.DB.prepare("SELECT notify FROM members WHERE id = ?").bind(me.id).first();
     const prefs = notifyPrefs(row?.notify);
-    for (const k of NOTIFY_KINDS) if (b[k] !== undefined) prefs[k] = !!b[k];
+    for (const k of [...NOTIFY_KINDS, "chatText"]) if (b[k] !== undefined) prefs[k] = !!b[k];
     await env.DB.prepare("UPDATE members SET notify = ? WHERE id = ?").bind(JSON.stringify(prefs), me.id).run();
     return { notify: prefs };
   },

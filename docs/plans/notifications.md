@@ -16,7 +16,7 @@ What you can get, each with its own switch:
 - **Birthdays and Christmas:** "Sam's birthday is in 2 weeks" (14 and 2 days before; the 2-day one names the weekday, "Sam's birthday is Tuesday"). For Christmas, on Dec 1 and Dec 18, but only if you still need gifts: "Christmas is in 7 days. Still need a gift for Sam and Jen."
 - **Group gifts:** "Alexis started a group gift for Sam: Stand mixer. Chip in?" Never sent to the person the gift is for.
 - **Your list:** from Nov 15, "Your list hasn't changed since last year" to the owner only, once a year, and not after Looks good on the My list card.
-- **Chats:** "Ann in the chat about Sam" with the message. Never sent to the person the chat is about. One per unread stretch, so a busy thread doesn't buzz your phone for every message. Tapping it opens that chat.
+- **Chats:** "New message about Sam" (the sender and message text only with "Show message text" on, off by default, so nothing readable sits on a lock screen Sam might see). Never sent to the person the chat is about. One per unread stretch, so a busy thread doesn't buzz your phone for every message. Tapping it opens that chat.
 
 Tapping a notification opens the right screen (their list, or Circles). All of it respects the usual privacy rules: you're only told about people you share a circle with, only about wishes you can see, and never about your own gifts.
 
