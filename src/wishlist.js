@@ -1607,7 +1607,8 @@ const LINK_PROMPT = `Someone pasted a product link into a gift wish list, and ou
 Open the URL (use Google Search if you can't open it) and report the product on that exact page:
 - found: false if you can't tell which product the link is for. Never invent or guess a product.
 - title: the product's name as a shopper would say it, brand first when known, under 80 characters
-- price: the current price in US dollars as a number, or null if you can't tell
+- price: what the store charges for it right now in US dollars (the sale price if it's on sale, never a "was",
+  "comparable value" or list price), or null if you can't tell
 - image: the URL of the main product photo exactly as it appears on the page or in search results (an image file,
   usually on the store's image server), or "" if you didn't see one. Never build or guess a URL.
 - in_stock: true if that store currently shows it available to buy new, false if sold out or unavailable, null if unclear.
@@ -1670,7 +1671,8 @@ function tidyBrand(v) {
 // nothing stored in D1). Reads the store page; Gemini only for stores that block us. Misses are cached for
 // 6 hours so a blocked store isn't looked up on every visit.
 const LIVE_TTL = 12 * 3600, LIVE_MISS_TTL = 6 * 3600;
-const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/${encodeURIComponent(u)}`);
+// v2: drops cached answers from before search prices stopped counting.
+const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v2/${encodeURIComponent(u)}`);
 async function livePrice(env, rawUrl, { ai = true } = {}) {
   let clean;
   try { clean = cleanLink(await resolveShortLink(new URL(link(rawUrl)))); } catch { return null; }
@@ -1692,7 +1694,9 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
   }
   if (price == null && inStock === null && ai) {
     const found = await lookupLink(env, clean).catch(() => null);
-    if (found && matchesLink(found.title, url)) { price = found.price; inStock = found.inStock; via = "search"; }
+    // Only stock status from search. Gemini's price for a page it couldn't open has been wrong (a $129 Coach bag
+    // came back as $275), and a wrong live price would also overwrite a synced one, so search prices don't count.
+    if (found && matchesLink(found.title, url)) { inStock = found.inStock; via = "search"; }
   }
   const out = { price, inStock, site, via, checkedAt: now() };
   const hit = price != null || inStock !== null;

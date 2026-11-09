@@ -139,10 +139,8 @@
   .hero-row .avatar { border: 2px solid var(--hero-muted); }
   .hero-row h1 { margin: 0; }
   .hero-row .who-name { flex: 1; min-width: 0; }
-  /* Someone's list: "Nickname & budget" drops under the name when both don't fit on one line. */
-  .hero-row:has(#editBtn) { flex-wrap: wrap; row-gap: 10px; }
-  .hero-row:has(#editBtn) .who-name { min-width: 55%; }
-  .hero-row #editBtn { margin-left: auto; }
+  /* Someone's list: just a pencil for nickname and budget. */
+  .hero-row #editBtn { margin-left: auto; width: 40px; padding: 0; justify-content: center; }
   .realname { display: block; color: var(--hero-muted); font-size: 14px; margin-top: 2px; }
   .hero-meter { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; }
   .hero-meter .bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .16); overflow: hidden; }
@@ -5626,7 +5624,7 @@ async function renderPerson(id) {
   setHero(`${helpBtn ? `<div class="hero-top"><button class="back" type="button" id="backBtn">${BACK} Circles</button>${helpBtn}</div>` : `<button class="back" type="button" id="backBtn">${BACK} Circles</button>`}
     <div class="hero-row">${avatar(name, id, true)}
       <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}${dupeTag(everyone().find((m) => m.id === id)) ? `<span class="realname">${esc(dupeTag(everyone().find((m) => m.id === id)))}</span>` : ""}</div>
-      <button class="hero-edit" type="button" id="editBtn" aria-label="Nickname and budget for ${esc(name)}">${PENCIL}<span>Nickname &amp; budget</span></button></div>${meter}`, heroCover(list.member));
+      <button class="hero-edit" type="button" id="editBtn" aria-label="Nickname and budget for ${esc(name)}" title="Nickname and budget">${PENCIL}</button></div>${meter}`, heroCover(list.member));
 
   // Summary cards double as quick filters: tap one to show just those wishes, tap again (or "wishes") for all.
   const statBtn = (k, n, label, cls = "") =>
