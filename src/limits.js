@@ -27,8 +27,9 @@ export const LIMITS = {
   circlesPerMember: 20,
   membersPerCircle: 100,
   circlesStartedPerMemberDay: [5, 86400],
-  managedPerMember: 15, // people you look after (kids, grandparents) who don't use the app
-  managedAddsPerMemberDay: [10, 86400],
+  managedPerMember: 40, // people you look after (kids, grandparents, or people you set up before they join)
+  managedAddsPerMemberDay: [40, 86400],
+  invitesPerMemberDay: [80, 86400], // personal invite links made
   // Per person, things that fetch store pages or call Gemini.
   previewPerMember: [[80, 3600], [300, 86400]],
   identifyPerMember: [[15, 3600], [40, 86400]],

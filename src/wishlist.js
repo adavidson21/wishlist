@@ -614,15 +614,37 @@ async function manageableHousehold(env, meId, householdId) {
 
 // ---------- people someone looks after ----------
 // A managed person (members.managed_by, migration 0023) doesn't use the app: a kid, or a grandparent. Whoever
-// added them manages them, and so does anyone in the same household as them. Managers edit their list and
-// profile, and still see purchased marks (the person themself never signs in, so there's no surprise to keep).
-// Nobody can sign in as them until a manager hands the list over (managed/release).
+// added them manages them, and so does anyone in the same household as them, and the admin of any circle
+// they're in (so handing admin to someone else hands over the people who haven't joined yet too). Managers edit
+// their list and profile, and still see purchased marks (the person themself never signs in, so there's no
+// surprise to keep). Nobody can sign in as them until a manager hands the list over (managed/release) or they
+// open their personal invite link (claim).
 async function canManage(env, meId, memberId) {
   if (!memberId || memberId === meId) return false;
   const row = await env.DB.prepare("SELECT managed_by, household_id FROM members WHERE id = ?").bind(String(memberId)).first();
   if (!row?.managed_by) return false;
   if (row.managed_by === meId) return true;
-  return !!row.household_id && (await householdOf(env, meId)) === row.household_id;
+  if (row.household_id && (await householdOf(env, meId)) === row.household_id) return true;
+  const { results } = await env.DB.prepare(
+    "SELECT a.group_id FROM group_members a JOIN group_members b ON b.group_id = a.group_id WHERE a.member_id = ? AND b.member_id = ?",
+  ).bind(String(memberId), meId).all();
+  for (const r of results) if ((await adminOf(env, r.group_id)) === meId) return true;
+  return false;
+}
+const CLAIM_DAYS = 30;
+async function sha256(textValue) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(textValue)));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+// The person a personal invite link is for, or 404. Only people who haven't joined yet, before it expires.
+async function claimFor(env, token) {
+  const tk = String(token || "");
+  if (!/^[A-Za-z0-9]{20,64}$/.test(tk)) fail(404, "That invite link didn't work.");
+  const row = await env.DB.prepare(
+    "SELECT id, name, managed_by, claim_expires FROM members WHERE claim_hash = ? AND managed_by IS NOT NULL",
+  ).bind(await sha256(tk)).first();
+  if (!row || !row.claim_expires || row.claim_expires < now()) fail(404, "That invite link didn't work. It may be old, or it was already used.");
+  return row;
 }
 // Whose list or profile a write is for: yours, or (as: id) someone you look after.
 async function ownerFor(env, me, as) {
@@ -1834,7 +1856,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes, m.managed_by, m.pin_hash IS NOT NULL AS has_pin,
+      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes, m.managed_by, m.claim_expires, m.pin_hash IS NOT NULL AS has_pin,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -1847,6 +1869,13 @@ const handlers = {
     const t = today();
     const myHh = await householdOf(env, me.id);
     const unread = await chatUnread(env, me.id);
+    for (const g of groups) g.created_by = await adminOf(env, g.id);
+    // People not on Hints yet in a circle you're the admin of: you can run their list too (canManage).
+    const adminCircles = new Set(groups.filter((g) => g.created_by === me.id).map((g) => g.id));
+    const adminManaged = new Set(people.filter((p) => p.managed_by && adminCircles.has(p.group_id)).map((p) => p.id));
+    const manages = (p) => !!p.managed_by && p.id !== me.id
+      && (p.managed_by === me.id || (!!p.household_id && p.household_id === myHh) || adminManaged.has(p.id));
+    const tNow = now();
     const person = (p) => ({
       id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null,
       occasions: occasionsFor(p, t), householdId: p.household_id || null, hasPin: !!p.has_pin,
@@ -1854,7 +1883,9 @@ const handlers = {
       nopes: tagsOut(p.dislikes),
       // Someone who doesn't use the app: who added them, and whether you can run their list (canManage, same rule).
       managedBy: p.managed_by || null,
-      canManage: !!p.managed_by && (p.managed_by === me.id || (!!p.household_id && p.household_id === myHh)),
+      canManage: manages(p),
+      // Their personal invite link is out and not used yet (only for people you can manage).
+      inviteSent: manages(p) && !!p.claim_expires && p.claim_expires > tNow,
       // Unread messages in the chat about them in this circle. Always 0 for yourself (chatUnread skips your thread).
       chatUnread: p.id === me.id ? 0 : unread.get(`${p.group_id}:${p.id}`) || 0,
     });
@@ -1892,7 +1923,6 @@ const handlers = {
         }
       }
     }
-    for (const g of groups) g.created_by = await adminOf(env, g.id);
     let pinCleared = null;
     const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
@@ -2888,17 +2918,19 @@ const handlers = {
 
   // ---------- people you look after ----------
 
-  // Add someone who doesn't use the app (a kid, a grandparent). groupIds: which of your circles they're in
-  // (absent = all of them). If you have a household they join it too, so everyone in it can run their list.
+  // Add someone who doesn't use the app (a kid, a grandparent), or isn't on it yet. groupIds: which of your
+  // circles they're in (absent = all of them). They join your household too if you have one, so everyone in it
+  // can run their list. householdId: put them in that household instead (one you can organize, see
+  // manageableHousehold); then they're only in its circles unless groupIds says more.
   async "POST managed/add"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
     const name = text(b.name, LIMITS.name, "Their name", true);
     const mine = await myGroupIds(env, me.id);
-    const picked = Array.isArray(b.groupIds) ? [...new Set(b.groupIds.map(String))].filter((g) => mine.includes(g)) : mine;
-    if (!picked.length) fail(400, "Pick at least one circle.");
-    const hh = await householdOf(env, me.id);
+    const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
+    const picked = Array.isArray(b.groupIds) ? [...new Set(b.groupIds.map(String))].filter((g) => mine.includes(g)) : b.householdId ? [] : mine;
     const hhCircles = hh ? (await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all()).results.map((r) => r.group_id) : [];
+    if (!picked.length && !hhCircles.length) fail(400, "Pick at least one circle.");
     for (const g of new Set([...picked, ...hhCircles])) {
       const clash = await env.DB.prepare(
         "SELECT g.name FROM group_members gm JOIN members m ON m.id = gm.member_id JOIN groups g ON g.id = gm.group_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
@@ -2929,8 +2961,59 @@ const handlers = {
     const me = await auth(req, env);
     const { memberId } = await body(req);
     if (!(await canManage(env, me.id, memberId))) fail(404, "Person not found.");
-    await env.DB.prepare("UPDATE members SET managed_by = NULL WHERE id = ?").bind(String(memberId)).run();
+    await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_hash = NULL, claim_expires = NULL WHERE id = ?").bind(String(memberId)).run();
     return { ok: true };
+  },
+
+  // A personal invite link for someone who isn't on Hints yet. Opening it signs them in as themselves and hands
+  // the list over (POST claim), so there's no shared PIN and they don't pick their name. A new link replaces the
+  // old one. Returns { token, expires }; the app builds /join/CODE?from=ME&hi=TOKEN.
+  async "POST managed/invite"(req, env) {
+    const me = await auth(req, env);
+    const { memberId } = await body(req);
+    if (!(await canManage(env, me.id, memberId))) fail(404, "Person not found.");
+    await rateLimit(env, `invite:m:${me.id}`, ABUSE.invitesPerMemberDay, "That's a lot of invites today. Try again tomorrow.");
+    const token = randomString(24, "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789");
+    const expires = new Date(Date.now() + CLAIM_DAYS * 86_400_000).toISOString();
+    await env.DB.prepare("UPDATE members SET claim_hash = ?, claim_expires = ? WHERE id = ?").bind(await sha256(token), expires, String(memberId)).run();
+    return { token, expires };
+  },
+
+  // Turn off someone's personal invite link (it stops working).
+  async "POST managed/uninvite"(req, env) {
+    const me = await auth(req, env);
+    const { memberId } = await body(req);
+    if (!(await canManage(env, me.id, memberId))) fail(404, "Person not found.");
+    await env.DB.prepare("UPDATE members SET claim_hash = NULL, claim_expires = NULL WHERE id = ?").bind(String(memberId)).run();
+    return { ok: true };
+  },
+
+  // Opening a personal invite link: who it's for and who set it up. { token }
+  async "POST claim/lookup"(req, env) {
+    const b = await body(req);
+    await rateLimit(env, `lookup:ip:${ipOf(req)}`, ABUSE.lookupPerIp, "Too many tries. Wait a bit and try again.");
+    const them = await claimFor(env, b.token);
+    const by = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(them.managed_by).first();
+    const { results: wishes } = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL AND draft = 0",
+    ).bind(them.id).all();
+    const { results: circles } = await env.DB.prepare(
+      "SELECT g.name FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = ? ORDER BY gm.joined_at",
+    ).bind(them.id).all();
+    return { name: them.name, by: by?.name || null, wishes: wishes[0]?.n || 0, circles: circles.map((c) => c.name) };
+  },
+
+  // Use a personal invite link: the list becomes theirs, they're signed in on this device, and they get the
+  // welcome tour (which offers a PIN). The link stops working. { token }
+  async "POST claim"(req, env) {
+    const b = await body(req);
+    await rateLimit(env, `join:ip:${ipOf(req)}`, ABUSE.joinPerIp, "Too many sign-in tries. Wait a bit and try again.");
+    const them = await claimFor(env, b.token);
+    const done = await env.DB.prepare(
+      "UPDATE members SET managed_by = NULL, claim_hash = NULL, claim_expires = NULL, onboarded_at = NULL WHERE id = ? AND claim_hash IS NOT NULL",
+    ).bind(them.id).run();
+    if (!done.meta?.changes) fail(404, "That invite link was already used.");
+    return { token: await signIn(env, them.id), name: them.name };
   },
 
   // Take someone you look after out of every circle (and their household). Nobody can see their list after that.
@@ -2978,6 +3061,46 @@ const handlers = {
       ...ids.map((id) => env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, id)),
     ]);
     return { household: { id: hh } };
+  },
+
+  // Set up a household of people who aren't on Hints yet, in a circle you're the admin of. Each one is someone
+  // you look after (managed) until they open their personal invite link. { groupId, name?, people: [names] }
+  async "POST household/new"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const groupId = b.groupId;
+    if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can set up households here.");
+    const hhName = text(b.name, LIMITS.household, "Household name");
+    const names = (Array.isArray(b.people) ? b.people : []).map((n) => text(n, LIMITS.name, "Name")).filter(Boolean);
+    if (!names.length) fail(400, "Add at least one person.");
+    if (names.length > 12) fail(400, "That's a lot of people for one household.");
+    const lower = names.map((n) => n.toLowerCase());
+    const dupe = names.find((n, i) => lower.indexOf(n.toLowerCase()) !== i);
+    if (dupe) fail(409, `${dupe} is in the list twice. Add a last initial to tell them apart.`);
+    for (const n of names) {
+      const clash = await env.DB.prepare(
+        "SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
+      ).bind(groupId, n).first();
+      if (clash) fail(409, `Someone named ${n} is already in this circle. Add a last initial to tell them apart.`);
+    }
+    await circleRoom(env, groupId, names.length);
+    const { n: managedCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM members WHERE managed_by = ?").bind(me.id).first();
+    if (managedCount + names.length > ABUSE.managedPerMember) fail(409, `You can set up ${ABUSE.managedPerMember} people at a time. Send some invites first.`);
+    for (let i = 0; i < names.length; i++) await rateLimit(env, `managed:${me.id}`, ABUSE.managedAddsPerMemberDay, "That's a lot of new people today. Try again tomorrow.");
+    if ((await hit(env, "newmember:all", 86400)) > ABUSE.newMembersPerDay) fail(429, "Hints isn't taking new people right now. Try again tomorrow.");
+    const hh = newId();
+    const t = now();
+    const ids = names.map(() => newId());
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, ?, ?)").bind(hh, hhName, t),
+      env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?)").bind(groupId, hh, t),
+      ...names.flatMap((n, i) => [
+        env.DB.prepare("INSERT INTO members (id, name, created_at, managed_by, household_id, onboarded_at) VALUES (?, ?, ?, ?, ?, ?)").bind(ids[i], n, t, me.id, hh, t),
+        env.DB.prepare("INSERT INTO group_members (group_id, member_id, joined_at, direct) VALUES (?, ?, ?, 0)").bind(groupId, ids[i], t),
+      ]),
+    ]);
+    return { household: { id: hh }, people: names.map((n, i) => ({ id: ids[i], name: n })) };
   },
 
   // Add someone you share a circle with to a household (yours by default, starting one if you don't have one).

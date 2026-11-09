@@ -39,3 +39,16 @@ Migration `0022_managed.sql`: `members.managed_by` (member id of whoever added t
 - Circles tab: "Add someone who doesn't use the app" under You, and "Looked after by you" (or by whom) under their name.
 - Their page: a "You look after this list" card with Add a wish, Edit profile, Gift cards, Let them sign in, Remove. Edit on each wish.
 - The Add sheet: picking them in "Who's it for?" offers "Add to their wish list" or a private idea.
+
+## Setting everyone up first, then inviting them (Nov 2026)
+
+So a circle's admin can add everyone they shop for before anyone joins, start adding ideas, and then send each person a link that makes the list theirs.
+
+- **Add a household** (Circles > Manage > Manage households): a household name (optional) and the names of everyone in it. Each person is someone you look after until they join. `POST household/new { groupId, name?, people: [names] }`, admin only.
+- **Add someone** to any household: "Someone not on Hints yet" adds a new person straight into it. `managed/add` takes `householdId`.
+- **Invite** (on the household row, in Manage, or "Send Mom their invite" on their page): makes a **personal link**, `/join/CODE?from=ME&hi=TOKEN`. Opening it shows "Hi Mom! Alexis set up your wish list" and one button; that signs them in as themselves, hands the list over and starts the welcome tour (which offers a PIN). `POST managed/invite`, `POST managed/uninvite`, `POST claim/lookup`, `POST claim`.
+  - No default PIN. A shared one (like 1234) would let anyone in the circle sign in as anyone, including seeing their own surprises. The link is the key instead.
+  - Only a SHA-256 of the token is stored (`members.claim_hash`, `claim_expires`, migration `0028_personal_invites.sql`). One link per person; a new one replaces the old. It works once and expires after 30 days.
+  - Until they use it, they still can't be picked on the join screen.
+- **Admins can manage everyone who hasn't joined** in their circles (added to `canManage`), so handing admin to someone else hands over the setup too. You keep managing anyone you added yourself until they join. People who haven't joined can't be made admin, so the "New admin" list only shows people who have.
+- Limits: up to 40 people set up at a time per person (`managedPerMember`), 40 adds and 80 invite links a day.
