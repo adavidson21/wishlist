@@ -403,6 +403,9 @@
   .photo-row .btns { display: flex; flex-wrap: wrap; gap: 8px; }
   /* Circles and households get rounded-square pictures, so they don't look like a person. */
   .avatar.tile { border-radius: 30%; letter-spacing: .02em; }
+  .avatar.split { display: flex; background: var(--panel); }
+  .avatar.split .half { position: relative; flex: 1; height: 100%; display: grid; place-items: center; overflow: hidden; font-size: .78em; }
+  .avatar.split .half + .half { box-shadow: -1px 0 0 1px var(--card); }
   .hh-name .avatar, .fam-label .avatar, .fam .avatar { width: 30px; height: 30px; font-size: 13px; }
   .fam-label > span:first-child { display: inline-flex; align-items: center; gap: 10px; }
   .fam .avatar { width: 40px; height: 40px; font-size: 16px; }
@@ -547,8 +550,14 @@
   .manage-card { margin: 0 0 18px; border: 1.5px dashed color-mix(in srgb, var(--brand) 35%, transparent); }
   .manage-card .actions { flex-wrap: wrap; }
   .manage-card .actions .btn { flex: 1 1 auto; }
-  .manage-more { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; }
-  .manage-more .linkbtn { padding: 0; }
+  .mg-hh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 14px; color: var(--muted); font-size: 15px; }
+  .mg-hh strong { color: var(--ink); }
+  .mg-hh .avatar { width: 32px; height: 32px; font-size: 14px; }
+  .mg-hh .mg-txt { flex: 1; min-width: 0; }
+  .mg-hh .linkbtn { display: block; padding: 0; margin-top: 2px; font-size: 14px; }
+  .mg-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mg-btns .btn { width: 100%; }
+  .more-list { display: grid; gap: 8px; margin-top: 8px; }
   /* The line under a name on the Circles tab: wish count, then chips for household (other than yours) and birthday soon. */
   .pchips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
   .pchips small { margin-right: 2px; }
@@ -915,7 +924,9 @@
   .pill { font-size: 14px; font-weight: 700; padding: 5px 10px; border-radius: 10px; white-space: nowrap; background: var(--ok-soft); color: var(--ok); }
   .pill.over { background: var(--warn-soft); color: var(--warn); }
   .pill.none { background: var(--panel); color: var(--muted); }
-  .pill.set { background: var(--soft); color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand); cursor: pointer; }
+  .pill.set { flex: none; background: var(--soft); color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand); cursor: pointer; }
+  .pcard-top .pill { flex: none; }
+  .pcard-who strong { overflow-wrap: anywhere; }
   .pill.set:active { transform: scale(.96); }
   .amt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 14px; }
   .sheet-note { margin: -6px 0 14px; color: var(--muted); font-size: 15px; }
@@ -933,9 +944,6 @@
   .coach-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
   .coach-dots i.on { background: var(--brand); }
   .coach-skip { border: 0; background: none; color: var(--muted); font: inherit; font-weight: 700; padding: 10px 6px; cursor: pointer; }
-  .pcard-avs { display: flex; flex: none; }
-  .pcard-avs .avatar { width: 38px !important; height: 38px !important; font-size: 16px !important; box-shadow: 0 0 0 2px var(--card); }
-  .pcard-avs .avatar + .avatar { margin-left: -12px; }
   .pcard .chev-d { color: var(--muted); flex: none; transition: transform .3s var(--spring); }
   .pcard.is-open .chev-d { transform: rotate(180deg); }
   .meter { width: 100%; height: 8px; border-radius: 4px; background: var(--panel); overflow: hidden; }
@@ -1510,7 +1518,21 @@ function initials2(n) {
   return (w.slice(0, 2).map((x) => x.charAt(0)).join("") || "?").toUpperCase();
 }
 // Picture for a circle (key "g:<id>") or household ("h:<id>"): its photo, or initials on a rounded square.
+// A household without a photo is split down the middle between two of its people (their photos or initials),
+// people who use the app and have a photo first.
 function tileAvatar(name, key, size) {
+  if (key.startsWith("h:") && !PHOTOS.has(key)) {
+    const ids = state.households?.[key.slice(2)]?.memberIds || [];
+    const known = new Map(everyone().map((m) => [m.id, m]));
+    if (state.me) known.set(state.me.id, { id: state.me.id, name: state.me.name });
+    const people = ids.map((id) => known.get(id)).filter(Boolean)
+      .map((m, n) => ({ m, rank: (m.id === state.me?.id ? 0 : 4) + (PHOTOS.has(m.id) ? 0 : 2) + (m.managedBy ? 1 : 0), n }))
+      .sort((a, b) => a.rank - b.rank || a.n - b.n).slice(0, 2).map((x) => x.m);
+    if (people.length === 2) {
+      const half = (m) => `<span class="half" style="background:${AV_COLORS[hash(m.id) % AV_COLORS.length]}">${esc(initial(m.name))}${PHOTOS.has(m.id) ? `<img src="${esc(photoUrl(m.id))}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>`;
+      return `<span class="avatar tile split${size === true ? " big" : size ? ` ${size}` : ""}" aria-hidden="true">${people.map(half).join("")}</span>`;
+    }
+  }
   return avatar(name, key, size).replace('class="avatar', 'class="avatar tile').replace(`aria-hidden="true">${esc(initial(name))}`, `aria-hidden="true">${esc(initials2(name))}`);
 }
 // "Add a photo / Remove" row for a circle or household. save(dataUrl) and save("") to remove.
@@ -4551,19 +4573,18 @@ function openChat(personId, opts = {}) {
 function manageCard(list, name) {
   const by = list.member.id && everyone().find((m) => m.id === list.member.id)?.managedBy;
   const who = by === state.me.id ? "You added" : by ? `${esc(personName(by))} looks after` : "Someone added";
+  const hhId = everyone().find((m) => m.id === list.member.id)?.householdId;
+  const mineHh = hhId && hhId === state.me.household?.id;
   return `<section class="set-card manage-card">
     <h4>You look after ${esc(name)}'s list</h4>
-    <p class="sub">${who} ${esc(name)}, who doesn't use the app. Add wishes for them here. You can still see what's been bought.</p>
-    <div class="actions">
+    <p class="sub">${who} ${esc(name)}, who doesn't use the app. You can still see what's been bought.</p>
+    <div class="mg-hh">${hhId ? `${tileAvatar(householdLabel(hhId), `h:${hhId}`, "sm")}<span class="mg-txt">Lives with <strong>${esc(householdLabel(hhId))}</strong>${mineHh ? '<button class="linkbtn" type="button" id="mgOut">Doesn\'t live with us?</button>' : ""}</span>`
+      : `<span class="mg-txt">Not part of a household</span>`}</div>
+    <div class="mg-btns">
       <button class="btn primary small" type="button" id="mgAdd">${PLUS} Add a wish</button>
-      <button class="btn small" type="button" id="mgProfile">${PENCIL} Edit profile</button>
+      <button class="btn small" type="button" id="mgProfile">${PENCIL} Profile</button>
       <button class="btn small" type="button" id="mgCards">Gift cards</button>
-    </div>
-    <div class="manage-more">
-      <button class="linkbtn" type="button" id="mgHandoff">Hand off to someone else</button>
-      <button class="linkbtn" type="button" id="mgInvite">Send ${esc(name)} their invite</button>
-      <button class="linkbtn" type="button" id="mgRelease">Let ${esc(name)} sign in</button>
-      <button class="linkbtn" type="button" id="mgRemove">Remove ${esc(name)}</button>
+      <button class="btn small" type="button" id="mgMore" aria-label="More options for ${esc(name)}">More</button>
     </div>
   </section>`;
 }
@@ -4577,13 +4598,27 @@ function wireManageCard(v, list, name, id) {
     const item = list.items.find((x) => x.id === b.dataset.editWish);
     if (item) editItem(item, { as: id });
   }));
-  $("#mgInvite", v).onclick = () => sendPersonalInvite(id);
-  $("#mgHandoff", v).onclick = () => handOff(id, name);
-  $("#mgRelease", v).onclick = async () => {
+  $("#mgOut", v)?.addEventListener("click", async () => {
+    if (!window.confirm(`Take ${name} out of your household? They stay in the same circles, and you still look after their list.`)) return;
+    try { await api("household/remove", { memberId: id }); toast(`${name} is out of your household`); state.stale = true; render(); } catch (e) { toast(e.message); }
+  });
+  $("#mgMore", v).onclick = () => {
+    openSheet(`<h3>${esc(name)}'s list</h3>
+      <div class="more-list">
+        <button class="btn wide" type="button" data-m="handoff">Hand off to someone else</button>
+        <button class="btn wide" type="button" data-m="invite">Send ${esc(name)} their invite</button>
+        <button class="btn wide" type="button" data-m="release">Let ${esc(name)} sign in</button>
+        <button class="btn wide quiet danger" type="button" data-m="remove">Remove ${esc(name)}</button>
+      </div>`, (el) => {
+      const go = { handoff: () => handOff(id, name), invite: () => sendPersonalInvite(id), release, remove };
+      el.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { closeSheet(); setTimeout(go[b.dataset.m], 250); }));
+    });
+  };
+  const release = async () => {
     if (!window.confirm(`Let ${name} sign in? They'll pick their name on the sign-in screen with your circle's code. From then on it's their own list: they won't see what's been bought, and you won't be able to edit it.`)) return;
     try { await api("managed/release", { memberId: id }); toast(`${name} can sign in now`); state.stale = true; render(); } catch (e) { toast(e.message); }
   };
-  $("#mgRemove", v).onclick = async () => {
+  const remove = async () => {
     if (!window.confirm(`Remove ${name}? They'll leave every circle and nobody will see their list anymore.`)) return;
     try { await api("managed/remove", { memberId: id }); toast(`Removed ${name}`); state.stale = true; setTab("family"); } catch (e) { toast(e.message); }
   };
@@ -4626,10 +4661,11 @@ function addManaged() {
   const hh = state.me.household;
   openSheet(`
     <h3>Add someone who doesn't use the app</h3>
-    <p class="subtle">A kid, or a grandparent who'd rather not. You'll add their wishes for them, and everyone can shop from their list.${hh ? ` They'll join ${esc(hh.label)}, so everyone in it can help.` : ""}</p>
+    <p class="subtle">A kid, or a grandparent who'd rather not. You'll add their wishes for them, and everyone can shop from their list.</p>
     <form id="mgForm" autocomplete="off">
       <div class="err" hidden></div>
       ${nameFields("Their")}
+      ${hh ? `<label class="check"><span>They live with me<small>Joins ${esc(hh.label)}, so everyone in it can help with their list</small></span><input type="checkbox" name="liveWithMe"></label>` : ""}
       ${multi() ? `<fieldset class="fsec"><h4 class="fsec-h">Which circles?</h4>
         ${state.groups.map((g) => `<label class="check"><span>${esc(g.name)}</span><input type="checkbox" name="g:${esc(g.id)}" checked></label>`).join("")}</fieldset>` : ""}
       <button class="btn primary wide" type="submit">Add them</button>
@@ -4638,7 +4674,7 @@ function addManaged() {
       wireForm($("#mgForm", el), async (d) => {
         const groupIds = multi() ? state.groups.filter((g) => d[`g:${g.id}`]).map((g) => g.id) : undefined;
         if (groupIds && !groupIds.length) throw new Error("Pick at least one circle.");
-        const { id } = await api("managed/add", { name: d.name, lastName: d.lastName, groupIds });
+        const { id } = await api("managed/add", { name: d.name, lastName: d.lastName, groupIds, joinHousehold: !!d.liveWithMe });
         closeSheet();
         buzz();
         toast(`Added ${d.name.trim()}. Now add what they'd love.`);
@@ -4952,7 +4988,7 @@ function renderPeopleTab(t, v) {
     <div class="hero-stat">
       <p class="kicker">${hasBudget ? (left < 0 ? `Over budget for ${esc(what)} by` : `Left to spend for ${esc(what)}`) : `Spent so far for ${esc(what)}`}</p>
       <span class="big-num" id="bigNum">${money(shown)}</span>
-      <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : shownRows.length ? "Tap Set budget next to someone to start" : "No budget set"}</p>
+      <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : shownRows.length ? "Tap + Budget next to someone to start" : "No budget set"}</p>
       ${hasBudget ? `<div class="hero-meter" style="margin-top:12px"><span class="bar"><i style="width:${pct}%"></i></span></div>` : ""}
       ${countdown ? `<p class="hero-sub" style="margin-top:10px;font-weight:700">${esc(countdown)}</p>` : ""}
     </div>`);
@@ -5222,7 +5258,7 @@ function personCard(p, o, view, n = 0, still = false) {
   const isOpen = state.openPeople.has(p.id);
   const over = budget != null && o.spent_cents > budget;
   const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
-  const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(p.name)}">+ Set budget</span>`
+  const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(p.name)}">+ Budget</span>`
     : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
   const when = view === "birthday" ? `<small class="occ-when">${occDay(o)}, ${inDays(o)}${o.turning ? ` · turning ${o.turning}` : ""}</small>` : "";
   return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-person="${esc(p.id)}">
@@ -5260,7 +5296,7 @@ function budgetTour(force = false) {
     { sel: "#hero .hero-stat", title: "Your gift budget",
       text: `This adds up what you plan to spend and shows what's left. ${names.length ? `${peopleNames(names)} ${names.length > 1 ? "see" : "sees"} the same numbers, so you plan together.` : "Only you see it."} The people you're shopping for never do.` },
     { sel: ".pcard [data-setbudget], .pcard", title: "Set a budget for each person",
-      text: `Tap Set budget next to a name and pick how much to spend on them.${hasHh ? " People who live together share one budget at Christmas." : ""}` },
+      text: `Tap + Budget next to a name and pick how much to spend on them.${hasHh ? " People who live together share one budget at Christmas." : ""}` },
     { sel: "#viewSeg", title: "Christmas and birthdays", text: "Switch here to plan birthdays. Each birthday gets its own budget." },
     { sel: "#addPurchase", title: "Bought something?", text: "Add it here. It comes out of their budget, and you can tap a name to see what you got them." },
   ].filter((x) => $(x.sel));
@@ -5275,7 +5311,7 @@ function budgetTour(force = false) {
   const hole = $(".coach-hole", wrap), pop = $(".coach-pop", wrap);
   pop.addEventListener("click", (e) => e.stopPropagation());
   let i = 0;
-  const done = () => { wrap.remove(); removeEventListener("resize", place); document.removeEventListener("keydown", onKey); };
+  const done = () => { wrap.remove(); removeEventListener("resize", place); removeEventListener("scroll", place, true); document.removeEventListener("keydown", onKey); };
   function place() {
     const target = $(steps[i].sel);
     if (!target) return;
@@ -5295,10 +5331,12 @@ function budgetTour(force = false) {
     $(steps[i].sel).scrollIntoView({ block: "center", behavior: document.documentElement.dataset.motion === "off" ? "auto" : "smooth" });
     place();
     setTimeout(place, 350);
+    setTimeout(place, 900);
     $("[data-next]", pop).focus({ preventScroll: true });
   }
   function onKey(e) { if (e.key === "Escape") done(); }
   addEventListener("resize", place);
+  addEventListener("scroll", place, { capture: true, passive: true });
   document.addEventListener("keydown", onKey);
   wrap.addEventListener("click", () => { if (i === steps.length - 1) done(); else { i++; show(); } });
   show();
@@ -5321,13 +5359,13 @@ function hhBudgetCard(c, n = 0, still = false) {
   const isOpen = state.openPeople.has(key);
   const over = budget != null && o.spent_cents > budget;
   const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
-  const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(h.label)}">+ Set budget</span>`
+  const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(h.label)}">+ Budget</span>`
     : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
   const buys = members.flatMap((m) => m.o.purchases.map((x) => ({ x, m })));
   const ideas = members.flatMap((m) => m.p.ideas);
   return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-household="${esc(h.id)}">
     <button class="pcard-head" type="button" data-toggle aria-expanded="${isOpen}">
-      <span class="pcard-top"><span class="pcard-avs">${members.slice(0, 3).map((m) => avatar(m.p.name, m.p.id)).join("")}</span>
+      <span class="pcard-top">${tileAvatar(h.label, `h:${h.id}`)}
         <span class="pcard-who"><strong>${esc(h.label)}</strong><small>${money(o.spent_cents)}${budget != null ? ` of ${money(budget)}` : " spent"}</small></span>
         ${pill}${CHEV_D}</span>
       ${budget != null ? `<span class="meter${over ? " over" : ""}"><i style="width:${over ? 100 : pct}%${still ? ";animation:none" : ""}"></i></span>` : ""}
