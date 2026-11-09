@@ -586,7 +586,9 @@ function jsonLdProduct(html) {
         const price = toPrice(offer.price ?? offer.lowPrice ?? offer.priceSpecification?.price ?? [].concat(offer.offers || [])[0]?.price);
         const img = [].concat(node.image || [])[0];
         const image = typeof img === "string" ? img : img?.url || img?.contentUrl || null;
-        return { title: node.name ? decode(node.name) : null, price, image };
+        const avail = String(offer.availability || [].concat(offer.offers || [])[0]?.availability || "");
+        const inStock = /InStock|LimitedAvailability|OnlineOnly|PreOrder|InStoreOnly/i.test(avail) ? true : /OutOfStock|SoldOut|Discontinued/i.test(avail) ? false : null;
+        return { title: node.name ? decode(node.name) : null, price, image, inStock };
       }
       if (node["@graph"]) queue.push(node["@graph"]);
     }
@@ -619,7 +621,7 @@ function titleFromPath(u) {
 }
 
 // Fetches a page like a browser would. Returns the final URL after redirects and the HTML ("" if blocked or not HTML).
-async function readPage(url, timeoutMs = 7000) {
+async function readPage(url, timeoutMs = 6000) {
   let html = "", finalUrl = url, status = 0;
   try {
     const res = await fetch(url, {
@@ -642,6 +644,46 @@ async function readPage(url, timeoutMs = 7000) {
 
 const BOT_PAGE = /robot check|robot or human|are you a (robot|human)|captcha|access denied|just a moment|attention required|pardon our interruption|verify you are human|page not found|^amazon\.com$/i;
 
+// Tracking junk that changes nothing about the product. Variant, size, color and sku parameters stay.
+const TRACKING = /^(utm_\w+|gclid|gclsrc|gbraid|wbraid|dclid|fbclid|msclkid|mc_[ce]id|igshid|si|ref|ref_|refRID|_encoding|psc|pd_rd_\w+|pf_rd_\w+|content-id|crid|sprefix|qid|sr|keywords|dib|dib_tag|tag|linkCode|linkId|ascsubtag|th|smid|spLa|campaign|cmpid|cid|clickid|irclickid|irgwc|affid|afsrc|ranMID|ranEAID|ranSiteID|sharedid|share_id|epik|_branch_\w+|ga_\w+|clkid|athbdg|athcpid|athpgid|athznid|athieid|athena|adgrpid|hv\w+|lnk|intsrc|cm_\w+|srsltid|nci|cjevent|sscid|aff_\w+|source|src|from)$/i;
+// Cleans a product link: drops tracking parameters and trims Amazon links to /dp/ASIN.
+function cleanLink(u) {
+  const out = new URL(u);
+  out.hash = "";
+  for (const k of [...out.searchParams.keys()]) if (TRACKING.test(k)) out.searchParams.delete(k);
+  if (/(^|\.)amazon\.[a-z.]+$/i.test(out.hostname)) {
+    const asin = out.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/asin)\/([A-Z0-9]{10})(?:[/?]|$)/i)?.[1];
+    if (asin) return `https://${out.hostname}/dp/${asin.toUpperCase()}`;
+  }
+  return out.toString().replace(/\?$/, "");
+}
+
+// Previews are cached for a day per link (Cloudflare's edge cache, nothing stored in D1), so the same link
+// fills in the same way for everyone and a second Fill tap doesn't call Gemini again.
+const PREVIEW_TTL = 86400;
+const previewKey = (u) => new Request(`https://preview-cache.wishlist.invalid/${encodeURIComponent(u)}`);
+async function cachedPreview(u) {
+  try { const hit = await caches.default.match(previewKey(u)); return hit ? await hit.json() : null; } catch { return null; }
+}
+async function cachePreview(u, data) {
+  try { await caches.default.put(previewKey(u), new Response(JSON.stringify(data), { headers: { "content-type": "application/json", "cache-control": `max-age=${PREVIEW_TTL}` } })); } catch {}
+}
+
+// Words in the link that describe the product ("stanley-quencher-tumbler" -> stanley, quencher, tumbler).
+const STOP_WORDS = new Set("the and for with from your this that www com http https html htm product products item items shop store page dp ip p".split(" "));
+function linkWords(u) {
+  const words = decodeURIComponent(u.pathname).toLowerCase().split(/[^a-z0-9]+/);
+  // Skip short words, filler, plain numbers and id-like tokens (letters mixed with digits, like B0BSHF7WHW).
+  return new Set(words.filter((w) => w.length >= 3 && !STOP_WORDS.has(w) && !/\d/.test(w)));
+}
+// A looked-up name must share a word with a descriptive link; links with no words (Amazon /dp/ASIN) pass.
+function matchesLink(title, u) {
+  const words = linkWords(u);
+  if (words.size < 2) return true;
+  const t = title.toLowerCase();
+  return [...words].some((w) => t.includes(w) || (w.length > 4 && t.includes(w.slice(0, -1))));
+}
+
 // When a store blocks us (many big ones block requests from cloud servers), ask Gemini to look the link up
 // through Google instead. It only reports what it found on that page or in search; the photo URL is checked
 // to really be an image before we use it.
@@ -651,7 +693,8 @@ Open the URL (use Google Search if you can't open it) and report the product on 
 - title: the product's name as a shopper would say it, brand first when known, under 80 characters
 - price: the current price in US dollars as a number, or null if you can't tell
 - image: the URL of the main product photo exactly as it appears on the page or in search results (an image file,
-  usually on the store's image server), or "" if you didn't see one. Never build or guess a URL.`;
+  usually on the store's image server), or "" if you didn't see one. Never build or guess a URL.
+- in_stock: true if that store currently shows it available to buy new, false if sold out or unavailable, null if unclear.`;
 const LINK_SCHEMA = {
   type: "object",
   properties: {
@@ -659,8 +702,9 @@ const LINK_SCHEMA = {
     title: { type: "string" },
     price: { type: "number", nullable: true },
     image: { type: "string" },
+    in_stock: { type: "boolean", nullable: true },
   },
-  required: ["found", "title", "price", "image"],
+  required: ["found", "title", "price", "image", "in_stock"],
 };
 async function isImage(u) {
   try {
@@ -680,13 +724,56 @@ async function lookupLink(env, url) {
   if (!d?.found || !d.title?.trim()) return null;
   let image = imageLink(d.image?.trim() || "");
   if (image && !(await isImage(image))) image = null;
-  return { title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image };
+  return { title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null };
+}
+
+// ---------- live prices: what a linked store charges right now ----------
+// Checked when someone opens a list, at most every 12 hours per link (shared through Cloudflare's edge cache,
+// nothing stored in D1). Reads the store page; Gemini only for stores that block us. Misses are cached for
+// 6 hours so a blocked store isn't looked up on every visit.
+const LIVE_TTL = 12 * 3600, LIVE_MISS_TTL = 6 * 3600;
+const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/${encodeURIComponent(u)}`);
+async function livePrice(env, rawUrl, { ai = true } = {}) {
+  let clean;
+  try { clean = cleanLink(link(rawUrl)); } catch { return null; }
+  if (!clean) return null;
+  try { const hit = await caches.default.match(liveKey(clean)); if (hit) return await hit.json(); } catch {}
+  const url = new URL(clean);
+  const site = url.hostname.replace(/^www\./, "");
+  const { html } = await readPage(url, 5000);
+  let price = null, inStock = null, via = "page";
+  if (html && !BOT_PAGE.test(decode(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]) || "")) {
+    const ld = jsonLdProduct(html);
+    price = ld.price
+      ?? toPrice(meta(html, "product:price:amount", "og:price:amount", "price"))
+      ?? toPrice(html.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]); // Amazon
+    inStock = ld.inStock ?? null;
+    const availMeta = meta(html, "product:availability", "og:availability", "availability");
+    if (inStock === null && availMeta) inStock = /out|sold|unavailable|discontinued/i.test(availMeta) ? false : /in ?stock|available|preorder/i.test(availMeta) ? true : null;
+    if (inStock === null && /id=["']outOfStock["']|currently unavailable\./i.test(html)) inStock = false; // Amazon
+  }
+  if (price == null && inStock === null && ai) {
+    const found = await lookupLink(env, clean).catch(() => null);
+    if (found && matchesLink(found.title, url)) { price = found.price; inStock = found.inStock; via = "search"; }
+  }
+  const out = { price, inStock, site, via, checkedAt: now() };
+  const hit = price != null || inStock !== null;
+  try {
+    await caches.default.put(liveKey(clean), new Response(JSON.stringify(out), { headers: { "content-type": "application/json", "cache-control": `max-age=${hit ? LIVE_TTL : LIVE_MISS_TTL}` } }));
+  } catch {}
+  console.log(`live ${site} -> ${via}${price != null ? ` $${price}` : ""}${inStock === false ? " out" : inStock ? " in" : ""}`);
+  return out;
 }
 
 // ai: when the store blocks us, look it up with Gemini (only for the Fill button, not background lookups).
 async function previewLink(env, rawUrl, { ai = false } = {}) {
-  const url = new URL(link(rawUrl) || fail(400, "Paste a link first."));
-  const { html, finalUrl } = await readPage(url);
+  const clean = cleanLink(link(rawUrl) || fail(400, "Paste a link first."));
+  const url = new URL(clean);
+  if (ai) {
+    const hit = await cachedPreview(clean);
+    if (hit) return { ...hit, clean, cached: true };
+  }
+  const { html, finalUrl, status } = await readPage(url);
 
   let title = null, price = null, siteName = null, image = null;
   if (html) {
@@ -715,13 +802,19 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
   if (image && (title || guess)) {
     try { imageUrl = imageLink(new URL(image, finalUrl).toString()); } catch {}
   }
-  const site = finalUrl.hostname.replace(/^www\./, "");
-  // The page gave us no name (blocked, a bot check, or an empty shell): try the lookup.
-  if (!title && ai) {
-    const found = await lookupLink(env, finalUrl.toString()).catch(() => null);
-    if (found) return { url: finalUrl.toString(), title: found.title, price: found.price ?? price, image: found.image || imageUrl, site, found: true, via: "search" };
+  const site = url.hostname.replace(/^www\./, "");
+  let out = { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !!guess };
+  // The page gave us no name or no photo (blocked, a bot check, or an empty shell): look it up. The page's own
+  // details win; the lookup only fills what's missing.
+  if (ai && (!title || !imageUrl)) {
+    const found = await lookupLink(env, clean).catch(() => null);
+    if (found && (title || matchesLink(found.title, url))) {
+      out = { ...out, title: title || found.title, price: price ?? found.price, image: imageUrl || found.image, found: true, guessed: false, via: "search" };
+    }
   }
-  return { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !!guess };
+  console.log(`preview ${site} http=${status} page=${title ? "name" : html ? "noname" : "blocked"}${imageUrl ? "+photo" : ""} -> ${out.via || (out.guessed ? "guess" : "page")}${out.image ? " photo" : ""}${out.price != null ? " price" : ""}`);
+  if (ai && out.found) await cachePreview(clean, out);
+  return { ...out, clean };
 }
 
 // ---------- photo to suggestions ----------
@@ -1398,6 +1491,37 @@ const handlers = {
         WHERE id = ?4 AND url IS ?5`,
     ).bind(image, now(), price, row.id, row.url).run();
     return { image, price_cents: price };
+  },
+
+  // Live prices for wishes and ideas on a list you're looking at. keys: ["item:<id>", "idea:<id>"], up to 12.
+  // Only things you can see; Gemini lookups (blocked stores) run a few at a time.
+  async "POST prices"(req, env) {
+    const me = await auth(req, env);
+    const { keys } = await body(req);
+    const want = [...new Set((Array.isArray(keys) ? keys : []).map(String))].slice(0, 12);
+    const rows = [];
+    for (const key of want) {
+      const [kind, id] = key.split(":");
+      let row = null;
+      if (kind === "item") {
+        row = await env.DB.prepare(
+          `SELECT i.id, i.url FROM items i LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
+            WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+        ).bind(me.id, id, me.id, me.id).first();
+      } else if (kind === "idea") {
+        const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
+        if (idea && (await canSeeIdea(env, me.id, idea))) row = idea;
+      }
+      if (row?.url) rows.push([key, row.url]);
+    }
+    const prices = {};
+    for (let i = 0; i < rows.length; i += 4) {
+      await Promise.all(rows.slice(i, i + 4).map(async ([key, u]) => {
+        const p = await livePrice(env, u).catch(() => null);
+        if (p && (p.price != null || p.inStock !== null)) prices[key] = { price: p.price, inStock: p.inStock, site: p.site, checkedAt: p.checkedAt };
+      }));
+    }
+    return { prices };
   },
 
   // Autofill: read a product link and return its name and price (nothing is saved).

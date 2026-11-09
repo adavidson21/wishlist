@@ -272,6 +272,9 @@
   .wish-price { font-family: var(--serif); font-weight: 600; font-size: 21px; line-height: 1.2; color: var(--soft-ink); font-variant-numeric: tabular-nums; }
   .wish-price.none { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--faint); }
   .wish-price.fresh { animation: fade .45s ease both; }
+  .live { display: block; font-size: 13px; font-weight: 700; margin-top: 2px; color: var(--muted); animation: fade .45s ease both; }
+  .live.down { color: var(--ok); }
+  .live.out { color: var(--warn); }
   .wish-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
   .wish-meta a { color: inherit; }
   .wish-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--faint); }
@@ -996,6 +999,47 @@ document.addEventListener("error", (e) => {
   const img = e.target;
   if (img?.matches?.("img.thumb")) { const t = img.closest(".tile"); t.outerHTML = iconTile(t.dataset.tileTitle, t.dataset.tileId); }
 }, true);
+// Live prices on someone's list: what the linked store charges right now, and whether it's in stock.
+// The server checks each link at most every 12 hours; this remembers answers for the session so going back
+// and forth doesn't ask again.
+const liveSeen = new Map();
+function liveLine(r, listed) {
+  const at = `at ${esc(r.site)}`;
+  if (r.inStock === false) return ["out", `Out of stock ${at} right now`];
+  if (r.price == null) return r.inStock ? ["ok", `In stock ${at}`] : null;
+  const cents = Math.round(r.price * 100);
+  if (listed != null && Math.abs(cents - listed) >= 100) return cents < listed ? ["down", `↓ Now ${money(cents)} ${at}`] : ["up", `Now ${money(cents)} ${at}`];
+  return ["ok", `✓ ${money(cents)} right now ${at}`];
+}
+function paintLive(el, r) {
+  const listed = el.dataset.listed === "" ? null : Number(el.dataset.listed);
+  const line = r && liveLine(r, listed);
+  if (!line) { el.hidden = true; return; }
+  el.className = `live ${line[0]}`;
+  el.innerHTML = line[1];
+  if (r.checkedAt) el.title = `Checked ${new Date(r.checkedAt).toLocaleString()}`;
+  el.hidden = false;
+}
+async function fetchLive(root) {
+  const slots = [...root.querySelectorAll("[data-live]")];
+  const ask = [];
+  for (const el of slots) {
+    const key = el.dataset.live;
+    if (liveSeen.has(key)) paintLive(el, liveSeen.get(key));
+    else if (!ask.includes(key)) ask.push(key);
+  }
+  for (let i = 0; i < ask.length; i += 12) {
+    const batch = ask.slice(i, i + 12);
+    batch.forEach((k) => liveSeen.set(k, null));
+    try {
+      const { prices } = await api("prices", { keys: batch });
+      for (const k of batch) {
+        liveSeen.set(k, prices[k] || null);
+        document.querySelectorAll(`[data-live="${CSS.escape(k)}"]`).forEach((el) => paintLive(el, prices[k]));
+      }
+    } catch { batch.forEach((k) => liveSeen.delete(k)); }
+  }
+}
 // Fetch photos for items saved before photos existed, two at a time, once per session.
 const imageTried = new Set();
 const imageQueue = [];
@@ -1281,6 +1325,7 @@ async function render() {
   }
   state.flash = state.burst = state.pop = state.gcNew = null;
   fetchImages($("#view"));
+  fetchLive($("#view"));
 }
 
 // ---------- welcome / join ----------
@@ -2279,7 +2324,8 @@ function wireAutofill(form) {
     if (img) { const el = document.createElement("img"); el.src = img; el.alt = ""; el.referrerPolicy = "no-referrer"; el.onerror = () => el.remove(); msg.prepend(el); }
     msg.hidden = !t; msg.classList.toggle("ok", !!ok); msg.classList.toggle("has-img", !!img);
   };
-  let busy = false, hint = "";
+  // seq: each Fill gets a number, and only the newest one may write to the form (pasting a new link mid-lookup wins).
+  let seq = 0, hint = "", last = "", slow;
   // Keep just the link in the box; remember the shared words as a backup name.
   const tidy = (raw) => {
     const s = splitShared(raw);
@@ -2289,15 +2335,23 @@ function wireAutofill(form) {
   async function fill(force) {
     tidy(url.value);
     const v = url.value.trim();
-    if (!v || busy) return;
-    busy = true; btn.disabled = true; say("Looking it up...");
+    if (!v) return;
+    const mine = ++seq;
+    last = v;
+    btn.disabled = true; say("Looking it up...");
+    clearTimeout(slow);
+    // Blocked stores get looked up through Google, which takes a few seconds. Say so instead of looking stuck.
+    slow = setTimeout(() => { if (mine === seq) say("Still looking. This store makes us look it up another way, so it can take a few seconds..."); }, 3500);
     try {
       const r = await api("preview", { url: v }).catch((e) => {
         if (!hint) throw e;
         return { site: "the link" };
       });
+      if (mine !== seq) return;
+      // Swap in the tidied link (no tracking junk) if the box still holds what we looked up.
+      if (r.clean && r.clean !== v && url.value.trim() === v) { url.value = r.clean; last = r.clean; }
       if (!r.title && hint) r.title = hint;
-      if (r.image) { form.dataset.image = r.image; form.dataset.imageFor = v; } else { delete form.dataset.image; }
+      if (r.image) { form.dataset.image = r.image; form.dataset.imageFor = url.value.trim(); } else { delete form.dataset.image; }
       let filled = [];
       if (r.title && (force || !title.value.trim())) { title.value = r.title; filled.push("name"); }
       if (r.price != null && (force || !price.value.trim())) { price.value = String(r.price); filled.push("price"); }
@@ -2305,11 +2359,12 @@ function wireAutofill(form) {
       if (r.image) filled.push("photo");
       const list = filled.length > 1 ? `${filled.slice(0, -1).join(", ")} and ${filled.at(-1)}` : filled[0];
       say(r.guessed && filled.length ? `${r.site} wouldn't let us read that page, so the name is a guess from the link. Fix it up, or snap a photo instead.`
+        : r.via === "search" && filled.length ? `Filled in the ${list}. ${r.site} doesn't let apps read its pages, so we looked it up on Google. Check it looks right.`
         : filled.length ? `Filled in the ${list} from ${r.site}. Check it looks right.`
         : r.title || r.price != null ? "Already filled in. Tap Fill to replace with the link's details."
         : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0, r.image);
-    } catch (e) { say(e.message); }
-    finally { busy = false; btn.disabled = false; }
+    } catch (e) { if (mine === seq) say(e.message); }
+    finally { if (mine === seq) { btn.disabled = false; clearTimeout(slow); } }
   }
   btn.addEventListener("click", () => fill(true));
   // Read the raw clipboard: a type=url box drops line breaks, which would glue the words onto the link.
@@ -2318,6 +2373,12 @@ function wireAutofill(form) {
     if (raw && splitShared(raw).url !== raw.trim()) { e.preventDefault(); hint = ""; tidy(raw); }
     else hint = "";
     setTimeout(() => fill(false), 0);
+  });
+  // A link typed (or edited) by hand fills in when you leave the box, if it's new and the name is still empty.
+  url.addEventListener("change", () => {
+    tidy(url.value);
+    const v = url.value.trim();
+    if (v && v !== last && !title.value.trim() && /^(https?:\/\/)?[\w-]+(\.[\w-]+)+\/\S+/i.test(v)) fill(false);
   });
   url.addEventListener("blur", () => tidy(url.value));
 }
@@ -2765,6 +2826,7 @@ function personRow(i, kind, n = 0) {
       <div class="row-main">
         <span class="row-title">${esc(i.title)}</span>
         ${price}
+        ${i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" hidden></span>` : ""}
         <div class="wish-meta">${meta}</div>
       </div>
     </div>
