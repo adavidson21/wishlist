@@ -619,22 +619,49 @@
   .mg-btns #mgAdd { grid-column: 1 / -1; }
   .mg-btns .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .more-list { display: grid; gap: 8px; margin-top: 8px; }
-  /* The line under a name on the Circles tab: wish count, then chips for household (other than yours) and birthday soon. */
+  /* The line under a name on the Circles tab: wish count, then Kid and birthday-soon chips. */
   .pchips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
   .pchips small { margin-right: 2px; }
   .pchip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 24px; padding: 2px 10px; border-radius: 999px;
     background: var(--panel); color: var(--muted); font-size: 13px; font-weight: 700; line-height: 1.2; }
   .pchip > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pchip.hh-chip { padding-left: 3px; color: var(--ink); }
   .pchip.kid-chip { background: var(--t3); color: var(--t3-ink); font-weight: 700; }
-  .circle-filter { margin: 0 0 14px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .circle-filter { margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  /* Fades the edge that has more chips past it (--fl/--fr set from script). */
+  .circle-filter { --fl: 0px; --fr: 0px; -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fl), #000 calc(100% - var(--fr)), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--fl), #000 calc(100% - var(--fr)), transparent 100%); }
+  /* Circles tab: catch-up tiles, filter row and search under the heading, household subheadings. */
+  .c-controls { display: grid; gap: 10px; margin-top: 14px; }
+  .c-top { margin-top: 24px; } .c-top.first, .catchup[hidden] + .c-top { margin-top: 0; }
+  .c-search { max-width: 520px; }
+  .c-top + .csection > .fam-label { margin-top: 24px; }
+  .catchup { display: flex; gap: 10px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .catchup::-webkit-scrollbar { display: none; }
+  .cu { flex: none; width: 112px; border: 0; background: var(--card); color: var(--ink); border-radius: var(--r); padding: 14px 8px 12px; font: inherit;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; cursor: pointer; }
+  .cu > strong { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cu .dupe-tag { margin: -4px 0 0; font-size: 12px; }
+  .cu-why { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+  .cu-why .new-badge { margin-left: 0; vertical-align: 0; }
+  .cu-why .pchip { min-height: 22px; padding: 1px 8px; font-size: 12px; }
+  .sublabel { display: flex; align-items: center; gap: 8px; margin: 22px 0 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
+  .sublabel .avatar { width: 22px; height: 22px; font-size: 10px; }
+  .sublabel .linkbtn { margin-left: auto; min-height: 28px; }
+  .hh-sub { width: 100%; border: 0; background: none; padding: 4px 0; font-family: inherit; text-align: left; cursor: pointer; }
+  .hh-sub > span { flex: none; }
+  .hh-sub small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .hh-sub .chev { margin-left: auto; width: 16px; height: 16px; flex: none; }
+  .hh-sub:hover { color: var(--ink); }
+  :is(.csection > .cgroup:first-child, .fam-label + .cgroup) > .sublabel { margin-top: 16px; }
+  :is(.csection > .cgroup:first-child, .fam-label + .cgroup) > .stack:first-child { margin-top: 14px; }
+  .member.is-off { opacity: .62; }
+  .c-add { margin-top: 24px; }
   .circle-filter::-webkit-scrollbar { display: none; }
   .circle-filter .chip { flex: none; gap: 6px; }
   .circle-filter .avatar.xs { width: 22px; height: 22px; font-size: 10px; }
   .sz-age { margin: 8px 0 0; color: var(--warn); font-size: 14px; font-weight: 600; }
   .mg-nudge { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--gold-soft); color: var(--gold-ink); font-size: 15px; }
   .mg-nudge .linkbtn { padding: 0; margin-left: 4px; }
-  .pchip.hh-chip .avatar { width: 20px; height: 20px; font-size: 9px; letter-spacing: 0; }
   .pchip.occ-chip { background: var(--soft); color: var(--soft-ink); }
   .set-div { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
@@ -2271,27 +2298,6 @@ function householdAuto(names) {
 }
 // The household you're in (or null).
 const myHouseholdId = () => everyone().find((m) => m.id === state.me?.id)?.householdId || null;
-// People in a circle as one flat list. Your own household comes first, and people who share a household
-// stay next to each other (in the order the first of them appears), so the household chip on each card
-// reads as a group without boxing them in.
-function peopleHtml(people, personBtn) {
-  const mine = myHouseholdId();
-  const by = new Map();
-  for (const m of people) if (m.householdId) by.set(m.householdId, [...(by.get(m.householdId) || []), m]);
-  const done = new Set(), out = [];
-  const take = (m) => { if (!done.has(m.id)) { done.add(m.id); out.push(m); } };
-  if (mine) (by.get(mine) || []).forEach(take);
-  for (const m of people) (m.householdId ? by.get(m.householdId) : [m]).forEach(take);
-  return out.map((m, i) => personBtn(m, i)).join("");
-}
-// The small household chip on a person's card: the household's picture and name. Only for households
-// other than yours (your own people need no label).
-function householdChip(m) {
-  if (!m.householdId || m.householdId === myHouseholdId()) return "";
-  const label = householdLabel(m.householdId);
-  return `<span class="pchip hh-chip" title="Household: ${esc(label)}">${tileAvatar(label, `h:${m.householdId}`)}<span>${esc(label)}</span></span>`;
-}
-
 // ---------- occasions ----------
 // Marks and budgets belong to an occasion: Christmas for everyone, plus a person's birthday if they added
 // one. The server sends each person's upcoming occasions, soonest first: { code: YYYYMMDD, date, christmas,
@@ -4334,12 +4340,15 @@ async function renderFamily() {
   const g = group();
   const people = others();
   const plan = new Map((t?.people || []).map((p) => [p.id, p]));
+  // Turned off in Budget > "Who I'm buying for": still listed, but in their own group at the bottom.
+  const off = (m) => !!plan.get(m.id)?.skipped;
   setHero(heroTitle(state.groups.map((x) => x.name).join(" · "), "Circles"));
   const v = $("#view");
   // Filter chips: Everyone, Kids (when there are any), then one per household. Remembered while the app is open.
   const all = [...new Map(state.groups.flatMap((x) => x.members).filter((m) => m.id !== state.me.id).map((m) => [m.id, m])).values()];
   const kidsN = all.filter((m) => m.kid).length;
   const mineHh = myHouseholdId();
+  const hhName = (id) => (id === mineHh ? "My household" : householdLabel(id));
   const hhs = [...new Set(all.map((m) => m.householdId).filter(Boolean))]
     .map((id) => ({ id, label: householdLabel(id) }))
     .sort((a, b) => (b.id === mineHh) - (a.id === mineHh) || a.label.localeCompare(b.label));
@@ -4347,54 +4356,117 @@ async function renderFamily() {
   if ((cf === "kids" && !kidsN) || (cf.startsWith("h:") && !hhs.some((h) => `h:${h.id}` === cf))) state.circleFilter = "";
   const shows = (m) => !state.circleFilter || (state.circleFilter === "kids" ? m.kid : `h:${m.householdId}` === state.circleFilter);
   const chip = (val, html) => `<button class="chip" type="button" data-cf="${esc(val)}" aria-pressed="${(state.circleFilter || "") === val}">${html}</button>`;
-  const kidsBar = kidsN || hhs.length > 1 ? `<div class="chips circle-filter" role="group" aria-label="Show">
-      ${chip("", "Everyone")}${kidsN ? chip("kids", `Kids<span class="chip-n">${kidsN}</span>`) : ""}${hhs.length > 1 ? hhs.map((h) => chip(`h:${h.id}`, `${tileAvatar(h.label, `h:${h.id}`, "xs")}${esc(h.id === mineHh ? "My household" : h.label)}`)).join("") : ""}</div>` : "";
-  const personBtn = (m, i) => {
-        if (!shows(m)) return "";
-        const p = plan.get(m.id);
-        const getting = p ? p.occasions.reduce((n, o) => n + o.purchases.length, 0) : 0;
-        const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
-        const real = m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : "";
-        const bday = (m.occasions || []).find((o) => o.birthday);
-        const soon = bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}</span>` : "";
-        const age = m.kid ? `<span class="pchip kid-chip">Kid</span>` : "";
-        const looked = m.managedBy ? ` · ${m.managedBy === state.me.id ? "you look after" : m.canManage ? "your household looks after" : `looked after by ${esc(personName(m.managedBy))}`}` : "";
-        // One wrapping row: what's on their list, then the household chip (other households only) and birthday.
-        return `<button class="member slide" style="animation-delay:${Math.min(i, 12) * 0.05}s" type="button" data-id="${esc(m.id)}">
-          ${avatar(m.name, m.id)}
-          <span class="who"><strong>${esc(m.name)}${householdChip(m) && dupeTag(m) === householdLabel(m.householdId) ? "" : dupeHtml(m)}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}${real}${looked}</small>${age}${householdChip(m)}${soon}</span>${budgetMini(p)}</span>${CHEV}
-        </button>`;
+  const chipsHtml = kidsN || hhs.length > 1 ? `<div class="chips circle-filter" role="group" aria-label="Show">
+      ${chip("", "Everyone")}${kidsN ? chip("kids", `Kids<span class="chip-n">${kidsN}</span>`) : ""}${hhs.length > 1 ? hhs.map((h) => chip(`h:${h.id}`, `${tileAvatar(h.label, `h:${h.id}`, "xs")}${esc(hhName(h.id))}`)).join("") : ""}</div>` : "";
+  const searchHtml = all.length > 12 ? `<input class="input c-search" type="search" placeholder="Search people" aria-label="Search people" autocomplete="off" enterkeyhint="search">` : "";
+  const controls = chipsHtml || searchHtml ? `<div class="c-controls">${chipsHtml}${searchHtml}</div>` : "";
+
+  // "Catch up": the reasons people open this tab (new wishes, unread chat, a birthday in the next 2 weeks), at the
+  // top as small tiles. Hidden when there's nothing, and while a filter is on.
+  const catchUp = state.circleFilter ? [] : all.map((m) => {
+    const n = newCount(m), c = m.chatUnread || 0;
+    const bday = off(m) ? null : (m.occasions || []).find((o) => o.birthday && daysUntil(o) <= 14);
+    return n || c || bday ? { m, n, c, bday, d: bday ? daysUntil(bday) : 99 } : null;
+  }).filter(Boolean).sort((a, b) => (b.n + b.c > 0) - (a.n + a.c > 0) || a.d - b.d || b.n + b.c - (a.n + a.c));
+  const catchUpHtml = catchUp.length ? `<div class="label" style="margin-top:0">Catch up</div>
+    <div class="catchup">${catchUp.map(({ m, n, c, bday }) => `<button class="cu" type="button" data-cu="${esc(m.id)}"${!n && !bday && c ? " data-cu-chat" : ""}>
+      ${avatar(m.name, m.id)}<strong>${esc(m.name)}</strong>${dupeHtml(m)}
+      <span class="cu-why">${n ? `<span class="new-badge">${n} new</span>` : ""}${c ? `<span class="new-badge chat-badge" aria-label="${plural(c, "new message", "new messages")}">💬 ${c}</span>` : ""}${bday ? `<span class="pchip occ-chip">🎂 ${inDays(bday)}</span>` : ""}</span>
+    </button>`).join("")}</div>` : "";
+
+  // One card per person: name and badges, then wishes and what you're getting, Kid and birthday chips, budget bar.
+  // Their household is the subheading above them, so the card doesn't repeat it.
+  let i = 0;
+  const personBtn = (m, hhId) => {
+    const skipped = off(m);
+    const p = plan.get(m.id);
+    const getting = p && !skipped ? p.occasions.reduce((n, o) => n + o.purchases.length, 0) : 0;
+    const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
+    const bday = (m.occasions || []).find((o) => o.birthday);
+    const soon = !skipped && bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}</span>` : "";
+    const age = m.kid ? `<span class="pchip kid-chip">Kid</span>` : "";
+    const dupe = hhId && dupeTag(m) === householdLabel(hhId) ? "" : dupeHtml(m);
+    const q = [m.name, m.fullName, m.lastName].filter(Boolean).join(" ").toLowerCase();
+    return `<button class="member slide${skipped ? " is-off" : ""}" style="animation-delay:${Math.min(i++, 12) * 0.05}s" type="button" data-id="${esc(m.id)}" data-q="${esc(q)}">
+      ${avatar(m.name, m.id)}
+      <span class="who"><strong>${esc(m.name)}${dupe}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}</small>${age}${soon}</span>${skipped ? "" : budgetMini(p)}</span>${CHEV}
+    </button>`;
   };
-  // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
-  const sections = state.groups.map((fam, n) => {
-    const ppl = fam.members.filter((m) => m.id !== state.me.id);
-    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns">${isAdmin(fam) ? `<button class="btn quiet small" type="button" data-manage="${esc(fam.id)}">Manage</button>` : ""}<button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>
-      <div class="stack" style="margin-top:12px">${ppl.length ? peopleHtml(ppl, personBtn) : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
-  }).join("");
-  v.innerHTML = multi() ? `${kidsBar}${sections}
-    <div class="label">You</div>
-    <div class="stack" style="margin-top:12px">
-      <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
-      <button class="add soft" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>
-    </div>` : `
-    ${kidsBar}${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${isAdmin(g) ? `<button class="btn quiet small" type="button" data-manage="${esc(g.id)}">Manage</button>` : ""}</div><div class="stack" style="margin-top:12px">
-      ${peopleHtml(people, personBtn)}</div>` : `
-      <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Their lists show up here once they join.</p></div>`}
-    <div class="label">You</div>
-    <div class="stack" style="margin-top:12px">
-      <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
-      <button class="add soft" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>
-    </div>
-    <div class="label">Invite someone</div>
-    <div style="margin-top:12px">${g ? inviteCard(g) : ""}</div>
-    <p class="footnote">In another circle too, like friends or your partner's family? Join it from Settings and keep one list for both.</p>`;
+  // People grouped under small household subheadings: yours first, then the rest by name, then anyone not in a
+  // household, then anyone you turned off in Budget. No subheadings at all when nobody is in a household.
+  const sub = (label, extra = "") => `<div class="sublabel">${label}${extra}</div>`;
+  const groupsHtml = (list) => {
+    const vis = list.filter(shows);
+    if (!vis.length) return `<p class="footnote" style="margin-top:12px">No one matches this filter.</p>`;
+    const on = vis.filter((m) => !off(m)), skipped = vis.filter(off);
+    const by = new Map(), loose = [];
+    for (const m of on) m.householdId ? by.set(m.householdId, [...(by.get(m.householdId) || []), m]) : loose.push(m);
+    const ids = [...by.keys()].sort((a, b) => (b === mineHh) - (a === mineHh) || householdLabel(a).localeCompare(householdLabel(b)));
+    const heads = by.size > 0 || skipped.length > 0;
+    // The subheading opens the household's page and shows its pets ("🐕 Biscuit").
+    const out = ids.map((id) => `<div class="cgroup"><button class="sublabel hh-sub" type="button" data-open-hh="${esc(id)}">${tileAvatar(householdLabel(id), `h:${id}`, "xs")}<span>${esc(hhName(id))}</span>${petsOf(`h:${id}`).length ? `<small>${petNames(petsOf(`h:${id}`))}</small>` : ""}${CHEV}</button>
+      <div class="stack">${by.get(id).map((m) => personBtn(m, id)).join("")}</div></div>`);
+    if (loose.length) out.push(`<div class="cgroup">${heads ? sub(`<span>${by.size ? "Not in a household" : "People"}</span>`) : ""}
+      <div class="stack">${loose.map((m) => personBtn(m)).join("")}</div></div>`);
+    if (skipped.length) out.push(`<div class="cgroup">${sub("<span>Not on your gift list</span>", `<button class="linkbtn" type="button" data-who-change>Change</button>`)}
+      <div class="stack">${skipped.map((m) => personBtn(m)).join("")}</div></div>`);
+    return out.join("");
+  };
+  const head = (fam, first) => `<div class="label fam-label"${first ? ' style="margin-top:0"' : ""}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns">${isAdmin(fam) ? `<button class="btn quiet small" type="button" data-manage="${esc(fam.id)}">Manage</button>` : ""}<button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>`;
+  const addRow = `<button class="add soft c-add" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>`;
+
+  if (multi()) {
+    // In more than one circle: a section per circle. Someone in two of them shows in both.
+    // With a filter on, circles with no one matching are left out.
+    const shown = state.groups.filter((fam) => !state.circleFilter || fam.members.some((m) => m.id !== state.me.id && shows(m)));
+    const sections = shown.map((fam, n) => {
+      const ppl = fam.members.filter((m) => m.id !== state.me.id);
+      return `<section class="csection">${head(fam, !n && !catchUpHtml && !controls)}
+        ${ppl.length ? groupsHtml(ppl) : `<p class="footnote" style="margin:12px 0 0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</section>`;
+    }).join("");
+    v.innerHTML = `${catchUpHtml}${controls ? `<div class="c-top${catchUpHtml ? "" : " first"}">${controls}</div>` : ""}${sections}
+      <p class="footnote c-nomatch" hidden>No one by that name.</p>${addRow}`;
+  } else {
+    v.innerHTML = `${catchUpHtml}${g ? head(g, !catchUpHtml) : ""}
+      ${people.length ? `${controls}<div class="csection">${groupsHtml(people)}</div><p class="footnote c-nomatch" hidden>No one by that name.</p>` : `
+        <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Their lists show up here once they join.</p></div>
+        <div style="margin-top:12px">${g ? inviteCard(g) : ""}</div>`}
+      ${addRow}
+      <p class="footnote">In another circle too, like friends or your partner's family? Join it from Settings and keep one list for both.</p>`;
+  }
   v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
-  $("#meRow").onclick = () => setTab("mine");
+  v.querySelectorAll("[data-cu]").forEach((b) => (b.onclick = () => {
+    if (b.hasAttribute("data-cu-chat")) state.chatOnLoad = true;
+    setTab("family", b.dataset.cu);
+  }));
   v.querySelectorAll("[data-add-managed]").forEach((b) => (b.onclick = addManaged));
+  v.querySelectorAll("[data-open-hh]").forEach((b) => (b.onclick = () => openHousehold(b.dataset.openHh)));
   v.querySelectorAll("[data-cf]").forEach((b) => (b.onclick = () => { state.circleFilter = b.dataset.cf; renderFamily(); }));
-  // Keep the picked chip in view (the row re-renders scrolled to the start).
-  const picked = v.querySelector('.circle-filter [aria-pressed="true"]');
-  if (picked && state.circleFilter) picked.parentElement.scrollLeft = picked.offsetLeft - 16;
+  v.querySelectorAll("[data-who-change]").forEach((b) => (b.onclick = () => t && openBudgetWho(t, () => renderFamily())));
+  // Chip row: keep the picked chip in view (it re-renders scrolled to the start), and fade whichever edge has more.
+  const row = v.querySelector(".circle-filter");
+  if (row) {
+    const picked = row.querySelector('[aria-pressed="true"]');
+    if (picked && state.circleFilter) row.scrollLeft = picked.offsetLeft - 16;
+    const fade = () => {
+      row.style.setProperty("--fl", row.scrollLeft > 2 ? "28px" : "0px");
+      row.style.setProperty("--fr", row.scrollLeft + row.clientWidth < row.scrollWidth - 2 ? "28px" : "0px");
+    };
+    row.addEventListener("scroll", fade, { passive: true });
+    requestAnimationFrame(fade);
+  }
+  // Search: hides cards (and then empty groups and circles) as you type. Catch up hides while searching.
+  const search = v.querySelector(".c-search");
+  if (search) search.oninput = () => {
+    const q = search.value.trim().toLowerCase();
+    let any = false;
+    v.querySelectorAll(".member[data-q]").forEach((c) => { c.hidden = !!q && !c.dataset.q.includes(q); any ||= !c.hidden; });
+    v.querySelectorAll(".cgroup").forEach((gr) => (gr.hidden = !gr.querySelector(".member:not([hidden])")));
+    if (multi()) v.querySelectorAll(".csection").forEach((s) => (s.hidden = !!q && !s.querySelector(".member:not([hidden])")));
+    const cu = v.querySelector(".catchup");
+    if (cu) { cu.hidden = !!q; cu.previousElementSibling.hidden = !!q; }
+    $(".c-nomatch", v).hidden = any || !q;
+  };
   if (g && !multi()) wireInviteCard(v, g);
   v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((x) => x.id === b.dataset.share))));
   v.querySelectorAll("[data-manage]").forEach((b) => (b.onclick = () => openCircleManage(b.dataset.manage)));
@@ -5784,7 +5856,8 @@ function renderPeopleTab(t, v) {
 
 // Who's in your budget: switch off a household or one person you've agreed not to exchange gifts with. Only for
 // you; they drop off the People tab, the totals and the gift reminders. Purchases and ideas for them stay.
-function openBudgetWho(t) {
+// `after` runs when the sheet closes with changes (Budget re-renders itself; Circles passes its own).
+function openBudgetWho(t, after = () => { state.lastLeft = null; renderTracker().catch(() => {}); }) {
   const skips = new Set(t.skips || []);
   const byHh = new Map(), loose = [];
   for (const p of t.people) p.householdId ? byHh.set(p.householdId, [...(byHh.get(p.householdId) || []), p]) : loose.push(p);
@@ -5812,7 +5885,7 @@ function openBudgetWho(t) {
       x.disabled = off;
       x.closest(".check").style.opacity = off ? ".5" : "";
     });
-    sheet.addEventListener("close", () => { if (changed) { state.lastLeft = null; renderTracker().catch(() => {}); } }, { once: true });
+    sheet.addEventListener("close", () => { if (changed) after(); }, { once: true });
     el.querySelectorAll("[data-skip]").forEach((box) => (box.onchange = async () => {
       const target = box.dataset.skip;
       const skip = !box.checked;
