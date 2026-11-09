@@ -2125,7 +2125,7 @@ function setTab(tab, person = null) {
   window.scrollTo(0, 0);
   render();
 }
-window.addEventListener("popstate", () => { readHash(); render(); });
+window.addEventListener("popstate", () => { $(".coach")?._done?.(); readHash(); render(); });
 function readHash() {
   const h = location.hash.slice(1);
   // #person/ID, or #person/ID/chat/CIRCLE (from a chat notification: opens that chat once the page loads).
@@ -2870,11 +2870,11 @@ function openTour() {
   const slides = [
     { id: "hi", scene: ringScene(), title: w.started ? `${fam} is ready!` : fam ? `Welcome to ${fam}!` : `Welcome, ${state.me.name}!`,
       text: w.started ? "Here's how Hints works. It takes about 20 seconds." : fam ? `So glad you're here, ${state.me.name}. Here's how it works.` : "Here's a quick look at how Hints works." },
-    { id: "add", scene: addScene(), title: "Drop a hint", text: "Paste a link from any store or app (TikTok Shop, Amazon, anywhere), or just type a name. New wishes stay private in Maybe until you tap Publish." },
+    { id: "add", scene: addScene(), title: "Drop a hint", text: "Paste a link from any store or app (TikTok Shop, Amazon, anywhere), or just type a name. Put it on your wish list, or tuck it in Maybe (only you see it) until you're sure." },
     { id: "surprise", scene: surpriseScene(), title: "Gifts stay a surprise", text: "When someone marks a gift on your list, you never see it. No spoilers, ever." },
-    { id: "private", scene: privateScene(), title: "Your notes are just for you", text: "Jot down gift ideas and set a budget for each person in Budget. Nobody else can see them." },
+    { id: "private", scene: privateScene(), title: "Plan in secret", text: "Jot down gift ideas and set a budget for each person in Budget. The people you're shopping for never see any of it." },
     !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
-      text: "Your notes are already hidden from everyone. A 4-digit PIN just stops someone else from signing in as you on another phone.",
+      text: "Your ideas and budgets are already hidden from the people you shop for. A 4-digit PIN just stops someone else from signing in as you on another phone.",
       extra: '<div class="tour-pin"><input class="input pin-in" id="tourPin" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" aria-label="4-digit PIN" placeholder="····"></div>' },
     !standalone && { id: "install", scene: installScene(), title: "Keep it on your home screen", text: "Open Hints in one tap, like any other app.",
       extra: iOS ? steps([`Tap Share ${SHARE_IOS} in Safari (on newer iPhones, it's in the ${DOTS} menu)`, `Choose <strong>Add to Home Screen</strong> ${ADD_HOME}`])
@@ -5814,6 +5814,7 @@ function coachTour(allSteps, label) {
   pop.addEventListener("click", (e) => e.stopPropagation());
   let i = 0;
   const done = () => { wrap.remove(); removeEventListener("resize", place); removeEventListener("scroll", place, true); document.removeEventListener("keydown", onKey); };
+  wrap._done = done; // closed on Back too (popstate), so it never floats over another screen
   function place() {
     const target = $(steps[i].sel);
     if (!target) return;
