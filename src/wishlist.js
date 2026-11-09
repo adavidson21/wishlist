@@ -33,7 +33,7 @@ function photoValue(v) {
   if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
   return photo;
 }
-const LIMITS = { stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -272,7 +272,29 @@ function profileOut(row) {
     giftStyle: keysOut(row?.gift_style, GIFT_STYLES),
     colors: keysOut(row?.colors, FAV_COLORS),
     loves: row?.loves || "",
+    bio: row?.bio || "",
+    // Before 0017, loves was one line of text. Until it's saved again, show it as tags.
+    likes: row?.likes != null ? tagsOut(row.likes) : tagsOut(JSON.stringify(String(row?.loves || "").split(/[,;\n]+/))),
+    dislikes: tagsOut(row?.dislikes),
   };
+}
+function tagsOut(v) {
+  try {
+    const a = JSON.parse(v || "[]");
+    return Array.isArray(a) ? a.filter((x) => typeof x === "string").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, LIMITS.tags) : [];
+  } catch {
+    return [];
+  }
+}
+// Loves or nopes from the app: trimmed, no repeats (any case), limited. Returns JSON or NULL.
+function tagsIn(v, what) {
+  const seen = new Set(), tags = [];
+  for (const x of Array.isArray(v) ? v : []) {
+    const t = text(typeof x === "string" ? x.replace(/\s+/g, " ") : "", LIMITS.tag, "That one");
+    if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); tags.push(t); }
+  }
+  if (tags.length > LIMITS.tags) fail(400, `That's a lot of ${what.toLowerCase()}. Keep it to ${LIMITS.tags}.`);
+  return tags.length ? JSON.stringify(tags) : null;
 }
 function brandsOut(v) {
   try {
@@ -303,7 +325,7 @@ async function sharesGroup(env, a, b) {
   return !!row;
 }
 
-// SQL condition: item `i` is published (not in the owner's "Just me" drafts) and visible to the viewer
+// SQL condition: item `i` is published (not in the owner's "Maybe" drafts) and visible to the viewer
 // (bound once as ?) through at least one shared family that the owner hasn't hidden it from.
 const ITEM_VISIBLE = `i.draft = 0 AND EXISTS (
   SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
@@ -1165,7 +1187,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id,
+      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -1179,6 +1201,8 @@ const handlers = {
     const person = (p) => ({
       id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null,
       occasions: occasionsFor(p, t), householdId: p.household_id || null,
+      // Their Nopes (shown on their page anyway), so the app can warn when an idea for them matches one.
+      nopes: tagsOut(p.dislikes),
     });
     // Households of anyone you can see. Labels use only people you can see (and your nicknames for them),
     // except your own household, which lists everyone in it.
@@ -1309,7 +1333,7 @@ const handlers = {
     };
   },
 
-  // Add (no id) or edit (id) one of your own items. size and color: free text, absent = unchanged. New items start in "Just me" (draft) until published.
+  // Add (no id) or edit (id) one of your own items. size and color: free text, absent = unchanged. New items start in "Maybe" (draft) until published.
   // "Must have" only applies to published items, so it is dropped on drafts.
   async "POST item/save"(req, env) {
     const me = await auth(req, env);
@@ -1364,7 +1388,7 @@ const handlers = {
     return { id };
   },
 
-  // Publish one of your "Just me" items to your wish list. One way: a published item never goes back to drafts.
+  // Publish one of your "Maybe" items to your wish list. One way: a published item never goes back to drafts.
   // created_at is reset so it sorts as a new wish on the list.
   async "POST item/publish"(req, env) {
     const me = await auth(req, env);
@@ -2044,7 +2068,8 @@ const handlers = {
   // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
   // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text.
-  // brands: favorite brand names (free text). giftStyle, colors: up to 3 keys each. loves: short free text.
+  // brands: favorite brand names (free text). giftStyle, colors: up to 3 keys each. loves: short free text (old).
+  // likes, dislikes: lists of short tags (Loves and Nopes). bio: one short line.
   // Absent = unchanged.
   async "POST profile"(req, env) {
     const me = await auth(req, env);
@@ -2103,6 +2128,18 @@ const handlers = {
     }
     if (b.colors !== undefined) {
       await env.DB.prepare("UPDATE members SET colors = ? WHERE id = ?").bind(keysIn(b.colors, FAV_COLORS), me.id).run();
+    }
+    if (b.likes !== undefined || b.dislikes !== undefined) {
+      const likes = b.likes !== undefined ? tagsIn(b.likes, "Loves") : undefined;
+      const dislikes = b.dislikes !== undefined ? tagsIn(b.dislikes, "Nopes") : undefined;
+      const both = new Set([...JSON.parse(likes || "[]"), ...JSON.parse(dislikes || "[]")].map((t) => t.toLowerCase()));
+      if (likes && dislikes && both.size < JSON.parse(likes).length + JSON.parse(dislikes).length) fail(400, "Something is in both Loves and Nopes. Pick one.");
+      // Saving likes replaces the old free-text loves for good.
+      if (likes !== undefined) await env.DB.prepare("UPDATE members SET likes = ?, loves = NULL WHERE id = ?").bind(likes || "[]", me.id).run();
+      if (dislikes !== undefined) await env.DB.prepare("UPDATE members SET dislikes = ? WHERE id = ?").bind(dislikes, me.id).run();
+    }
+    if (b.bio !== undefined) {
+      await env.DB.prepare("UPDATE members SET bio = ? WHERE id = ?").bind(text(b.bio, LIMITS.bio, "Bio") || null, me.id).run();
     }
     if (b.loves !== undefined) {
       await env.DB.prepare("UPDATE members SET loves = ? WHERE id = ?").bind(text(b.loves, LIMITS.loves, "Little things you love") || null, me.id).run();
