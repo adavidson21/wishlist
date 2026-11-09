@@ -446,6 +446,15 @@
   .still-need { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
   /* Settings page */
+  /* Section nav: pills across the top on phones, a side list on wide screens */
+  .set-nav { display: flex; gap: 8px; overflow-x: auto; margin: 0 -4px 18px; padding: 2px 4px 4px; scrollbar-width: none; }
+  .set-nav::-webkit-scrollbar { display: none; }
+  .set-nav .set-nav-h { display: none; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .set-nav button { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 16px; border: 0; border-radius: 999px;
+    background: var(--panel); color: var(--muted); font-weight: 700; font-size: 15px; }
+  .set-nav button[aria-current="page"] { background: var(--soft); color: var(--soft-ink); }
+  .set-nav button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .set-body > .label:first-child { margin-top: 0; }
   .set-card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 18px; margin-top: 12px; }
   .set-card h4 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
   .set-card > p, .set-card .sub { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
@@ -1131,11 +1140,16 @@
     #view .budget-layout > .b-actions { grid-template-columns: 1fr; gap: 10px; margin-top: 22px !important; }
     #view .b-main .stack { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
 
-    /* Settings: two columns of cards */
-    body[data-view="settings"] #view { columns: 2 380px; column-gap: 28px; }
-    body[data-view="settings"] #view > .set-card { break-inside: avoid; }
-    body[data-view="settings"] #view > .label { break-after: avoid; }
-    body[data-view="settings"] #view > .about { column-span: all; }
+    /* Settings: section nav on the left, the picked section on the right */
+    body[data-view="settings"] #view { max-width: 980px; }
+    .set-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 36px; align-items: start; }
+    .set-nav { position: sticky; top: 24px; flex-direction: column; overflow: visible; margin: 0; padding: 0; gap: 2px; }
+    .set-nav .set-nav-h { display: block; margin: 18px 12px 6px; }
+    .set-nav .set-nav-h:first-child { margin-top: 0; }
+    .set-nav button { width: 100%; justify-content: flex-start; border-radius: 12px; padding: 0 14px; min-height: 46px; font-size: 16px; }
+    .set-nav button:not([aria-current]) { background: none; }
+    .set-nav button:not([aria-current]):hover { background: var(--panel); color: var(--ink); }
+    .set-body > .label:first-child { margin-top: 0; }
     body[data-view="profile"] #view { max-width: 760px; }
 
     /* Sheets open as a centered card with a little spring */
@@ -1673,7 +1687,8 @@ function readHash() {
   const h = location.hash.slice(1);
   if (h.startsWith("person/")) { if (state.person !== h.slice(7)) state.view = null; state.tab = "family"; state.person = h.slice(7); }
   else if (h === "budget" || h === "notes") { state.tab = "notes"; state.person = null; }
-  else if (["mine", "family", "profile", "settings"].includes(h)) { state.tab = h; state.person = null; }
+  else if (h.startsWith("settings/")) { state.tab = "settings"; state.person = null; state.setSec = h.slice(9); }
+  else if (["mine", "family", "profile", "settings"].includes(h)) { state.tab = h; state.person = null; if (h === "settings") state.setSec = "app"; }
 }
 document.querySelectorAll(".tab[data-tab]").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
 $("#addTab").onclick = () => addThing();
@@ -2119,7 +2134,7 @@ addEventListener("appinstalled", () => {
 // - "prompt": Chrome, Edge and Samsung Internet hand us their own install prompt (it never fires once installed).
 // - "ios": Safari on iPhone and iPad has no prompt, so we show the taps. "ios-other": Chrome, Edge, Firefox on iOS.
 // - "inapp": opened inside Facebook, Instagram, Gmail and so on, which can't install. We say how to open a real browser.
-// "Not now" snoozes it for 7 days, then 30, then stops. Settings > The app always has it.
+// "Not now" snoozes it for 7 days, then 30, then stops. Settings > App always has it.
 // iPhone home screen apps keep their own storage, so we can't see from Safari that it's installed:
 // the how-to sheet ends with "I've added it", which turns the card off for good.
 const INSTALL_KEY = "wishlist-install";
@@ -4526,7 +4541,7 @@ async function renderProfile() {
       ${carefulHtml(p)}
     </div>
   </div>`;
-  $("#gearBtn").onclick = () => setTab("settings");
+  $("#gearBtn").onclick = () => { state.setSec = "app"; setTab("settings"); };
   v.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { state.profileEdit = b.dataset.edit; render(); }));
 }
 
@@ -4750,7 +4765,8 @@ async function renderProfileEdit() {
 }
 
 // ---------- settings ----------
-// Opens from the gear on Profile. Look and feel, PIN, circles, household, the app, sign out.
+// Opens from the gear on Profile. Sections: App (look and feel, PIN, install, sign out), then Groups: Circles, Household.
+// Deep links: #settings, #settings/circles, #settings/household.
 const MOTION_KEY = "wishlist-motion";
 const SUN_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 const MOON_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
@@ -4794,8 +4810,13 @@ async function renderSettings() {
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   setHero(`<button class="back" type="button" id="backBtn">${BACK} Profile</button>${heroTitle(state.me.name, "Settings")}`);
   const v = $("#view");
-  v.innerHTML = `
-    <div class="label" style="margin-top:0">Look and feel</div>
+  const secs = [["app", "App"], ["circles", multi() ? "Circles" : "Circle"], ["household", "Household"]];
+  if (!secs.some(([k]) => k === state.setSec)) state.setSec = "app";
+  const sec = state.setSec;
+  const html = {
+    app: `
+
+    <div class="label">Look and feel</div>
     <div class="set-card">
       <h4>Light or dark</h4>
       <div class="modes" role="radiogroup" aria-label="Light or dark" id="modes">
@@ -4827,7 +4848,19 @@ async function renderSettings() {
       </form>
     </div>
 
-    <div class="label" id="famSec">${multi() ? "Your circles" : "Your circle"}${tip(multi() ? "Every circle sees the same list. To hide a wish from one, open it and turn that circle off." : "Do gifts with another group too? Join their circle and keep one list for all of them.")}</div>
+    <div class="label">The app</div>
+    <div class="set-card">
+      ${standalone ? "" : `<h4>Add to home screen</h4>
+      <button class="btn primary wide" type="button" id="installSettings" style="margin-bottom:10px">${iOS ? "Show me how" : installPrompt ? "Install" : "Show me how"}</button>`}
+      <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
+    </div>
+
+    <div class="set-card" style="margin-top:26px">
+      <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
+    </div>
+`,
+    circles: `
+    <div class="label">${multi() ? "Your circles" : "Your circle"}${tip(multi() ? "Every circle sees the same list. To hide a wish from one, open it and turn that circle off." : "Do gifts with another group too? Join their circle and keep one list for all of them.")}</div>
     <div class="set-card">
       ${state.groups.map((g) => `<div class="fam">
           ${tileAvatar(g.name, `g:${g.id}`)}
@@ -4850,76 +4883,89 @@ async function renderSettings() {
       </form>
     </div>
 
-    <div class="label" id="hhSec">Your household${tip("People you live or gift with. Add them to a circle together in one tap.")}</div>
+`,
+    household: `
+    <div class="label">Your household${tip("People you live or gift with. Add them to a circle together in one tap.")}</div>
     <div class="set-card">${householdCard()}</div>
 
-    <div class="label">The app</div>
-    <div class="set-card">
-      ${standalone ? "" : `<h4>Add to home screen</h4>
-      <button class="btn primary wide" type="button" id="installSettings" style="margin-bottom:10px">${iOS ? "Show me how" : installPrompt ? "Install" : "Show me how"}</button>`}
-      <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
-    </div>
-
-    <div class="set-card" style="margin-top:26px">
-      <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
-    </div>
-`;
-
-  // Light or dark: the two tiles always show what you're seeing now. Picking one turns "Match my phone" off.
-  const paintTheme = () => {
-    const dark = isDark();
-    v.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-checked", String((b.dataset.mode === "dark") === dark)));
-    $("#autoTheme", v).setAttribute("aria-checked", String(themeAuto()));
+`,
   };
-  paintTheme();
-  v.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { setTheme(b.dataset.mode); paintTheme(); buzz(); }));
-  $("#autoTheme", v).onclick = () => { setTheme(themeAuto() ? (isDark() ? "dark" : "light") : "auto"); paintTheme(); buzz(); };
-  const mq = matchMedia("(prefers-color-scheme: dark)");
-  mq.onchange = () => { if (state.tab === "settings" && $("#modes")) paintTheme(); };
-
-  wireSeg($("#textSeg", v), setTextSize);
-  $("#motionSw", v).onclick = (e) => {
-    const on = e.currentTarget.getAttribute("aria-checked") !== "true";
-    setMotion(on);
-    e.currentTarget.setAttribute("aria-checked", String(on));
-  };
-
+  v.innerHTML = `<div class="set-layout">
+    <nav class="set-nav" aria-label="Settings sections">
+      <span class="set-nav-h">You</span>
+      ${navBtn(secs[0])}
+      <span class="set-nav-h">Groups</span>
+      ${secs.slice(1).map(navBtn).join("")}
+    </nav>
+    <div class="set-body">${html[sec]}</div>
+  </div>`;
+  function navBtn([k, l]) { return `<button type="button" data-sec="${k}"${k === sec ? ' aria-current="page"' : ""}>${l}</button>`; }
+  v.querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => {
+    if (b.dataset.sec === sec) return;
+    state.setSec = b.dataset.sec;
+    history.replaceState(null, "", b.dataset.sec === "app" ? "#settings" : `#settings/${b.dataset.sec}`);
+    renderSettings();
+  }));
   $("#backBtn").onclick = () => setTab("profile");
   const reload = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
-  v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
-  $("#replayTour", v).onclick = () => { state.welcome = null; openTour(); };
-  $("#installSettings", v)?.addEventListener("click", () => startInstall());
-  v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
-    const name = groupName(b.dataset.leave);
-    if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.`)) return;
-    try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
-  }));
-  wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
-  $("#startFam", v).onclick = () => openSheet(`
-    <h3>Start a new circle</h3>
-    <form id="startForm" autocomplete="off">
-      <div class="err" hidden></div>
-      <label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>
-      <button class="btn primary wide" type="submit">Create circle</button>
-    </form>`, (el2) => wireForm($("#startForm", el2), async ({ groupName: n }) => {
-      const { group: g } = await api("family/start", { groupName: n });
-      reload(`Started ${g.name}. Code: ${g.code}`);
+
+  if (sec === "app") {
+    // Light or dark: the two tiles always show what you're seeing now. Picking one turns "Match my phone" off.
+    const paintTheme = () => {
+      const dark = isDark();
+      v.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-checked", String((b.dataset.mode === "dark") === dark)));
+      $("#autoTheme", v).setAttribute("aria-checked", String(themeAuto()));
+    };
+    paintTheme();
+    v.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { setTheme(b.dataset.mode); paintTheme(); buzz(); }));
+    $("#autoTheme", v).onclick = () => { setTheme(themeAuto() ? (isDark() ? "dark" : "light") : "auto"); paintTheme(); buzz(); };
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    mq.onchange = () => { if (state.tab === "settings" && $("#modes")) paintTheme(); };
+
+    wireSeg($("#textSeg", v), setTextSize);
+    $("#motionSw", v).onclick = (e) => {
+      const on = e.currentTarget.getAttribute("aria-checked") !== "true";
+      setMotion(on);
+      e.currentTarget.setAttribute("aria-checked", String(on));
+    };
+
+    $("#replayTour", v).onclick = () => { state.welcome = null; openTour(); };
+    $("#installSettings", v)?.addEventListener("click", () => startInstall());
+    wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
+    $("#removePin", v)?.addEventListener("click", async () => {
+      try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { toast(e.message); }
+    });
+    $("#signOut", v).onclick = async () => {
+      try { await api("signout", {}); } catch {}
+      setToken(null);
+      try { localStorage.removeItem(CACHE_KEY); } catch {}
+      state.me = null;
+      state.tab = "mine";
+      history.replaceState(null, "", location.pathname);
+      render();
+    };
+  }
+  if (sec === "circles") {
+    v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
+    v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
+      const name = groupName(b.dataset.leave);
+      if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.`)) return;
+      try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
     }));
-  wireHousehold(v, reload);
-  v.querySelectorAll("[data-edit-circle]").forEach((b) => (b.onclick = () => openCircleEdit(b.dataset.editCircle, reload)));
-  wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
-  $("#removePin", v)?.addEventListener("click", async () => {
-    try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { toast(e.message); }
-  });
-  $("#signOut", v).onclick = async () => {
-    try { await api("signout", {}); } catch {}
-    setToken(null);
-    try { localStorage.removeItem(CACHE_KEY); } catch {}
-    state.me = null;
-    state.tab = "mine";
-    history.replaceState(null, "", location.pathname);
-    render();
-  };
+    wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
+    $("#startFam", v).onclick = () => openSheet(`
+      <h3>Start a new circle</h3>
+      <form id="startForm" autocomplete="off">
+        <div class="err" hidden></div>
+        <label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>
+        <button class="btn primary wide" type="submit">Create circle</button>
+      </form>`, (el2) => wireForm($("#startForm", el2), async ({ groupName: n }) => {
+        const { group: g } = await api("family/start", { groupName: n });
+        reload(`Started ${g.name}. Code: ${g.code}`);
+      }));
+    v.querySelectorAll("[data-edit-circle]").forEach((b) => (b.onclick = () => openCircleEdit(b.dataset.editCircle, reload)));
+  }
+  if (sec === "household") wireHousehold(v, reload);
 }
 
 // Edit a circle: its photo and name. Only the person who started it sees the Edit button (the API checks too).
@@ -4938,7 +4984,7 @@ function openCircleEdit(gid, reload) {
   });
 }
 
-// Settings > Your household. Optional: people who live or gift together. Turning a circle on puts the
+// Settings > Household. Optional: people who live or gift together. Turning a circle on puts the
 // whole household in it, including people added later.
 function householdCard() {
   const hh = state.me.household;
