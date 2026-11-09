@@ -481,6 +481,75 @@ async function snapshotGifts(env) {
   ]);
 }
 
+// ---------- share links ----------
+// A read-only page of someone's list for people outside their circles: /s/TOKEN (members.share_token,
+// migration 0036). It shows published wishes not hidden from any circle, gift cards, sizes and loves, and
+// never anything about purchases, so it's safe if the owner opens it too.
+const SHARE_RE = /^[A-Za-z0-9_-]{22,40}$/;
+const shareToken = () => {
+  const b = crypto.getRandomValues(new Uint8Array(18));
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const escHtml = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const SHARE_SIZES = [["shirt", "Shirt / top"], ["pants", "Pants"], ["shoe", "Shoe"], ["ring", "Ring"]];
+export async function sharePage(env, token, url) {
+  const html = (status, body, title = "Hints") => new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow">
+<title>${escHtml(title)}</title><link rel="icon" href="/icons/icon-192.png"><link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+:root{--brand:#7A1E3A;--ink:#2A1A1F;--muted:#7C6A70;--bg:#FBF7F2;--card:#fff;--line:#EFE6E1;--gold:#D9A94A;--gold-soft:#FBF1DC}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Figtree,system-ui,sans-serif}
+h1,h2{font-family:"Bricolage Grotesque",Figtree,sans-serif;margin:0}
+header{background:var(--brand);color:#fff;padding:28px 20px 26px}header .in{max-width:860px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.av{width:58px;height:58px;border-radius:50%;background:#ffffff26;display:grid;place-items:center;font-weight:800;font-size:24px;overflow:hidden;flex:none}.av img{width:100%;height:100%;object-fit:cover}
+header h1{font-size:30px;line-height:1.1}header p{margin:4px 0 0;opacity:.85}
+main{max-width:860px;margin:0 auto;padding:18px 16px 40px}
+.label{font-weight:800;margin:24px 0 10px;padding-left:10px;border-left:4px solid var(--gold)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.w{background:var(--card);border-radius:16px;padding:12px;display:flex;gap:12px;box-shadow:0 1px 3px #2a1a1f14;text-decoration:none;color:inherit}
+.w .im{width:72px;height:72px;border-radius:12px;background:var(--gold-soft);flex:none;overflow:hidden;display:grid;place-items:center;font-size:26px}.w .im img{width:100%;height:100%;object-fit:contain;background:#fff}
+.w b{display:block}.w small{color:var(--muted);font-weight:600}.w .top{color:var(--gold);font-weight:800;font-size:13px}.w .pr{font-weight:800;color:var(--brand)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-weight:600}
+.sizes{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}.sizes div{background:var(--card);border-radius:12px;padding:10px 12px}.sizes small{display:block;color:var(--muted);font-weight:700;font-size:12px}
+.note{background:var(--gold-soft);border-radius:14px;padding:12px 14px;margin-top:16px;font-size:15px}
+footer{text-align:center;color:var(--muted);padding:10px 16px 40px;font-size:14px}footer a{color:var(--brand);font-weight:700}
+.empty{text-align:center;padding:60px 20px}
+</style></head><body>${body}</body></html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow" } });
+  const gone = () => html(404, `<main class="empty"><h1>This link isn't active</h1><p>Ask whoever sent it for a new one.</p><p><a href="/">Hints</a></p></main>`);
+  if (!SHARE_RE.test(token || "") || !env.DB) return gone();
+  const m = await env.DB.prepare("SELECT * FROM members WHERE share_token = ?").bind(token).first();
+  if (!m) return gone();
+  const p = profileOut(m);
+  const { results: items } = await env.DB.prepare(
+    `SELECT * FROM items i WHERE i.owner_id = ? AND i.draft = 0 AND i.removed_at IS NULL AND i.held_season IS NULL AND i.received_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id)
+      ORDER BY (i.priority = 'must') DESC, i.created_at`,
+  ).bind(m.id).all();
+  const { results: cards } = await env.DB.prepare("SELECT brand FROM gift_cards WHERE member_id = ? ORDER BY created_at, brand").bind(m.id).all();
+  const name = m.name;
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+  const wish = (i) => {
+    const inner = `<span class="im">${i.image_url ? `<img src="${escHtml(i.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "🎁"}</span>
+      <span>${i.priority === "must" ? `<span class="top">★ Top pick</span>` : ""}<b>${escHtml(i.title)}</b>
+      ${i.price_cents ? `<span class="pr">$${(i.price_cents / 100).toFixed(i.price_cents % 100 ? 2 : 0)}</span> ` : ""}${i.url ? `<small>${escHtml(host(i.url))}</small>` : ""}
+      ${(i.quantity ?? 1) !== 1 ? `<small> · ${i.quantity ? `wants ${i.quantity}` : "as many as you like"}</small>` : ""}</span>`;
+    return /^https?:\/\//.test(i.url || "") ? `<a class="w" href="${escHtml(i.url)}" target="_blank" rel="noopener nofollow">${inner}</a>` : `<div class="w">${inner}</div>`;
+  };
+  const sizes = SHARE_SIZES.filter(([k]) => p.sizes[k]);
+  const body = `<header><div class="in"><span class="av">${m.photo_at ? `<img src="/api/photo?m=${escHtml(m.id)}&v=${escHtml(m.photo_at)}" alt="">` : escHtml(name.charAt(0).toUpperCase())}</span>
+    <div><h1>${escHtml(name)}'s wish list</h1>${p.bio ? `<p>${escHtml(p.bio)}</p>` : ""}</div></div></header>
+  <main>
+    ${items.length ? `<div class="label">Wishes</div><div class="grid">${items.map(wish).join("")}</div>` : `<p class="note">${escHtml(name)} hasn't added any wishes yet.</p>`}
+    ${cards.length ? `<div class="label">Gift cards ${escHtml(name)} would love</div><div class="chips">${cards.filter((c) => GIFT_CARD_NAMES.has(c.brand)).map((c) => `<span class="chip">${escHtml(GIFT_CARD_NAMES.get(c.brand))}</span>`).join("")}</div>` : ""}
+    ${sizes.length ? `<div class="label">Sizes</div><div class="sizes">${sizes.map(([k, l]) => `<div><small>${l}</small>${escHtml(p.sizes[k])}</div>`).join("")}</div>` : ""}
+    ${p.likes.length ? `<div class="label">Loves</div><div class="chips">${p.likes.map((t) => `<span class="chip">${escHtml(t)}</span>`).join("")}</div>` : ""}
+    ${p.brands.length ? `<div class="label">Favorite brands</div><div class="chips">${p.brands.map((t) => `<span class="chip">${escHtml(t)}</span>`).join("")}</div>` : ""}
+    <p class="note">Getting something? Tell whoever shared this link, so nobody doubles up.</p>
+  </main>
+  <footer>Made with <a href="https://${escHtml(url.host)}/">Hints</a>, wish lists for your people.</footer>`;
+  return html(200, body, `${name}'s wish list`);
+}
+
 // ---------- chat about a person ----------
 // One thread per circle and person. Messages older than this are swept and never returned.
 const CHAT_KEEP_DAYS = 183;
@@ -2159,7 +2228,7 @@ const handlers = {
       }
     }
     let pinCleared = null;
-    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year FROM members WHERE id = ?").bind(me.id).first();
+    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
     if (me.pinClearedAt) {
       const by = me.pinClearedBy && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(me.pinClearedBy).first());
@@ -2174,6 +2243,8 @@ const handlers = {
         notify: notifyPrefs(prefsRow?.notify),
         // Year "Looks good" was tapped on the "hasn't changed since last year" card.
         staleOk: prefsRow?.stale_ok_year || null,
+        // Your read-only share link (/s/TOKEN), or null when it's off.
+        shareToken: prefsRow?.share_token || null,
       },
       // How many wishes each person's list had when you last opened it, for the "N new" badges (any device).
       seen: Object.fromEntries(seenRows.map((r) => [r.owner_id, r.seen_count])),
@@ -2333,6 +2404,8 @@ const handlers = {
       member,
       own,
       canManage: manage,
+      // Someone you look after: their share link, if it's on.
+      shareToken: manage ? (await env.DB.prepare("SELECT share_token FROM members WHERE id = ?").bind(memberId).first())?.share_token || null : undefined,
       // Someone you look after: their received wishes, and held ones waiting on "Did you get this?".
       ...(manage ? await (async () => {
         const { results: mine } = await env.DB.prepare("SELECT * FROM items WHERE owner_id = ? AND removed_at IS NULL AND (received_at IS NOT NULL OR held_season IS NOT NULL)").bind(memberId).all();
@@ -3908,6 +3981,16 @@ const handlers = {
     if (!m) return new Response("Not found", { status: 404 });
     const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
     return new Response(bytes, { headers: { "content-type": `image/${m[1]}`, "cache-control": "public, max-age=31536000, immutable" } });
+  },
+
+  // Make a new share link (on: true; the old one stops working) or turn it off. as: someone you look after.
+  async "POST share/link"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const owner = await ownerFor(env, me, b.as);
+    const token = b.on ? shareToken() : null;
+    await env.DB.prepare("UPDATE members SET share_token = ? WHERE id = ?").bind(token, owner).run();
+    return { token };
   },
 
   async "POST signout"(req, env) {
