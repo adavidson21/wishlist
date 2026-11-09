@@ -4512,7 +4512,7 @@ function openChat(personId, opts = {}) {
 // Their page shows this card: add wishes, edit their profile and gift cards, hand the list over, or remove them.
 function manageCard(list, name) {
   const by = list.member.id && everyone().find((m) => m.id === list.member.id)?.managedBy;
-  const who = by === state.me.id ? "You added" : by ? `${esc(personName(by))} added` : "Someone added";
+  const who = by === state.me.id ? "You added" : by ? `${esc(personName(by))} looks after` : "Someone added";
   return `<section class="set-card manage-card">
     <h4>You look after ${esc(name)}'s list</h4>
     <p class="sub">${who} ${esc(name)}, who doesn't use the app. Add wishes for them here. You can still see what's been bought.</p>
@@ -4522,6 +4522,7 @@ function manageCard(list, name) {
       <button class="btn small" type="button" id="mgCards">Gift cards</button>
     </div>
     <div class="manage-more">
+      <button class="linkbtn" type="button" id="mgHandoff">Hand off to someone else</button>
       <button class="linkbtn" type="button" id="mgInvite">Send ${esc(name)} their invite</button>
       <button class="linkbtn" type="button" id="mgRelease">Let ${esc(name)} sign in</button>
       <button class="linkbtn" type="button" id="mgRemove">Remove ${esc(name)}</button>
@@ -4539,6 +4540,7 @@ function wireManageCard(v, list, name, id) {
     if (item) editItem(item, { as: id });
   }));
   $("#mgInvite", v).onclick = () => sendPersonalInvite(id);
+  $("#mgHandoff", v).onclick = () => handOff(id, name);
   $("#mgRelease", v).onclick = async () => {
     if (!window.confirm(`Let ${name} sign in? They'll pick their name on the sign-in screen with your circle's code. From then on it's their own list: they won't see what's been bought, and you won't be able to edit it.`)) return;
     try { await api("managed/release", { memberId: id }); toast(`${name} can sign in now`); state.stale = true; render(); } catch (e) { toast(e.message); }
@@ -4548,6 +4550,39 @@ function wireManageCard(v, list, name, id) {
     try { await api("managed/remove", { memberId: id }); toast(`Removed ${name}`); state.stale = true; setTab("family"); } catch (e) { toast(e.message); }
   };
 }
+// Give someone you look after to another person in their circles (a cousin takes over her baby's list). They
+// look after the list from then on, without the baby needing a login, and the baby joins their household.
+function handOff(id, name) {
+  const circles = state.groups.filter((g) => g.members.some((m) => m.id === id));
+  const seen = new Map();
+  for (const g of circles) for (const m of g.members) if (m.id !== id && m.id !== state.me.id && !m.managedBy && !seen.has(m.id)) seen.set(m.id, m);
+  const people = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const baby = everyone().find((m) => m.id === id);
+  const hhName = (m) => (m.householdId ? householdLabel(m.householdId) : "");
+  const line = (m) => (m.householdId && m.householdId === baby?.householdId ? `Already in ${esc(name)}'s household`
+    : hhName(m) ? `${esc(name)} joins ${esc(hhName(m))}` : "Uses the app");
+  openSheet(`
+    <h3>Who should look after ${esc(name)}?</h3>
+    <p class="subtle">They'll add ${esc(name)}'s wishes and keep the list up to date. ${esc(name)} still doesn't need a login.</p>
+    ${people.length ? `<div class="stack" style="margin-top:12px">${people.map((m) => `<button class="member" type="button" data-to="${esc(m.id)}">${avatar(m.name, m.id)}
+        <span class="who"><strong>${esc(m.name)}</strong><small>${line(m)}</small></span>${CHEV}</button>`).join("")}</div>`
+      : `<p class="subtle">Nobody else in ${esc(name)}'s circles uses the app yet.</p>`}`, (el) => {
+    el.querySelectorAll("[data-to]").forEach((b) => (b.onclick = async () => {
+      const to = seen.get(b.dataset.to);
+      const moves = hhName(to) && to.householdId !== baby?.householdId ? ` ${name} will move into ${hhName(to)}.` : "";
+      if (!window.confirm(`Hand ${name}'s list to ${to.name}? ${to.name} will look after it from now on.${moves}`)) return;
+      b.disabled = true;
+      try {
+        const r = await api("managed/handoff", { memberId: id, toId: to.id });
+        closeSheet();
+        toast(`${r.name} looks after ${name} now`);
+        state.stale = true;
+        render();
+      } catch (e) { toast(e.message); b.disabled = false; }
+    }));
+  });
+}
+
 // Add someone who doesn't use the app (a kid, a grandparent). They join your household too, if you have one.
 function addManaged() {
   const hh = state.me.household;
