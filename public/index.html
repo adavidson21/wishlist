@@ -309,16 +309,24 @@
   .wish.taken .side-price { color: var(--muted); }
   .gprice.est { color: var(--muted); }
   .wish[data-key] { cursor: pointer; }
-  .wd-img { display: grid; place-items: center; height: 240px; margin: 4px 0 14px; border-radius: 16px; background: var(--panel); overflow: hidden; }
-  .wd-img.photo { background: #FFFFFF; box-shadow: inset 0 0 0 1px var(--line); }
-  .wd-img img { max-width: 100%; max-height: 100%; object-fit: contain; padding: 12px; }
+  /* Wish details sheet: the photo is never cropped (it sizes to the image, up to a max height), then the name,
+     then one row with the price, the live store check and the store link together. */
+  .wd-img { display: flex; align-items: center; justify-content: center; margin: 4px 0 14px; border-radius: 16px; background: var(--panel); overflow: hidden; min-height: 160px; }
+  .wd-img.photo { background: #FFFFFF; box-shadow: inset 0 0 0 1px var(--line); padding: 14px; }
+  .wd-img img { display: block; width: auto; height: auto; max-width: 100%; max-height: min(320px, 42vh); object-fit: contain; }
   .wd-img .tile { width: 120px; height: 120px; border-radius: 24px; } .wd-img .tile svg { width: 56px; height: 56px; }
-  .wd-title { margin: 2px 0 6px; font-size: 21px; line-height: 1.25; overflow-wrap: anywhere; }
-  .wd-prices { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 4px; }
-  .wd-price { font-family: var(--display); font-weight: 600; font-size: 24px; color: var(--soft-ink); }
+  .wd-title { margin: 2px 0 0; font-size: 21px; line-height: 1.25; overflow-wrap: anywhere; }
+  .wd-buy { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 10px 10px 14px; border-radius: 14px; background: var(--panel); }
+  .wd-cost { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .wd-price { font-family: var(--display); font-weight: 600; font-size: 24px; line-height: 1.15; color: var(--soft-ink); }
   .wd-price.est { color: var(--muted); }
-  .wd-est { font-size: 13px; color: var(--muted); }
-  .wd .dchips { margin: 10px 0 0; }
+  .wd-cost small, .wd-cost .live { font-size: 13px; margin: 0; }
+  .wd-cost small { color: var(--muted); }
+  .wd-cost .wd-noprice { font-weight: 700; color: var(--muted); }
+  .wd-shop { flex: none; min-height: 44px; max-width: 55%; color: var(--ink); text-decoration: none; }
+  .wd-shop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wd .dchips { margin: 12px 0 0; }
+  .wd .wish-note { margin-top: 12px; }
   .wd-meta { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
   .wd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
   .wd-actions .btn { min-height: 44px; }
@@ -1949,17 +1957,17 @@ document.addEventListener("error", (e) => {
 // The server checks each link at most every 12 hours; this remembers answers for the session so going back
 // and forth doesn't ask again.
 const liveSeen = new Map();
-function liveLine(r, listed) {
-  const at = `at ${esc(r.site)}`;
-  if (r.inStock === false) return ["out", `Out of stock ${at} right now`];
-  if (r.price == null) return r.inStock ? ["ok", `In stock ${at}`] : null;
+function liveLine(r, listed, short = false) {
+  const at = short ? "" : `at ${esc(r.site)}`;
+  if (r.inStock === false) return ["out", `Out of stock ${at} right now`.replace("  ", " ")];
+  if (r.price == null) return r.inStock ? ["ok", `In stock ${at}`.trim()] : null;
   const cents = Math.round(r.price * 100);
-  if (listed != null && Math.abs(cents - listed) >= 100) return cents < listed ? ["down", `↓ Now ${money(cents)} ${at}`] : ["up", `Now ${money(cents)} ${at}`];
-  return ["ok", `✓ ${money(cents)} right now ${at}`];
+  if (listed != null && Math.abs(cents - listed) >= 100) return cents < listed ? ["down", `↓ Now ${money(cents)} ${at}`.trim()] : ["up", `Now ${money(cents)} ${at}`.trim()];
+  return ["ok", short ? "✓ Price checked just now" : `✓ ${money(cents)} right now ${at}`];
 }
 function paintLive(el, r) {
   const listed = el.dataset.listed === "" ? null : Number(el.dataset.listed);
-  const line = r && liveLine(r, listed);
+  const line = r && liveLine(r, listed, "short" in el.dataset);
   if (!line) { el.hidden = true; return; }
   el.className = `live ${line[0]}`;
   el.innerHTML = line[1];
@@ -5923,8 +5931,15 @@ function wishDetails(card, kind, i, name) {
   const src = i.image_url || imageFound.get(key);
   const paid = i.claim?.mine && !i.claim.chipIn && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
   const est = i.price_est ?? estFound.get(key);
-  const priceLine = paid != null ? `<span class="wd-price">${money(paid)}</span>`
-    : est ? `<span class="wd-price est">~${money(Math.max(100, Math.round(est / 100) * 100))}</span><span class="wd-est">estimated, the store didn't list a price</span>` : "";
+  const live = i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" data-short hidden></span>` : "";
+  // One row for everything about cost and where to buy it: price (or an estimate), the live check, the store link.
+  const cost = paid != null ? `<span class="wd-price">${money(paid)}</span>`
+    : est ? `<span class="wd-price est">~${money(Math.max(100, Math.round(est / 100) * 100))}</span><small>Estimated</small>`
+    : i.url ? `<span class="wd-noprice">No price listed</span>` : "";
+  const buy = cost || i.url ? `<div class="wd-buy">
+      <div class="wd-cost">${cost}${live}</div>
+      ${i.url ? `<a class="btn wd-shop" href="${esc(i.url)}" target="_blank" rel="noopener"><span>${esc(host(i.url))}</span> ${EXT_I}</a>` : ""}
+    </div>` : "";
   const brand = brandOf(i);
   const notes = kind === "idea" ? i.note : i.notes;
   const meta = [
@@ -5937,15 +5952,13 @@ function wishDetails(card, kind, i, name) {
       <div class="wd-img${src ? " photo" : ""}">${src ? `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer">` : iconTile(i.title, i.id)}</div>
       ${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}
       <h3 class="wd-title">${esc(brand && i.title.toLowerCase().startsWith(brand.toLowerCase() + " ") ? i.title.slice(brand.length + 1).replace(/^[-|:,]\s*/, "") : i.title)}</h3>
-      ${priceLine ? `<div class="wd-prices">${priceLine}</div>` : ""}
-      ${i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" hidden></span>` : ""}
+      ${buy}
       ${detailChips(i)}
       ${notes ? `<div class="wish-note"><span>${kind === "idea" ? `${esc(i.author_name)}'s note` : `${esc(name)}'s note`}</span>${esc(notes)}</div>` : ""}
       ${meta ? `<p class="wd-meta">${meta}</p>` : ""}
-      <div class="wd-actions">
-        ${i.url ? `<a class="btn" href="${esc(i.url)}" target="_blank" rel="noopener">View at ${esc(host(i.url))} ${EXT_I}</a>` : ""}
+      ${btns.length ? `<div class="wd-actions">
         ${btns.map((b, n) => `<button type="button" class="${esc(b.className)}" data-wd="${n}"${b.getAttribute("aria-label") ? ` aria-label="${esc(b.getAttribute("aria-label"))}"` : ""}>${b.innerHTML}</button>`).join("")}
-      </div>
+      </div>` : ""}
     </div>`, (el) => {
     const live = el.querySelector("[data-live]");
     if (live && liveSeen.get(key)) paintLive(live, liveSeen.get(key));
