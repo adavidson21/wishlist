@@ -1369,6 +1369,8 @@
 
   /* Motion. Every animation marks a real moment; all of it turns off with Reduce Motion. */
   .slide { animation: slide .45s cubic-bezier(.2, .8, .3, 1) both; }
+  /* A refresh of the screen you're already on (see render()) draws in place without replaying entrances. */
+  #view.still .slide, #view.still .live, #view.still .mini .bar i, #view.still .meter i, #hero.still .hero-meter .bar i { animation: none; }
   .drop { animation: drop .6s cubic-bezier(.2, .8, .3, 1) both; }
   .drop .price-tag { animation: swing 1s ease .35s both; }
   @keyframes slide { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
@@ -1960,7 +1962,17 @@ function readHash() {
   else if (h.startsWith("settings/")) { state.tab = "settings"; state.person = null; state.setSec = h.slice(9); }
   else if (["mine", "family", "profile", "settings"].includes(h)) { state.tab = h; state.person = null; if (h === "settings") state.setSec = "app"; }
 }
-document.querySelectorAll(".tab[data-tab]").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+// Tapping the tab you're already on scrolls back to the top instead of redrawing the screen. If the screen is
+// over a minute old it also refreshes quietly (no entrance animations), so a few quick taps never flicker.
+document.querySelectorAll(".tab[data-tab]").forEach((b) => (b.onclick = () => {
+  const tab = b.dataset.tab;
+  if (tab === state.tab && !state.person && !state.profileEdit) {
+    window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
+    if (Date.now() - lastDrawAt > 60000) { state.stale = true; render(); }
+    return;
+  }
+  setTab(tab);
+}));
 $("#addTab").onclick = () => addThing();
 
 // ---------- links from other apps ----------
@@ -2089,8 +2101,10 @@ function wireOccPicker(root) {
   return () => el?.querySelector('[aria-checked="true"]')?.dataset.v;
 }
 
+let meAt = 0;
 async function refreshMe() {
   const data = await load("me");
+  meAt = Date.now();
   state.me = data.me;
   state.groups = data.groups;
   state.households = data.households || {};
@@ -2124,7 +2138,12 @@ async function refreshDetails() {
   }
 }
 
+// Each render() gets a number. A screen that's still loading when a newer render starts (another tap, coming
+// back to the app, a background refresh) drops its result instead of drawing over the newer one.
+let renderSeq = 0, lastDrawAt = 0;
+const renderLive = () => { const n = renderSeq; return () => n === renderSeq; };
 async function render() {
+  const seq = ++renderSeq;
   const signedIn = !!getToken();
   $("#tabs").hidden = !signedIn;
   if (!signedIn) return renderWelcome(invite?.hi ? "claim" : invite ? "invite" : "code");
@@ -2139,7 +2158,9 @@ async function render() {
   const viewKey = state.person ? "person" : state.tab;
   document.body.dataset.view = viewKey;
   const changed = (state.person || state.tab) !== lastViewKey;
-  lastViewKey = state.person || state.tab;
+  // Same screen redrawn with fresh data: keep it still (no cards sliding in again, no bars refilling).
+  $("#view").classList.toggle("still", !changed);
+  $("#hero").classList.toggle("still", !changed);
   try {
     // Stale: refetch, but keep the old copy in place meanwhile so a tap during the reload still knows who you are.
     if (!state.me || state.stale) { const first = !state.me; state.stale = false; await refreshMe(); if (first) setTimeout(refreshDetails, 1500); }
@@ -2152,11 +2173,14 @@ async function render() {
     else if (state.tab === "profile") await renderProfile();
     else if (state.tab === "settings") await renderSettings();
     else await renderMine();
+    if (seq !== renderSeq) return;
+    lastViewKey = state.person || state.tab;
+    lastDrawAt = Date.now();
     if (!state.me.onboarded && !state.toured) openTour();
     else openPendingShare();
     if (changed) enter($("#view"), $("#hero"));
   } catch (e) {
-    if (!getToken()) return;
+    if (!getToken() || seq !== renderSeq) return;
     $("#view").innerHTML = `<div class="err">${esc(e.message)}</div><button class="btn" type="button" id="retry">Try again</button>`;
     $("#retry").onclick = () => { state.stale = true; render(); };
   }
@@ -2966,7 +2990,9 @@ function mineItemsHtml(items, all, anim) {
 }
 
 async function renderMine() {
+  const isLive = renderLive();
   const data = await load("list");
+  if (!isLive()) return;
   state.myItems = data.items;
   const drafts = data.items.filter((i) => i.draft);
   const live = data.items.filter((i) => !i.draft);
@@ -3954,7 +3980,10 @@ function updateAppBadge() {
 
 async function renderFamily() {
   // Fresh wish counts (and "new" badges) every time, not the ones from when the app opened.
-  const [t] = await Promise.all([loadTracker(), refreshMe().catch(() => {})]);
+  // render() may have just fetched it; skip a second /me call right after.
+  const isLive = renderLive();
+  const [t] = await Promise.all([loadTracker(), Date.now() - meAt > 3000 ? refreshMe().catch(() => {}) : null]);
+  if (!isLive()) return;
   const g = group();
   const people = others();
   const plan = new Map((t?.people || []).map((p) => [p.id, p]));
@@ -4314,7 +4343,9 @@ const freshView = () => ({ cat: "all", price: "all", sort: "top", open: false })
 const inBucket = (c, k) => { const b = PRICE_BUCKETS.find((x) => x[0] === k); return c != null && c >= b[2] && c < b[3]; };
 
 async function renderPerson(id) {
+  const isLive = renderLive();
   const [list, t] = await Promise.all([load(`list?member=${encodeURIComponent(id)}`), loadTracker()]);
+  if (!isLive()) return;
   state.tracker = t;
   notePhotos([list.member]);
   state.view ||= freshView();
@@ -4992,7 +5023,9 @@ const occLabel = (p, o) => (o.christmas && !o.birthday ? `Christmas ${occParts(o
 const stagePill = (x) => { const n = stageAt(x.status); return `<span class="stage s${n}">${STAGES[n][1]}</span>`; };
 
 async function renderTracker() {
+  const isLive = renderLive();
   const t = await load("tracker");
+  if (!isLive()) return;
   notePhotos(t.people);
   state.tracker = t;
   const v = $("#view");
@@ -5027,6 +5060,7 @@ function renderBudgetTab(t) {
     if (b.dataset.btab === tab) return;
     setBudgetTab(b.dataset.btab);
     state.lastLeft = null;
+    v.classList.remove("still");
     renderBudgetTab(t);
   }));
   const body = $("#btabBody");
