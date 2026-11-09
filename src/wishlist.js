@@ -1134,6 +1134,34 @@ async function bestLink(x, grounded) {
   return { url: STORES[key].search(x.search || x.title), store: STORES[key].name, link: "search", price: null };
 }
 
+// ---------- details refresh: bring older wishes and ideas up to date ----------
+// Bump DETAILS_V when a new field is filled from links, and every saved wish and idea gets re-read once more.
+// Runs for the signed-in person's own wishes and ideas, a few per call (the app keeps calling while
+// `remaining` > 0). Everything except the name and notes comes from the link: photo, brand, size and color fill
+// only when empty, and the price is set from the store and synced from then on (price_auto), replacing a
+// typed price. A link that gives nothing is still stamped, so it's tried only once.
+const DETAILS_V = 1;
+const REFRESH_BATCH = 3;
+async function refreshRow(env, table, row) {
+  const p = await previewLink(env, row.url, { ai: true }).catch(() => null);
+  const ok = p && p.found && !p.guessed;
+  const t = now();
+  const price = ok && p.price != null ? Math.round(p.price * 100) : null;
+  const image = ok ? p.image || null : null;
+  const extra = table === "items"
+    ? `, brand = COALESCE(NULLIF(brand, ''), ?7), size = COALESCE(NULLIF(size, ''), ?8), color = COALESCE(NULLIF(color, ''), ?9)`
+    : "";
+  const stmt = env.DB.prepare(
+    `UPDATE ${table} SET details_v = ?1, image_url = COALESCE(image_url, ?2), image_checked_at = ?3, price_checked_at = ?3,
+       price_cents = COALESCE(?4, price_cents), price_auto = CASE WHEN ?4 IS NOT NULL THEN 1 ELSE price_auto END${extra}
+      WHERE id = ?5 AND url IS ?6`,
+  );
+  const args = [DETAILS_V, image, t, price, row.id, row.url];
+  if (table === "items") args.push(ok ? p.brand || null : null, ok ? p.size || null : null, ok ? p.color || null : null);
+  await stmt.bind(...args).run();
+  return !!ok;
+}
+
 // ---------- handlers ----------
 
 const handlers = {
@@ -1417,7 +1445,8 @@ const handlers = {
       const rows = await hideRows(b.id)();
       rows.push(...sizeColorRows(env, b.id, b));
       // category absent (e.g. the Top pick toggle) leaves it as is.
-      if (b.category !== undefined) rows.push(env.DB.prepare("UPDATE items SET category = ? WHERE id = ?").bind(category(b.category), b.id));
+      // A full save from the wish form also counts as reviewed, so the details refresh leaves it alone.
+      if (b.category !== undefined) rows.push(env.DB.prepare("UPDATE items SET category = ?, details_v = ? WHERE id = ?").bind(category(b.category), DETAILS_V, b.id));
       rows.push(env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), b.id));
       if (rows.length) await env.DB.batch(rows);
       return { id: b.id };
@@ -1425,7 +1454,7 @@ const handlers = {
     const id = newId();
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+        `INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft, details_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ${DETAILS_V})`,
       ).bind(id, me.id, ...fields, t, t, image, image ? t : null, category(b.category)),
       env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), id),
       ...(await hideRows(id)()),
@@ -1601,7 +1630,7 @@ const handlers = {
     let id = b.id;
     if (id) {
       const res = await env.DB.prepare(
-        `UPDATE private_ideas SET ${IMAGE_SET}, title = ?4, url = ?2, price_cents = ?5, note = ?6, shared = ?7, updated_at = ?3
+        `UPDATE private_ideas SET ${IMAGE_SET}, title = ?4, url = ?2, price_cents = ?5, note = ?6, shared = ?7, updated_at = ?3, details_v = ${DETAILS_V}
           WHERE id = ?8 AND author_id = ?9`,
       )
         .bind(image, fields[1], t, fields[0], fields[2], fields[3], fields[4], id, me.id)
@@ -1611,7 +1640,7 @@ const handlers = {
       if (!b.subjectId || b.subjectId === me.id || !(await sharesGroup(env, me.id, b.subjectId))) fail(400, "Pick who this idea is for.");
       id = newId();
       await env.DB.prepare(
-        "INSERT INTO private_ideas (id, author_id, subject_id, title, url, price_cents, note, shared, created_at, updated_at, image_url, image_checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        `INSERT INTO private_ideas (id, author_id, subject_id, title, url, price_cents, note, shared, created_at, updated_at, image_url, image_checked_at, details_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${DETAILS_V})`,
       )
         .bind(id, me.id, b.subjectId, ...fields, t, t, image, image ? t : null)
         .run();
@@ -1688,6 +1717,24 @@ const handlers = {
         .run();
     }
     return { ok: true };
+  },
+
+  // Details refresh (see refreshRow): a few of your own wishes and ideas per call. The app calls this after
+  // signing in until remaining is 0, then redraws.
+  async "POST refresh"(req, env) {
+    const me = await auth(req, env);
+    const pick = (table, owner) => env.DB.prepare(
+      `SELECT id, url FROM ${table} WHERE ${owner} = ? AND url IS NOT NULL AND url != '' AND details_v < ?${table === "items" ? " AND removed_at IS NULL" : ""} ORDER BY created_at DESC LIMIT ?`,
+    ).bind(me.id, DETAILS_V, REFRESH_BATCH).all();
+    const items = (await pick("items", "owner_id")).results.map((r) => ["items", r]);
+    const ideas = items.length < REFRESH_BATCH ? (await pick("private_ideas", "author_id")).results.map((r) => ["private_ideas", r]) : [];
+    const batch = [...items, ...ideas].slice(0, REFRESH_BATCH);
+    const done = await Promise.all(batch.map(([table, row]) => refreshRow(env, table, row)));
+    const count = (table, owner) => env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM ${table} WHERE ${owner} = ? AND url IS NOT NULL AND url != '' AND details_v < ?${table === "items" ? " AND removed_at IS NULL" : ""}`,
+    ).bind(me.id, DETAILS_V).first("n");
+    const remaining = (await count("items", "owner_id")) + (await count("private_ideas", "author_id"));
+    return { checked: batch.length, updated: done.filter(Boolean).length, remaining };
   },
 
   // Product photo for an item or idea saved before photos existed (or whose link changed). Anyone who

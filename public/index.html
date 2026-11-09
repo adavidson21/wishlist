@@ -1807,6 +1807,25 @@ async function refreshMe() {
   state.today = data.today;
 }
 
+// Older wishes and ideas get their link details (photo, price, brand, size, color) refreshed once on the server,
+// a few at a time, after sign-in. Quiet: nothing shows while it runs; the screen redraws if anything changed.
+let detailsRefreshing = false;
+async function refreshDetails() {
+  if (detailsRefreshing || !getToken()) return;
+  detailsRefreshing = true;
+  let changed = 0;
+  try {
+    for (let i = 0; i < 40; i++) {
+      const r = await api("refresh", {});
+      changed += r.updated || 0;
+      if (!r.remaining || !r.checked) break;
+    }
+  } catch {} finally {
+    detailsRefreshing = false;
+    if (changed && !document.querySelector("dialog[open]")) render();
+  }
+}
+
 async function render() {
   const signedIn = !!getToken();
   $("#tabs").hidden = !signedIn;
@@ -1825,7 +1844,7 @@ async function render() {
   lastViewKey = state.person || state.tab;
   try {
     // Stale: refetch, but keep the old copy in place meanwhile so a tap during the reload still knows who you are.
-    if (!state.me || state.stale) { state.stale = false; await refreshMe(); }
+    if (!state.me || state.stale) { const first = !state.me; state.stale = false; await refreshMe(); if (first) setTimeout(refreshDetails, 1500); }
     fillNavMe();
     // Your own list always opens on My list, which is the only place Maybe wishes show.
     if (state.person && state.person === state.me?.id) { state.person = null; state.tab = "mine"; }
