@@ -1011,6 +1011,7 @@
   .pill.set:active { transform: scale(.96); }
   .amt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 14px; }
   .sheet-note { margin: -6px 0 14px; color: var(--muted); font-size: 15px; }
+  .hero-top { display: flex; align-items: center; gap: 10px; }
   .hero-help { margin-left: auto; border: 0; background: rgba(255, 255, 255, .12); color: var(--hero-ink); font: inherit; font-size: 14px; font-weight: 700;
     padding: 7px 12px; border-radius: 999px; cursor: pointer; }
   /* Budget walkthrough: a spotlight on one thing at a time with a speech bubble. */
@@ -4557,7 +4558,8 @@ async function renderPerson(id) {
     meter = `<div class="hero-meter"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
       <span><b>${money(next.spent_cents)}</b> of ${money(next.budget_cents)} for ${forWhat}</span></div>`;
   }
-  setHero(`<button class="back" type="button" id="backBtn">${BACK} Circles</button>
+  const helpBtn = !manage && all.length ? '<button class="hero-help" type="button" id="personHelp">How it works</button>' : "";
+  setHero(`${helpBtn ? `<div class="hero-top"><button class="back" type="button" id="backBtn">${BACK} Circles</button>${helpBtn}</div>` : `<button class="back" type="button" id="backBtn">${BACK} Circles</button>`}
     <div class="hero-row">${avatar(name, id, true)}
       <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}${dupeTag(everyone().find((m) => m.id === id)) ? `<span class="realname">${esc(dupeTag(everyone().find((m) => m.id === id)))}</span>` : ""}</div>
       <button class="hero-edit" type="button" id="editBtn" aria-label="Edit nickname and budget for ${esc(name)}">${PENCIL}<span>Edit</span></button></div>${meter}`);
@@ -4652,6 +4654,41 @@ async function renderPerson(id) {
     const itemId = b.dataset.chip.split(":")[1];
     markPurchased("item", all.find((x) => x.id === itemId), name, id, { chip: true });
   }));
+  $("#personHelp")?.addEventListener("click", () => personTour(name, true));
+  // First time on someone's list with something still to get: walk through getting and splitting a gift.
+  if (!manage && open.length && !personTourSeen()) setTimeout(() => {
+    if ($("#personHelp") && !tourEl.open && !sheet.open) personTour(name);
+  }, 700);
+}
+
+// ---------- someone's list walkthrough ----------
+// Spotlight steps for getting a gift, splitting one and asking the circle, the first time you open a list with
+// open wishes. Replayable from "How it works" in their hero. Seen state is per device (wishlist-person-tour).
+const PERSON_TOUR_KEY = "wishlist-person-tour";
+function personTourSeen() { try { return !!localStorage.getItem(PERSON_TOUR_KEY); } catch { return true; } }
+function personTour(name, force = false) {
+  if ($(".coach") || (!force && personTourSeen())) return;
+  try { localStorage.setItem(PERSON_TOUR_KEY, "1"); } catch {}
+  const n = name; // coachTour escapes titles and text
+  const OPEN = ".wish:not(.mine):not(.taken)";
+  const chip = $(".wish [data-chip]");
+  const joining = chip && chip.textContent.trim() === "Chip in";
+  const split = chip
+    ? { sel: ".wish [data-chip]", title: joining ? "Chip in on a group gift" : "Splitting a bigger gift?",
+        text: joining ? "Someone started a group gift here. Tap Chip in to join and add what you're putting in. Only your share counts in your budget."
+          : "Tap Go in on it together to start a group gift and say what you're putting in (optional). Others in your circle can chip in too. Only your share counts in your budget." }
+    // No wish offers it right now (they want several, or they're taken), so explain it on an open wish instead.
+    : { sel: OPEN, title: "Splitting a bigger gift?",
+        text: "Wishes that want just one have Go in on it together. Start a group gift and others in your circle can chip in their share." };
+  coachTour([
+    { sel: OPEN, title: `${n}'s wishes`, text: `Tap any wish to see the details and where to buy it. ${n} never sees who's getting what.` },
+    { sel: `${OPEN} [data-mark]`, title: "Getting it? Tap here",
+      text: "It's marked for everyone else so nobody doubles up, and it goes in your Budget. Changed your mind? Tap Edit to take it back." },
+    split,
+    { sel: ".wish.taken", title: "Already covered", text: "Someone else is getting this one, so pick something else." },
+    { sel: `${OPEN} [data-ask]`, title: "Not sure about something?", text: `Ask the circle, like what size. ${n} can't see the chat.` },
+    { sel: "#openOnly", title: "Only what's left", text: "Turn this on to hide wishes someone's already getting." },
+  ], `How ${name}'s list works`);
 }
 
 // ---------- chat about a person ----------
@@ -5634,13 +5671,20 @@ function budgetTour(force = false) {
     { sel: "#viewSeg", title: "Christmas and birthdays", text: "Switch here to plan birthdays. Each birthday gets its own budget." },
     { sel: "#whoIn", title: "Not doing gifts with someone?", text: "Tap Change to turn people off. They come off your budget and gift reminders. Only you see this." },
     { sel: "#addPurchase", title: "Bought something?", text: "Add it here. It comes out of their budget, and you can tap a name to see what you got them." },
-  ].filter((x) => $(x.sel));
-  if (!steps.length) return;
+  ];
+  coachTour(steps, "How Budget works");
+}
+
+// Spotlight walkthrough shared by Budget and someone's list: dims the page, cuts a hole around each step's element
+// and shows a little card next to it. Steps whose element isn't on the page are dropped.
+function coachTour(allSteps, label) {
+  const steps = allSteps.filter((x) => $(x.sel));
+  if (!steps.length || $(".coach")) return;
   const wrap = document.createElement("div");
   wrap.className = "coach";
   wrap.setAttribute("role", "dialog");
   wrap.setAttribute("aria-modal", "true");
-  wrap.setAttribute("aria-label", "How Budget works");
+  wrap.setAttribute("aria-label", label);
   wrap.innerHTML = `<div class="coach-hole"></div><div class="coach-pop" aria-live="polite"></div>`;
   document.body.append(wrap);
   const hole = $(".coach-hole", wrap), pop = $(".coach-pop", wrap);
