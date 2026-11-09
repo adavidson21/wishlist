@@ -31,7 +31,7 @@ export function quotaInfo(data) {
 
 // Calls Gemini for structured JSON.
 // Retries temporary errors (500/503/504) once, and per-minute rate limits (429) up to twice with a wait.
-// Returns { data, grounding } or { error: Response, status, quota }. `tools` turns on built-in tools such as
+// Returns { data, grounding, urlContext } or { error: Response, status, quota }. `tools` turns on built-in tools such as
 // [{ google_search: {} }]; `grounding` is then the response's groundingMetadata (may be empty).
 export async function callGemini(env, system, parts, schema, timeoutMs, model = env.GEMINI_MODEL || "gemini-3.5-flash-lite", tools = null) {
   // Whole-app daily cap (GEMINI_DAILY_CAP), so nobody can run up the bill. Treated like Google's own daily limit.
@@ -90,7 +90,10 @@ export async function callGemini(env, system, parts, schema, timeoutMs, model = 
     .map((p) => p.text)
     .join("");
   try {
-    return { data: JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")), grounding: data?.candidates?.[0]?.groundingMetadata || {} };
+    const cand = data?.candidates?.[0] || {};
+    // urlContext: which URLs the url_context tool really opened ({ urlMetadata: [{ retrievedUrl, urlRetrievalStatus }] }).
+    return { data: JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")), grounding: cand.groundingMetadata || {},
+      urlContext: cand.urlContextMetadata || cand.url_context_metadata || {} };
   } catch {
     return { error: json({ error: "The AI returned something unexpected. Try again.", detail: text.slice(0, 500) }, 502) };
   }

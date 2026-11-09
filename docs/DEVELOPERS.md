@@ -89,7 +89,10 @@ public/og-invite.png  Link preview image for invite links
   - **Saving:** the Top pick toggle doesn't send size or color, so it leaves them alone.
 - **Live prices:** on someone's list, each wish or idea that's still available and has a link gets a line under its price. Examples: "↓ Now $29.99 at walmart.com" (cheaper than listed), "Now $49 at target.com", "✓ $45 right now at etsy.com", or "Out of stock at kohls.com right now". Details:
   - `POST /api/prices` takes up to 12 `item:`/`idea:` keys you can see.
-  - Price and stock status come from the store page (JSON-LD `offers.availability`, `product:availability`, Amazon's markup). Gemini is used only for stores that block us, 4 at a time, and only for stock status: its prices for pages it couldn't open weren't reliable, so a blocked store shows no live price.
+  - Shopify stores (`/products/<handle>` links) are read from `/products/<handle>.js`: exact price and stock for the `?variant=` in the link, or for the product when it has one price.
+  - Otherwise price and stock status come from the store page (JSON-LD `offers.availability`, `product:availability`, Amazon's markup).
+  - Stores that block us go to Gemini, 4 at a time. Its price only counts when its `url_context` tool really opened the link (`urlContextMetadata` says `SUCCESS` for that host); from Google Search alone only stock status is used, since those prices weren't reliable.
+  - A live price more than 50% above or below the listed price shows "Price may have changed. Check <site>" instead of "Now $X" and is never synced.
   - Each link is checked at most every 12 hours. Misses are cached for 6 hours, in the edge cache, not D1, and the app remembers answers for the session.
   - Nothing is saved to the item. The owner's own price stays as listed.
   - `wrangler tail` shows `live <site> ...` lines.

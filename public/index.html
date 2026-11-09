@@ -479,6 +479,7 @@
   .live { display: block; font-size: 13px; font-weight: 700; margin-top: 2px; color: var(--muted); animation: fade .45s ease both; }
   .live.down { color: var(--ok); }
   .live.out { color: var(--warn); }
+  .live.odd { color: var(--warn); }
   .wish-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
   .wish-meta a { color: inherit; }
   .wish-meta:empty { display: none; }
@@ -2051,6 +2052,7 @@ function liveLine(r, listed, short = false) {
   const at = short ? "" : `at ${esc(r.site)}`;
   if (r.inStock === false) return ["out", `Out of stock ${at} right now`.replace("  ", " ")];
   if (r.price == null) return r.inStock ? ["ok", `In stock ${at}`.trim()] : null;
+  if (r.odd) return ["odd", short ? "Price may have changed" : `Price may have changed. Check ${esc(r.site)}`];
   const cents = Math.round(r.price * 100);
   if (listed != null && Math.abs(cents - listed) >= 100) return cents < listed ? ["down", `↓ Now ${money(cents)} ${at}`.trim()] : ["up", `Now ${money(cents)} ${at}`.trim()];
   return ["ok", short ? "✓ Price checked just now" : `✓ ${money(cents)} right now ${at}`];
