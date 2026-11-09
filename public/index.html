@@ -75,7 +75,7 @@
   :root[data-text="sm"] { --z: .84; }
   :root[data-text="lg"] { --z: 1.03; }
   :root[data-text="xl"] { --z: 1.15; }
-  :is(main, .hero, dialog.sheet, dialog.ask, nav.tabs, .toast) { zoom: var(--z); }
+  :is(main, .hero, dialog.sheet, dialog.ask, nav.tabs) { zoom: var(--z); }
   :root[data-text="xl"] nav.tabs { zoom: 1.03; }
   /* iPhones zoom the page when a box under 16px is tapped, so boxes stay at 16px or more on screen. */
   :is(input, textarea, select):not([type="checkbox"]):not([type="radio"]) { font-size: max(1em, calc(16px / var(--z))); }
@@ -944,15 +944,32 @@
   .for-pick .for-none { padding: 10px; color: var(--muted); font-size: 15px; }
   .avatar.sm { width: 32px; height: 32px; font-size: 14px; }
 
-  .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); translate: -50% 0; z-index: 30;
-    background: var(--ink); color: var(--bg); border-radius: 16px; padding: 6px 8px 6px 16px; min-height: 52px; font-size: 15px; font-weight: 600;
-    display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 24px rgba(0,0,0,.25); width: max-content; max-width: calc(100% - 32px);
+  /* Toasts: the little status messages. They open as a popover so they show above sheets (sheets sit in the top layer).
+     Sized with var(--z) instead of zoom so centering stays exact at every text size. Always dark so the check and Undo pop. */
+  .toast { --t-bg: #2A1E22; --t-ink: #FAF6F1; --t-ok: #9FD3B4; --t-err: #F4A49B;
+    position: fixed; inset: auto 0 calc(env(safe-area-inset-bottom, 0px) + 84px); margin: 0 auto; z-index: 30;
+    width: fit-content; height: auto; max-width: min(440px, calc(100vw - 24px)); box-sizing: border-box; overflow: visible;
+    background: var(--t-bg); color: var(--t-ink); border: 1px solid rgba(255,255,255,.07); border-radius: 16px;
+    padding: calc(8px * var(--z)) calc(6px * var(--z)) calc(8px * var(--z)) calc(14px * var(--z)); min-height: calc(50px * var(--z));
+    font-size: calc(15px * var(--z)); font-weight: 600; line-height: 1.35;
+    display: flex; align-items: center; gap: calc(10px * var(--z)); box-shadow: 0 12px 28px rgba(0,0,0,.28);
     animation: toastIn .35s cubic-bezier(.2, .9, .3, 1.2) both; }
-  .toast svg { flex: none; color: #9FD3B4; }
-  .toast button { border: 0; background: none; color: var(--gold); font-weight: 800; min-height: 44px; padding: 0 12px; border-radius: 10px; }
-  .toast span { padding-right: 8px; }
+  .toast[hidden] { display: none; }
+  .toast::backdrop { display: none; }
+  .toast svg { flex: none; color: var(--t-ok); width: calc(20px * var(--z)); height: calc(20px * var(--z)); }
+  .toast.is-err svg { color: var(--t-err); }
+  .toast span { flex: 1 1 auto; min-width: 0; padding: 2px 8px 2px 0; overflow-wrap: anywhere; text-wrap: pretty; }
+  .toast button { flex: none; white-space: nowrap; border: 0; background: none; color: var(--gold); font: inherit; font-weight: 800;
+    min-height: 44px; padding: 0 12px; border-radius: 10px; }
+  .toast button:active { background: rgba(255,255,255,.08); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast { --t-bg: #3A3034; --t-ink: #F3ECEE; } }
+  :root[data-theme="dark"] .toast { --t-bg: #3A3034; --t-ink: #F3ECEE; }
+  /* Phones: with a sheet open, toasts go to the top so they never cover the sheet's buttons. */
+  @media (max-width: 1023.98px) {
+    body:has(dialog[open]) .toast:not(#update) { top: calc(env(safe-area-inset-top, 0px) + 12px); bottom: auto; }
+  }
   /* "New version" pill: top of the screen so it never fights the regular toast, and it stays until tapped. */
-  #update { top: calc(env(safe-area-inset-top, 0px) + 12px); bottom: auto; padding-left: 14px; }
+  #update { top: calc(env(safe-area-inset-top, 0px) + 12px); bottom: auto; padding-left: calc(14px * var(--z)); }
   #update svg { color: var(--gold); }
   .offline { background: var(--panel); color: var(--muted); border-radius: 12px; padding: 10px 14px; font-size: 14px; margin-bottom: 16px; }
   .loading { color: var(--faint); text-align: center; padding: 50px 0; }
@@ -1396,7 +1413,9 @@
     .actions.sticky { margin: 16px -28px -26px; padding: 14px 28px 16px; }
     .grab { display: none; }
 
-    body:has(#tabs:not([hidden])) .toast { left: calc(50% + var(--side) / 2); bottom: 32px; }
+    body:has(#tabs:not([hidden])) .toast { left: var(--side); max-width: min(480px, calc(100vw - var(--side) - 48px)); }
+    body:has(#tabs:not([hidden])) .toast:not(#update) { bottom: 32px; }
+    body:has(dialog[open]) .toast:not(#update) { left: 0; max-width: 480px; }
   }
 
   /* Hover only where there's a mouse: cards lift, photos tilt, avatars wave. */
@@ -1568,7 +1587,7 @@
 <dialog class="tour" id="tour" aria-label="Welcome tour"></dialog>
 <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheetBody"></div></dialog>
 <dialog class="ask" id="ask" aria-labelledby="askTitle"><div class="ask-in" id="askBody"></div></dialog>
-<div class="toast" id="toast" role="status" hidden></div>
+<div class="toast" id="toast" role="status" popover="manual" hidden></div>
 <div class="toast" id="update" role="status" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg><span>A new version of Hints is ready</span><button type="button">Refresh</button></div>
 
 <script src="/giftcards.js"></script>
@@ -1633,9 +1652,9 @@ function wirePhotoRow(el, save) {
     const f = file.files[0];
     if (!f) return;
     pick.disabled = true;
-    try { await save(await squarePhoto(f)); } catch (e) { toast(e.message); pick.disabled = false; }
+    try { await save(await squarePhoto(f)); } catch (e) { oops(e.message); pick.disabled = false; }
   };
-  el.querySelector("[data-drop-photo]")?.addEventListener("click", async () => { try { await save(""); } catch (e) { toast(e.message); } });
+  el.querySelector("[data-drop-photo]")?.addEventListener("click", async () => { try { await save(""); } catch (e) { oops(e.message); } });
 }
 function avatar(name, id, size) {
   const pic = id && PHOTOS.has(id) ? `<img src="${esc(photoUrl(id))}" alt="" loading="lazy" onerror="this.remove()">` : "";
@@ -1973,16 +1992,28 @@ async function load(path) {
 const loadTracker = () => load("tracker").then((t) => (notePhotos(t?.people), t), () => null);
 
 let toastTimer;
-function toast(msg, undo, label = "Undo") {
-  const el = $("#toast");
-  el.hidden = true;
-  el.innerHTML = CHECK.replace('width="15" height="15"', 'width="20" height="20"') + `<span>${esc(msg)}</span>` + (undo ? `<button type="button">${esc(label)}</button>` : "");
-  void el.offsetWidth;
-  el.hidden = false;
-  if (undo) el.querySelector("button").onclick = () => { el.hidden = true; undo(); };
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), undo ? 5000 : 2600);
+const ALERT = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5"/><path d="M12 16.6v.1"/></svg>';
+// Shows or hides a toast. Re-opening the popover puts it on top of any sheet that opened after it.
+function showToastEl(el, on) {
+  el.hidden = !on;
+  if (!el.showPopover) return;
+  try { if (el.matches(":popover-open")) el.hidePopover(); if (on) el.showPopover(); } catch {}
 }
+function toast(msg, undo, label = "Undo", err = false) {
+  const el = $("#toast");
+  msg = String(msg || (err ? "That didn't work. Try again." : ""));
+  showToastEl(el, false);
+  el.classList.toggle("is-err", err);
+  el.innerHTML = (err ? ALERT : CHECK.replace('width="15" height="15"', 'width="20" height="20"')) + `<span>${esc(msg)}</span>` + (undo ? `<button type="button">${esc(label)}</button>` : "");
+  void el.offsetWidth;
+  showToastEl(el, true);
+  if (undo) el.querySelector("button").onclick = () => { showToastEl(el, false); undo(); };
+  clearTimeout(toastTimer);
+  // Longer messages stay up longer so there's time to read them.
+  const ms = Math.min(7000, Math.max(undo ? 5000 : 2600, msg.length * 65));
+  toastTimer = setTimeout(() => showToastEl(el, false), ms);
+}
+const oops = (msg) => toast(msg, null, "Undo", true);
 
 // Counts a big number up (or down) to its value, like an odometer.
 function countUp(el, fromCents, toCents) {
@@ -2419,7 +2450,7 @@ async function renderWelcome(step = "code", info = {}) {
     v.innerHTML = '<div class="loading">Opening your invite...</div>';
     let res;
     try { res = await api("claim/lookup", { token: invite.hi }); }
-    catch (e) { invite.hi = ""; toast(e.message); return renderWelcome("invite"); }
+    catch (e) { invite.hi = ""; oops(e.message); return renderWelcome("invite"); }
     const circle = res.circles[0];
     setHero(envelope() + heroTitle(res.by ? `${res.by} invited you` : "You're invited", `Hi ${res.name}!`));
     v.innerHTML = `
@@ -2430,7 +2461,7 @@ async function renderWelcome(step = "code", info = {}) {
     $("#claimBtn").onclick = async (e) => {
       e.currentTarget.disabled = true;
       try { finishJoin(await api("invite/claim", { token: invite.hi }), { joined: circle || "" }); }
-      catch (err) { toast(err.message); invite.hi = ""; renderWelcome("invite"); }
+      catch (err) { oops(err.message); invite.hi = ""; renderWelcome("invite"); }
     };
     $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
     return;
@@ -2498,7 +2529,7 @@ async function renderWelcome(step = "code", info = {}) {
       const m = info.members.find((x) => x.id === b.dataset.id);
       if (m.hasPin) return renderWelcome("pin", { ...info, member: m });
       try { finishJoin(await api("join", { code: info.code, memberId: m.id }), { returning: true }); }
-      catch (e) { toast(e.message); }
+      catch (e) { oops(e.message); }
     }));
     return;
   }
@@ -2587,7 +2618,7 @@ async function offerJoin(inv) {
   if (inv.hi) {
     // Someone's personal invite opened on a phone that's already signed in (often your own, testing it).
     let res;
-    try { res = await api("claim/lookup", { token: inv.hi }); } catch (e) { return toast(e.message); }
+    try { res = await api("claim/lookup", { token: inv.hi }); } catch (e) { return oops(e.message); }
     return openSheet(`<h3>This invite is for ${esc(res.name)}</h3>
       <p>It signs ${esc(res.name)} in as themselves, and works once. Send it to ${esc(res.name)} to open on their own phone. You're signed in as ${esc(state.me.name)} here, so nothing changed.</p>
       <div class="actions"><button class="btn primary" type="button" id="okHi">Got it</button></div>`, (el) => ($("#okHi", el).onclick = closeSheet));
@@ -2595,7 +2626,7 @@ async function offerJoin(inv) {
   if (state.groups.some((g) => g.code === inv.code)) return; // already in it: just open the app
   let res;
   try { res = await api("lookup", { code: inv.code, from: inv.from }); }
-  catch (e) { return toast(e.status === 404 ? "That invite link didn't work" : e.message); }
+  catch (e) { return oops(e.status === 404 ? "That invite link didn't work" : e.message); }
   const name = res.group.name;
   openSheet(`
     ${envelope()}
@@ -2884,7 +2915,7 @@ function openTour() {
     try {
       if (await enablePush()) { b.textContent = "Notifications are on"; party(); go(idx + 1 < slides.length ? idx + 1 : idx); }
       else { b.textContent = "Okay, maybe later"; }
-    } catch (err) { toast(err.message || "That didn't work. Try again."); b.disabled = false; }
+    } catch (err) { oops(err.message || "That didn't work. Try again."); b.disabled = false; }
   });
 
   next.onclick = async () => {
@@ -2902,7 +2933,7 @@ function openTour() {
       } catch (e) {
         const pd = $("#pinDots", tourEl);
         pd.classList.remove("shake"); void pd.offsetWidth; pd.classList.add("shake");
-        toast(e.message);
+        oops(e.message);
         return;
       } finally { next.disabled = false; }
     }
@@ -3404,7 +3435,7 @@ function confirmPublish(item) {
         state.bumpCount = "list";
         if (!onMine) return setTab("mine");
         render();
-      } catch (err) { go.disabled = false; toast(err.message); }
+      } catch (err) { go.disabled = false; oops(err.message); }
     };
   });
 }
@@ -3441,7 +3472,7 @@ async function toggleTopPick(item, btn) {
   } catch (e) {
     item.priority = next ? null : "must";
     btn.setAttribute("aria-pressed", String(!next));
-    toast(e.message);
+    oops(e.message);
   }
 }
 
@@ -3722,7 +3753,7 @@ function editItem(item, opts = {}) {
           payload.as = asId;
           const { id } = await api("item/save", payload);
           closeSheet();
-          if (isNew) toast(`Added to ${asName}'s list`, () => api("item/remove", { id, as: asId }).then(() => render(), (e) => toast(e.message)));
+          if (isNew) toast(`Added to ${asName}'s list`, () => api("item/remove", { id, as: asId }).then(() => render(), (e) => oops(e.message)));
           else toast("Saved");
           state.flash = isNew ? id : null;
           if (state.person !== asId) return setTab("family", asId);
@@ -3732,7 +3763,7 @@ function editItem(item, opts = {}) {
         const published = isNew && d.submitter === "list";
         if (published) await api("item/publish", { id });
         closeSheet();
-        if (isNew) toast(published ? "Hint dropped! It's on your wish list" : "Saved to Maybe", () => api("item/remove", { id }).then(() => { state.stale = true; render(); }, (e) => toast(e.message)));
+        if (isNew) toast(published ? "Hint dropped! It's on your wish list" : "Saved to Maybe", () => api("item/remove", { id }).then(() => { state.stale = true; render(); }, (e) => oops(e.message)));
         else toast("Saved");
         if (published) state.burst = "pub:" + id;
         state.stale = true;
@@ -3745,7 +3776,7 @@ function editItem(item, opts = {}) {
       $("#removeItem", el)?.addEventListener("click", async () => {
         if (!(await confirmRemove())) return;
         try { await api("item/remove", { id: item.id, as: asId || undefined }); closeSheet(); toast("Removed"); state.stale = true; render(); }
-        catch (e) { toast(e.message); }
+        catch (e) { oops(e.message); }
       });
     });
 }
@@ -4419,7 +4450,7 @@ function wireInviteCard(root, g) {
   const qrBtn = $("[data-qr]", card), qrBox = $(".qr", card);
   qrBtn.onclick = async () => {
     if (!qrBox.hidden) { qrBox.hidden = true; qrBtn.innerHTML = `${QR_ICON} Show QR code`; return; }
-    try { await loadQr(); } catch (e) { return toast(e.message); }
+    try { await loadQr(); } catch (e) { return oops(e.message); }
     qrBox.innerHTML = window.qrSvg(link, { dark: "#4A0E22", light: "#FFFFFF", label: `QR code to join ${g.name}` }) + "<small>Point a phone camera here to join</small>";
     qrBox.hidden = false;
     qrBtn.innerHTML = `${QR_ICON} Hide QR code`;
@@ -4440,7 +4471,7 @@ const wireInviteBtns = (el) => el.querySelectorAll("[data-hi]").forEach((b) => (
 function sendPersonalInvite(id) {
   const m = everyone().find((x) => x.id === id);
   const g = state.groups.find((x) => x.members.some((y) => y.id === id));
-  if (!m || !g) return toast("Person not found");
+  if (!m || !g) return oops("Person not found");
   const name = m.name;
   const mark = () => state.groups.forEach((x) => x.members.forEach((y) => { if (y.id === id) y.inviteSent = true; }));
   const make = async (el) => {
@@ -4474,7 +4505,7 @@ function sendPersonalInvite(id) {
     if (!m.inviteSent) return make(el);
     $("#hiNew", el).onclick = () => make(el);
     $("#hiOff", el).onclick = async () => {
-      try { await api("managed/uninvite", { memberId: id }); closeSheet(); toast(`${name}'s link is off`); await refreshMe(); render(); } catch (e) { toast(e.message); }
+      try { await api("managed/uninvite", { memberId: id }); closeSheet(); toast(`${name}'s link is off`); await refreshMe(); render(); } catch (e) { oops(e.message); }
     };
   });
 }
@@ -4893,7 +4924,7 @@ function wireManageCard(v, list, name, id) {
   }));
   $("#mgOut", v)?.addEventListener("click", async () => {
     if (!(await ask(`Take ${name} out of your household? They stay in the same circles, and you still look after their list.`, { yes: "Take out", danger: true }))) return;
-    try { await api("household/remove", { memberId: id }); toast(`${name} is out of your household`); state.stale = true; render(); } catch (e) { toast(e.message); }
+    try { await api("household/remove", { memberId: id }); toast(`${name} is out of your household`); state.stale = true; render(); } catch (e) { oops(e.message); }
   });
   $("#mgMore", v).onclick = () => {
     openSheet(`<h3>${esc(name)}'s list</h3>
@@ -4909,11 +4940,11 @@ function wireManageCard(v, list, name, id) {
   };
   const release = async () => {
     if (!(await ask(`Let ${name} sign in? They'll pick their name on the sign-in screen with your circle's code. From then on it's their own list: they won't see what's been bought, and you won't be able to edit it.`, { yes: "Let them sign in" }))) return;
-    try { await api("managed/release", { memberId: id }); toast(`${name} can sign in now`); state.stale = true; render(); } catch (e) { toast(e.message); }
+    try { await api("managed/release", { memberId: id }); toast(`${name} can sign in now`); state.stale = true; render(); } catch (e) { oops(e.message); }
   };
   const remove = async () => {
     if (!(await ask(`Remove ${name}? They'll leave every circle and nobody will see their list anymore.`, { yes: "Remove", danger: true }))) return;
-    try { await api("managed/remove", { memberId: id }); toast(`Removed ${name}`); state.stale = true; setTab("family"); } catch (e) { toast(e.message); }
+    try { await api("managed/remove", { memberId: id }); toast(`Removed ${name}`); state.stale = true; setTab("family"); } catch (e) { oops(e.message); }
   };
 }
 // Give someone you look after to another person in their circles (a cousin takes over her baby's list). They
@@ -4944,7 +4975,7 @@ function handOff(id, name) {
         toast(`${r.name} looks after ${name} now`);
         state.stale = true;
         render();
-      } catch (e) { toast(e.message); b.disabled = false; }
+      } catch (e) { oops(e.message); b.disabled = false; }
     }));
   });
 }
@@ -5203,7 +5234,7 @@ function markPurchased(kind, x, name, personId, opts = {}) {
         if (editing) { toast("Saved"); return render(); }
         buzz();
         const amount = price && parseFloat(price) > 0 ? money(Math.round(parseFloat(price) * 100)) : "";
-        const undo = () => api(path, { [key]: x.id, on: false }).then(render, (e) => toast(e.message));
+        const undo = () => api(path, { [key]: x.id, on: false }).then(render, (e) => oops(e.message));
         if (chip) toast(res.started ? "Group gift started. Others can chip in now." : `You're in${amount ? ` for ${amount}` : ""}`, undo);
         else toast(amount ? `Added ${amount} to ${who}'s budget` : x.gift && x.gift.quantity !== 1 ? "Marked so nobody doubles up." : "It's yours. Nobody else will get it.", undo);
         state.burst = `${kind}:${x.id}`;
@@ -5211,7 +5242,7 @@ function markPurchased(kind, x, name, personId, opts = {}) {
       });
       $("#unmark", el)?.addEventListener("click", async () => {
         try { await api(path, { [key]: x.id, on: false }); closeSheet(); toast(chip ? "You left the group gift" : "Taken back"); render(); }
-        catch (e) { toast(e.message); }
+        catch (e) { oops(e.message); }
       });
     });
 }
@@ -5401,7 +5432,7 @@ function openBudgetWho(t) {
         t.skips = [...skips];
         changed = true;
         buzz();
-      } catch (e) { box.checked = !box.checked; toast(e.message); }
+      } catch (e) { box.checked = !box.checked; oops(e.message); }
       box.disabled = false;
       if (target.startsWith("h:")) syncHh(target.slice(2));
     }));
@@ -5493,9 +5524,9 @@ async function advancePurchase({ x, o, p }, t, redraw) {
     toast(`${x.title}: ${to[1].toLowerCase()}`, async () => {
       x.status = before;
       redraw();
-      try { await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: before || "", stash: x.stash || "", buyerId: x.mine === false ? x.buyerId : undefined }); } catch (e) { toast(e.message); }
+      try { await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: before || "", stash: x.stash || "", buyerId: x.mine === false ? x.buyerId : undefined }); } catch (e) { oops(e.message); }
     });
-  } catch (e) { x.status = before; redraw(); toast(e.message); }
+  } catch (e) { x.status = before; redraw(); oops(e.message); }
 }
 
 // Edit a purchase: how it's going, where it's hidden, what you paid. Or take it back.
@@ -5533,7 +5564,7 @@ function editPurchase(x, p, o) {
       });
       $("#unbuy", el)?.addEventListener("click", async () => {
         if (!(await ask(`Take back "${x.title}"? It won't count as purchased anymore.`, { yes: "Take back", danger: true }))) return;
-        try { await setPurchase(x, p, o, false); closeSheet(); toast("Taken back"); render(); } catch (e) { toast(e.message); }
+        try { await setPurchase(x, p, o, false); closeSheet(); toast("Taken back"); render(); } catch (e) { oops(e.message); }
       });
     });
 }
@@ -5764,7 +5795,7 @@ function editBudget(p, o) {
       el.querySelectorAll("[data-amt]").forEach((b) => (b.onclick = () => { const i = $("[name=amount]", el); i.value = b.dataset.amt; i.focus(); }));
       wireForm($("#budgetForm", el), async ({ amount }) => { await api("budget", { subjectId: p.id, amount, occasion: o.code }); closeSheet(); toast("Budget saved"); render(); });
       $("#clearBudget", el)?.addEventListener("click", async () => {
-        try { await api("budget", { subjectId: p.id, amount: "", occasion: o.code }); closeSheet(); toast("Budget cleared"); render(); } catch (e) { toast(e.message); }
+        try { await api("budget", { subjectId: p.id, amount: "", occasion: o.code }); closeSheet(); toast("Budget cleared"); render(); } catch (e) { oops(e.message); }
       });
     });
 }
@@ -5926,7 +5957,7 @@ function editIdea(idea, subjectId, opts = {}) {
       $("#removeIdea", el)?.addEventListener("click", async () => {
         if (!(await ask("Delete this idea?", { yes: "Delete", danger: true }))) return;
         try { await api("idea/remove", { id: idea.id }); closeSheet(); toast("Deleted"); render(); }
-        catch (e) { toast(e.message); }
+        catch (e) { oops(e.message); }
       });
     });
 }
@@ -5977,17 +6008,17 @@ function receivedSection(received, as = null) {
   </details>`;
 }
 function wireReceived(v, as = null) {
-  const done = async (body, msg) => { try { await api("item/got", { ...body, as: as || undefined }); toast(msg); state.stale = true; render(); } catch (e) { toast(e.message); } };
+  const done = async (body, msg) => { try { await api("item/got", { ...body, as: as || undefined }); toast(msg); state.stale = true; render(); } catch (e) { oops(e.message); } };
   v.querySelectorAll("[data-got]").forEach((b) => (b.onclick = () => { buzz(); done({ id: b.dataset.got, got: true }, "Nice! It's in Received."); }));
   v.querySelectorAll("[data-got-no]").forEach((b) => (b.onclick = () => done({ id: b.dataset.gotNo, got: false }, "Back on the list")));
   $("#gotAll", v)?.addEventListener("click", () => { buzz(); done({ all: true, got: true }, "All moved to Received"); });
   $("#receivedBox", v)?.addEventListener("toggle", (e) => { state.receivedOpen = e.target.open; });
   v.querySelectorAll("[data-thanked]").forEach((c) => (c.onchange = async () => {
     try { await api("item/thanked", { id: c.dataset.thanked, on: c.checked, as: as || undefined }); if (c.checked) buzz(); }
-    catch (e) { c.checked = !c.checked; toast(e.message); }
+    catch (e) { c.checked = !c.checked; oops(e.message); }
   }));
   v.querySelectorAll("[data-unreceive]").forEach((b) => (b.onclick = async () => {
-    try { await api("item/unreceive", { id: b.dataset.unreceive, as: as || undefined }); toast("Back on the list"); state.stale = true; render(); } catch (e) { toast(e.message); }
+    try { await api("item/unreceive", { id: b.dataset.unreceive, as: as || undefined }); toast("Back on the list"); state.stale = true; render(); } catch (e) { oops(e.message); }
   }));
 }
 
@@ -6127,7 +6158,7 @@ function giveGiftCard(c, member, name, personId) {
           : `<button class="btn primary wide" type="submit">${GIFT_SM} Yes, I'm giving one</button>`;
         $("#ungive", el)?.addEventListener("click", async () => {
           try { await send(false, undefined, have.occasion); closeSheet(); toast("Taken back"); render(); }
-          catch (e) { toast(e.message); }
+          catch (e) { oops(e.message); }
         });
       };
       paint();
@@ -6142,7 +6173,7 @@ function giveGiftCard(c, member, name, personId) {
         const n = parseFloat(String(amount).replace(/[$,\s]/g, ""));
         const filed = code ?? occ[0]?.code;
         toast(n > 0 ? `Added ${money(Math.round(n * 100))} to ${who}'s budget` : `You're giving ${who} a ${g.name} gift card`,
-          () => send(false, undefined, filed).then(render, (e) => toast(e.message)));
+          () => send(false, undefined, filed).then(render, (e) => oops(e.message)));
         state.burst = `gc:${c.brand}`;
         render();
       });
@@ -6208,7 +6239,7 @@ async function exportExcel(t, view) {
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-  } catch (e) { toast(e.message); }
+  } catch (e) { oops(e.message); }
 }
 
 // ---------- profile (birthday, sizes, please no) ----------
@@ -6497,12 +6528,12 @@ async function renderProfileEdit() {
     const btn = $("#pickPhoto", v);
     btn.disabled = true;
     try { await api("profile", { photo: await squarePhoto(f) }); state.stale = true; toast("Photo saved"); $("#mePhoto", v).innerHTML = avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"'); }
-    catch (e) { toast(e.message); }
+    catch (e) { oops(e.message); }
     btn.disabled = false;
   };
   $("#removePhoto", v)?.addEventListener("click", async () => {
     try { await api("profile", { photo: "" }); PHOTOS.delete(state.me.id); state.stale = true; toast("Photo removed"); $("#mePhoto", v).innerHTML = avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"'); }
-    catch (e) { toast(e.message); }
+    catch (e) { oops(e.message); }
   });
 
   // Bio counter.
@@ -6749,7 +6780,7 @@ function paintPushNudge() {
       slot.innerHTML = "";
       if (ok) toast("Notifications are on. Change them anytime in Settings.");
       else { try { localStorage.setItem(PUSH_NUDGE_KEY, JSON.stringify({ off: true })); } catch {} toast("No problem. You can turn them on in Settings."); }
-    } catch (err) { toast(err.message || "That didn't work. Try again."); e.currentTarget.disabled = false; }
+    } catch (err) { oops(err.message || "That didn't work. Try again."); e.currentTarget.disabled = false; }
   };
   $("#pushLater", slot).onclick = () => {
     const st = readPushNudge(), snoozes = (st.snoozes || 0) + 1;
@@ -6785,7 +6816,7 @@ async function paintPush(card) {
       try {
         if (await enablePush()) toast("Notifications are on");
         paintPush(card);
-      } catch (err) { toast(err.message || "That didn't work. Try again."); b.disabled = false; }
+      } catch (err) { oops(err.message || "That didn't work. Try again."); b.disabled = false; }
     };
     return;
   }
@@ -6800,17 +6831,17 @@ async function paintPush(card) {
     b.setAttribute("aria-checked", String(on));
     buzz();
     try { const r = await api("push/prefs", { [b.dataset.pushKind]: on }); state.me.notify = r.notify; }
-    catch (err) { b.setAttribute("aria-checked", String(!on)); toast(err.message); }
+    catch (err) { b.setAttribute("aria-checked", String(!on)); oops(err.message); }
   }));
   $("#pushTest", card).onclick = async (e) => {
     const b = e.currentTarget;
     b.disabled = true;
-    try { await api("push/test", {}); toast("Sent. It should pop up in a moment."); } catch (err) { toast(err.message); }
+    try { await api("push/test", {}); toast("Sent. It should pop up in a moment."); } catch (err) { oops(err.message); }
     finally { b.disabled = false; }
   };
   $("#pushOff", card).onclick = async () => {
     try { await api("push/unsubscribe", { endpoint: sub.endpoint }); await sub.unsubscribe(); toast("Notifications are off on this device"); }
-    catch (err) { toast(err.message); }
+    catch (err) { oops(err.message); }
     paintPush(card);
   };
 }
@@ -6954,14 +6985,14 @@ async function renderSettings() {
     v.querySelectorAll("[data-export]").forEach((b) => (b.onclick = async () => {
       b.disabled = true;
       try { await exportExcel(await load("tracker"), b.dataset.export); }
-      catch (e) { toast(e.message); }
+      catch (e) { oops(e.message); }
       finally { b.disabled = false; }
     }));
     $("#installSettings", v)?.addEventListener("click", () => startInstall());
     paintPush($("#pushCard", v));
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
     $("#removePin", v)?.addEventListener("click", async () => {
-      try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { toast(e.message); }
+      try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { oops(e.message); }
     });
     $("#signOut", v).onclick = async () => {
       // The server drops this device's notifications with the sign-in; the browser forgets its subscription too,
@@ -6982,7 +7013,7 @@ async function renderSettings() {
       const name = groupName(b.dataset.leave);
       const admin = isAdmin(state.groups.find((g) => g.id === b.dataset.leave)) ? " You're its admin, so that passes to whoever has been in it longest. To pick who, use Manage on the Circles tab first." : "";
       if (!(await ask(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.${admin}`, { yes: "Leave", danger: true }))) return;
-      try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
+      try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { oops(e.message); }
     }));
     wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
     $("#startFam", v).onclick = () => openSheet(`
@@ -7008,7 +7039,7 @@ function wireClearPin(el, reload) {
     if (!(await ask(`Clear ${who}'s PIN? Only do this if they forgot it. Anyone could then sign in as them until they set a new one, and they'll see that you cleared it.`, { yes: "Clear PIN", danger: true }))) return;
     b.disabled = true;
     try { await api("pin/clear", { memberId: b.dataset.clearPin }); await reload(`${who}'s PIN is cleared. They can sign in and set a new one.`); }
-    catch (e) { toast(e.message); b.disabled = false; }
+    catch (e) { oops(e.message); b.disabled = false; }
   }));
 }
 function openCircleManage(gid) {
@@ -7053,7 +7084,7 @@ function openCircleManage(gid) {
       if (!(await ask(`Take ${who} out of ${g.name}? They won't see anyone's lists here, and nobody here will see theirs. They can rejoin with the invite code.`, { yes: "Take out", danger: true }))) return;
       b.disabled = true;
       try { await api("family/remove", { groupId: gid, memberId: b.dataset.kick }); await reload(`${who} is out of ${g.name}`); }
-      catch (e) { toast(e.message); b.disabled = false; }
+      catch (e) { oops(e.message); b.disabled = false; }
     }));
     const af = $("#adminForm", el);
     if (af) wireForm(af, async ({ memberId }) => {
@@ -7116,7 +7147,7 @@ function wireHousehold(v, reload) {
   v.querySelectorAll("[data-hh-out]").forEach((b) => (b.onclick = async () => {
     const name = hh.members.find((m) => m.id === b.dataset.hhOut)?.name || "them";
     if (!(await ask(`Take ${name} out of your household? They'll leave any circle they were only in through it.`, { yes: "Take out", danger: true }))) return;
-    try { await api("household/remove", { memberId: b.dataset.hhOut }); reload(`${name} is out of your household`); } catch (e) { toast(e.message); }
+    try { await api("household/remove", { memberId: b.dataset.hhOut }); reload(`${name} is out of your household`); } catch (e) { oops(e.message); }
   }));
   wireForm($("#hhNameForm", v), async ({ name }) => { await api("household/rename", { name }); reload("Household name saved"); });
   v.querySelectorAll("[data-hh-circle]").forEach((b) => (b.onclick = async () => {
@@ -7125,11 +7156,11 @@ function wireHousehold(v, reload) {
     if (!on && !(await ask(`Take your household out of ${g}? Anyone who's only in ${g} through your household will leave it.`, { yes: "Take out", danger: true }))) return;
     b.disabled = true;
     try { await api("household/circle", { groupId: b.dataset.hhCircle, on }); buzz(); reload(on ? `Your household is in ${g}` : `Your household is out of ${g}`); }
-    catch (e) { toast(e.message); b.disabled = false; }
+    catch (e) { oops(e.message); b.disabled = false; }
   }));
   $("#hhLeave", v).onclick = async () => {
     if (!(await ask("Leave your household? You'll leave any circle you were only in through it. Your list stays the same.", { yes: "Leave", danger: true }))) return;
-    try { await api("household/remove", { memberId: state.me.id }); reload("You left your household"); } catch (e) { toast(e.message); }
+    try { await api("household/remove", { memberId: state.me.id }); reload("You left your household"); } catch (e) { oops(e.message); }
   };
 }
 
