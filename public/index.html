@@ -1808,6 +1808,16 @@ function readPubNow() { try { return localStorage.getItem(PUB_NOW_KEY) === "1"; 
 function writePubNow(on) { try { on ? localStorage.setItem(PUB_NOW_KEY, "1") : localStorage.removeItem(PUB_NOW_KEY); } catch {} }
 // A one-time "add your birthday" card on My list, until you add one or tap Not now.
 const BDAY_NUDGE_KEY = "wishlist-bday-nudge";
+// In November, a "Your list hasn't changed since last year" card on My list when no published wish was added
+// or edited this year. "Looks good" hides it until next November (per device and person).
+const STALE_NUDGE_KEY = "wishlist-stale-nudge";
+function showStaleNudge(live) {
+  const t = state.today || 0, year = Math.floor(t / 10000);
+  if (Math.floor(t / 100) % 100 !== 11 || !live.length) return false;
+  const latest = live.reduce((a, i) => [a, i.created_at || "", i.updated_at || ""].sort().pop(), "");
+  if (latest >= `${year}-01-01`) return false;
+  try { return localStorage.getItem(STALE_NUDGE_KEY) !== `${state.me.id}:${year}`; } catch { return false; }
+}
 const showBdayNudge = () => { if (state.me?.profile?.birthday) return false; try { return localStorage.getItem(BDAY_NUDGE_KEY) !== state.me.id; } catch { return false; } };
 function readStarter() { try { return localStorage.getItem(STARTER_KEY) === state.me?.id; } catch { return false; } }
 function writeStarter(on) { try { on ? localStorage.setItem(STARTER_KEY, state.me.id) : localStorage.removeItem(STARTER_KEY); } catch {} }
@@ -1889,6 +1899,9 @@ async function renderMine() {
   const liveSection = n ? `
     <p class="label">Wish list</p>
     ${starter}
+    ${showStaleNudge(live) ? `<div class="starter slide" id="staleNudge" style="margin:0 0 14px"><strong>Your list hasn't changed since last year</strong>
+      <p>Everyone's starting to shop. Tap a wish to update or remove it, and add anything new you'd love.</p>
+      <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="staleOk">Looks good</button><button class="btn primary" type="button" id="staleAdd">${PLUS} Add a wish</button></div></div>` : ""}
     <p class="count-line">${plural(n, "wish", "wishes")} your circles can see</p>
     <div class="stack">${live.map((i, k) => itemRow(i, k + drafts.length)).join("")}</div>
     ${showBdayNudge() ? `<div class="starter slide" id="bdayNudge" style="margin:18px 0 0"><strong>When's your birthday?</strong>
@@ -1910,6 +1923,12 @@ async function renderMine() {
   paintInstallCard();
   $("#addFirst")?.addEventListener("click", () => addThing());
   $("#bdayAdd")?.addEventListener("click", quickBirthday);
+  $("#staleAdd")?.addEventListener("click", () => addThing());
+  $("#staleOk")?.addEventListener("click", () => {
+    try { localStorage.setItem(STALE_NUDGE_KEY, `${state.me.id}:${Math.floor((state.today || 0) / 10000)}`); } catch {}
+    $("#staleNudge")?.remove();
+    toast("Great. Your list is ready for the holidays.");
+  });
   $("#bdayLater")?.addEventListener("click", () => { try { localStorage.setItem(BDAY_NUDGE_KEY, state.me.id); } catch {} $("#bdayNudge")?.remove(); });
   v.querySelectorAll("[data-idea]").forEach((b) => (b.onclick = () => {
     const opts = STARTER_IDEAS[b.dataset.idea][2];
