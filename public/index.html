@@ -219,15 +219,43 @@
 
   /* Someone else's list */
   .row.mine { background: var(--ok-soft); box-shadow: none; }
-  /* "Just me": private drafts, shown with a dashed edge until published */
+  /* "Maybe": private drafts, shown with a dashed edge until published */
   .row.draft { background: var(--panel); box-shadow: none; outline: 1.5px dashed var(--line); outline-offset: -1.5px; }
   .publish-btn { min-height: 44px; border: 0; border-radius: 999px; padding: 0 15px; background: var(--brand); color: var(--brand-ink);
     font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
   .publish-btn:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
-  .just-me-note { display: flex; gap: 8px; align-items: flex-start; background: var(--panel); border-radius: 12px; padding: 10px 12px;
+  .maybe-note { display: flex; gap: 8px; align-items: flex-start; background: var(--panel); border-radius: 12px; padding: 10px 12px;
     color: var(--muted); font-size: 14px; line-height: 1.4; margin: 0 0 14px; }
-  .just-me-note svg { flex: none; margin-top: 2px; }
-  .just-me-note strong { color: var(--ink); }
+  .maybe-note svg { flex: none; margin-top: 2px; }
+  .maybe-note strong { color: var(--ink); }
+  /* My list switch: Wish list (what your circles see) | Maybe (only you). Big and always visible so the two never blur. */
+  .mswitch { position: relative; display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); border-radius: 16px; padding: 4px; margin: 0 0 18px; }
+  .mswitch .mind { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 12px; background: var(--card);
+    box-shadow: 0 1px 4px rgba(0,0,0,.12); transition: transform .32s var(--spring), background .2s, outline-color .2s; }
+  .mswitch[data-on="maybe"] .mind { transform: translateX(100%); background: var(--bg); outline: 1.5px dashed var(--brand); outline-offset: -1.5px; }
+  .mswitch button { position: relative; z-index: 1; min-height: 52px; border: 0; background: none; border-radius: 12px; font-weight: 700; font-size: 16px;
+    color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: color .2s; }
+  .mswitch button[aria-selected="true"] { color: var(--ink); }
+  .mswitch button:focus-visible { outline: 3px solid var(--brand); outline-offset: -3px; }
+  .mswitch .chip-n { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; display: inline-grid; place-items: center; font-size: 13px;
+    background: var(--card); color: var(--muted); transition: transform .3s var(--spring); }
+  .mswitch button[aria-selected="true"] .chip-n { background: var(--soft); color: var(--brand); }
+  .mswitch .chip-n.bump { animation: bump .5s var(--spring); }
+  @keyframes bump { 40% { transform: scale(1.45); } }
+  /* The Maybe side lives in its own dashed, tinted zone so it reads as private at a glance. */
+  .maybe-zone { border: 1.5px dashed var(--line); border-radius: 20px; padding: 14px; background: color-mix(in srgb, var(--panel) 55%, transparent); }
+  .maybe-zone .row.draft { background: var(--card); }
+  .maybe-head { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
+  .maybe-head .lockdot { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--brand); flex: none; }
+  .maybe-head strong { font-size: 17px; }
+  .maybe-zone .maybe-sub { color: var(--muted); font-size: 14px; line-height: 1.4; margin: 0 0 14px; }
+  .maybe-empty { text-align: center; padding: 18px 8px 8px; color: var(--muted); }
+  .maybe-empty p { margin: 6px 0 14px; line-height: 1.45; }
+  .maybe-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel); border-radius: 14px; padding: 12px 14px; margin: 0 0 16px; }
+  .maybe-hint span { color: var(--muted); font-size: 14px; }
+  .maybe-hint button { border: 0; background: none; color: var(--brand); font-weight: 700; font-size: 15px; min-height: 44px; padding: 0 4px; }
+  /* Publishing: the card flies to the Wish list side of the switch */
+  .fly { position: fixed; z-index: 60; pointer-events: none; transition: transform .55s cubic-bezier(.5,-.2,.6,1), opacity .55s ease-in; transform-origin: center; }
   .row.taken { background: var(--panel); box-shadow: none; }
   .row.taken .tile { filter: grayscale(1); opacity: .6; }
   .row.taken .row-title { color: var(--muted); }
@@ -952,7 +980,7 @@
     .hh { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
     .hh-name { grid-column: 1 / -1; margin-bottom: 2px; }
     .hh .member + .member { margin-top: 0; }
-    .just-me-note, .count-line, .subtle { max-width: 720px; }
+    .maybe-note, .count-line, .subtle { max-width: 720px; }
     .add.soft { max-width: 520px; justify-self: start; }
     .gc-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px 16px; }
     .ticket, .install-card, .starter:not(.done) { max-width: 560px; }
@@ -1431,6 +1459,8 @@ const state = { me: null, groups: [], households: {}, today: null, tab: "mine", 
 
 const hashFor = (tab) => (tab === "notes" ? "budget" : tab);
 function setTab(tab, person = null) {
+  if (tab === "mine" && (state.tab !== "mine" || state.person) && !state.mineViewPinned) state.mineView = "list";
+  state.mineViewPinned = false;
   state.tab = tab;
   state.person = person;
   state.view = null;
@@ -1581,7 +1611,7 @@ async function render() {
     // Stale: refetch, but keep the old copy in place meanwhile so a tap during the reload still knows who you are.
     if (!state.me || state.stale) { state.stale = false; await refreshMe(); }
     fillNavMe();
-    // Your own list always opens on My list, which is the only place "Just me" wishes show.
+    // Your own list always opens on My list, which is the only place Maybe wishes show.
     if (state.person && state.person === state.me?.id) { state.person = null; state.tab = "mine"; }
     if (state.person) await renderPerson(state.person);
     else if (state.tab === "family") await renderFamily();
@@ -2061,7 +2091,7 @@ function openTour() {
   const slides = [
     { id: "hi", scene: ringScene(), title: w.started ? `${fam} is ready!` : fam ? `Welcome to ${fam}!` : `Welcome, ${state.me.name}!`,
       text: w.started ? "Here's how Hints works. It takes about 20 seconds." : fam ? `So glad you're here, ${state.me.name}. Here's how it works.` : "Here's a quick look at how Hints works." },
-    { id: "add", scene: addScene(), title: "Add what you'd love", text: "Paste a link from any store or app (TikTok Shop, Amazon, anywhere), or just type a name. New wishes stay private in Just me until you tap Publish." },
+    { id: "add", scene: addScene(), title: "Add what you'd love", text: "Paste a link from any store or app (TikTok Shop, Amazon, anywhere), or just type a name. New wishes stay private in Maybe until you tap Publish." },
     { id: "surprise", scene: surpriseScene(), title: "Gifts stay a surprise", text: "When someone marks a gift on your list, you never see it. No spoilers, ever." },
     { id: "private", scene: privateScene(), title: "Your notes are just for you", text: "Jot down gift ideas and set a budget for each person in Budget. Nobody else can see them." },
     !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
@@ -2158,7 +2188,7 @@ function finishTour() {
 
 // "Add 3 things" on My list, after the tour. Remembered on this device until you reach 3.
 const STARTER_KEY = "wishlist-starter";
-// "Show my family now" on a new wish: remembered per device, off by default (new wishes start in Just me).
+// "Show my family now" on a new wish: remembered per device, off by default (new wishes start in Maybe).
 const PUB_NOW_KEY = "wishlist-pub-now";
 function readPubNow() { try { return localStorage.getItem(PUB_NOW_KEY) === "1"; } catch { return false; } }
 function writePubNow(on) { try { on ? localStorage.setItem(PUB_NOW_KEY, "1") : localStorage.removeItem(PUB_NOW_KEY); } catch {} }
@@ -2221,16 +2251,17 @@ function wireGiftBox(root, action) {
 }
 
 // ---------- my list ----------
-// Two sections: "Just me" (drafts only you can see; every new wish starts here) and the published wish list.
-// Publishing is one way: a published wish never goes back to "Just me".
-const JUST_ME_NOTE = `<p class="just-me-note">${LOCK}<span><strong>Only you can see these.</strong> New wishes start here. Publish one when you're sure you want it. Once published, it stays on your wish list.</span></p>`;
+// Two sides behind a switch: Wish list (published, what your circles see; opens by default) and Maybe
+// (drafts only you can see; new wishes start here). Publishing is one way: a published wish never goes back to Maybe.
+const MAYBE_NOTE = `<p class="maybe-note">${LOCK}<span><strong>Only you can see this.</strong> Publish it when you're sure. Once published, it stays on your wish list.</span></p>`;
 
 async function renderMine() {
   const data = await load("list");
   state.myItems = data.items;
   const drafts = data.items.filter((i) => i.draft);
   const live = data.items.filter((i) => !i.draft);
-  setHero(heroTitle(`Hi ${state.me.name}`, "Your wishlist"));
+  const view = data.items.length && state.mineView === "maybe" ? "maybe" : "list";
+  setHero(heroTitle(`Hi ${state.me.name}`, view === "maybe" ? "Your maybes" : "Your wishlist"));
   const v = $("#view");
   // Getting started counts published wishes (what your family can see): an empty wish list turns the "add 3" guide on;
   // reaching 3 celebrates and turns it off. Publishing counts as adding.
@@ -2248,12 +2279,23 @@ async function renderMine() {
       }
     }
   }
-  const draftSection = drafts.length ? `
-    <p class="label">${LOCK} Just me <span style="font-weight:500;color:var(--muted)">(${drafts.length})</span></p>
-    ${JUST_ME_NOTE}
-    <div class="stack">${drafts.map((i, k) => itemRow(i, k)).join("")}</div>` : "";
+  const bump = state.bumpCount;
+  state.bumpCount = null;
+  const switcher = `<div class="mswitch" role="tablist" aria-label="My list" data-on="${view}"><span class="mind" aria-hidden="true"></span>
+    <button type="button" role="tab" id="msList" data-mview="list" aria-selected="${view === "list"}" aria-controls="mPanel">Wish list<span class="chip-n${bump === "list" ? " bump" : ""}">${n}</span></button>
+    <button type="button" role="tab" id="msMaybe" data-mview="maybe" aria-selected="${view === "maybe"}" aria-controls="mPanel">${LOCK} Maybe<span class="chip-n${bump === "maybe" ? " bump" : ""}">${drafts.length}</span></button>
+  </div>`;
+  const maybeSection = `<div class="maybe-zone slide">
+    <div class="maybe-head"><span class="lockdot">${LOCK}</span><strong>Only you can see these</strong></div>
+    <p class="maybe-sub">Ideas you're not sure about yet. Publish one to put it on your wish list. Publishing can't be undone.</p>
+    ${drafts.length ? `<div class="stack">${drafts.map((i, k) => itemRow(i, k)).join("")}</div>` : `<div class="maybe-empty">
+      <strong>No maybes right now</strong>
+      <p>New wishes land here first, so you can think them over before anyone sees them.</p>
+      <button class="add" type="button" id="maybeAdd">${PLUS} Add a maybe</button></div>`}
+  </div>`;
+  const maybeHint = drafts.length ? `<div class="maybe-hint slide"><span>${LOCK} ${plural(drafts.length, "maybe", "maybes")} waiting for you</span><button type="button" data-mview="maybe">Review</button></div>` : "";
   const liveSection = n ? `
-    <p class="label">Wish list</p>
+    ${maybeHint}
     ${starter}
     ${showStaleNudge(live) ? `<div class="starter slide" id="staleNudge" style="margin:0 0 14px"><strong>Your list hasn't changed since last year</strong>
       <p>Everyone's starting to shop. Tap a wish to update or remove it, and add anything new you'd love.</p>
@@ -2264,13 +2306,17 @@ async function renderMine() {
       <p>Add it so everyone can plan for it too, not just Christmas.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="bdayLater">Not now</button><button class="btn primary" type="button" id="bdayAdd">Add birthday</button></div></div>` : ""}
     <p class="footnote">Surprises stay hidden from you.</p>` : `
-    <p class="label">Wish list</p>
-    <p class="subtle">Nothing published yet.</p>`;
-  v.innerHTML = '<div id="installSlot"></div>' + (data.items.length ? draftSection + liveSection + myGiftCards(data.giftCards) : `
+    <div class="maybe-empty slide">
+      ${giftBox("Add a wish")}
+      <strong>Nothing on your wish list yet</strong>
+      <p>${drafts.length ? `You have ${plural(drafts.length, "maybe", "maybes")}. Publish one when you're ready for your circles to see it.` : "Add something you'd love."}</p>
+      ${drafts.length ? `<button class="add" type="button" data-mview="maybe">${LOCK} See my maybes</button>` : `<button class="add" type="button" id="listAdd">${PLUS} Add a wish</button>`}
+    </div>`;
+  v.innerHTML = '<div id="installSlot"></div>' + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
     <div class="empty">
       ${giftBox("Add your first wish")}
       <strong>Let's start your list</strong>
-      <p>A name is all you need.${tip("New wishes start in Just me, where only you see them, until you publish.")}</p>
+      <p>A name is all you need.${tip("New wishes start in Maybe, where only you see them, until you publish.")}</p>
       <div class="idea-chips">${STARTER_IDEAS.map(([e, l], k) => `<button class="chip" type="button" data-idea="${k}" style="animation-delay:${0.2 + k * 0.07}s">${e} ${esc(l)}</button>`).join("")}</div>
       <button class="add big shine" type="button" id="addFirst">${PLUS} Add a wish</button>
       <p class="footnote">Surprises stay hidden from you.</p>
@@ -2278,6 +2324,15 @@ async function renderMine() {
     ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`);
   paintInstallCard();
   $("#addFirst")?.addEventListener("click", () => addThing());
+  $("#listAdd")?.addEventListener("click", () => addThing());
+  $("#maybeAdd")?.addEventListener("click", () => addThing());
+  v.querySelectorAll("[data-mview]").forEach((b) => (b.onclick = () => setMineView(b.dataset.mview)));
+  $(".mswitch", v)?.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setMineView(view === "list" ? "maybe" : "list");
+    $(`[data-mview="${state.mineView}"]`, v)?.focus();
+  });
   $("#bdayAdd")?.addEventListener("click", quickBirthday);
   $("#staleAdd")?.addEventListener("click", () => addThing());
   $("#staleOk")?.addEventListener("click", () => {
@@ -2299,6 +2354,36 @@ async function renderMine() {
   });
   v.querySelectorAll("[data-star]").forEach((b) => (b.onclick = () => toggleTopPick(data.items.find((i) => i.id === b.dataset.star), b)));
   v.querySelectorAll("[data-publish]").forEach((b) => (b.onclick = () => confirmPublish(data.items.find((i) => i.id === b.dataset.publish))));
+}
+
+// Switch sides on My list without refetching (the list is cached by load()).
+function setMineView(view) {
+  if (state.mineView === view) return;
+  state.mineView = view;
+  window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
+  render();
+}
+
+// Publish animation: a ghost of the card shrinks into the Wish list side of the switch.
+function flyToList(id) {
+  return new Promise((done) => {
+    const card = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
+    const target = $("#msList");
+    if (!card || !target || reduceMotion()) return done();
+    const a = card.getBoundingClientRect(), b = target.getBoundingClientRect();
+    const ghost = card.cloneNode(true);
+    ghost.classList.add("fly");
+    ghost.classList.remove("slide", "drop");
+    Object.assign(ghost.style, { left: a.left + "px", top: a.top + "px", width: a.width + "px", height: a.height + "px", margin: 0, animation: "none" });
+    document.body.appendChild(ghost);
+    card.style.visibility = "hidden";
+    const dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ghost.style.transform = `translate(${dx}px, ${dy}px) scale(.12)`;
+      ghost.style.opacity = "0.2";
+    }));
+    setTimeout(() => { ghost.remove(); done(); }, 560);
+  });
 }
 
 function itemRow(i, n = 0) {
@@ -2332,7 +2417,7 @@ function confirmPublish(item) {
   openSheet(`
     <h3>Publish to your wish list?</h3>
     <p class="lead"><strong>${esc(item.title)}</strong> goes on your wish list.</p>
-    <p class="just-me-note">${LOCK}<span><strong>Can't go back to Just me.</strong> You can still edit or remove it.</span></p>
+    <p class="maybe-note">${LOCK}<span><strong>Can't go back to Maybe.</strong> You can still edit or remove it.</span></p>
     <div class="actions">
       <button class="btn" type="button" id="pubCancel">Not yet</button>
       <button class="btn primary" type="button" id="pubGo">${PUBLISH_ICON} Publish</button>
@@ -2344,11 +2429,16 @@ function confirmPublish(item) {
       try {
         await api("item/publish", { id: item.id });
         closeSheet();
+        const onMine = state.tab === "mine" && !state.person;
+        if (onMine) await flyToList(item.id);
         toast("Published to your wish list");
         state.stale = true;
         state.flash = item.id;
         state.burst = "pub:" + item.id;
-        if (state.tab !== "mine" || state.person) return setTab("mine");
+        state.mineView = "list";
+        state.mineViewPinned = true;
+        state.bumpCount = "list";
+        if (!onMine) return setTab("mine");
         render();
       } catch (err) { go.disabled = false; toast(err.message); }
     };
@@ -2509,7 +2599,7 @@ function editItem(item, opts = {}) {
   openSheet(`
     <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser ? whoChips(state.me.id) : ""}
-    ${draft && !isNew ? JUST_ME_NOTE : ""}
+    ${draft && !isNew ? MAYBE_NOTE : ""}
     <form id="itemForm" autocomplete="off">
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
@@ -2528,12 +2618,12 @@ function editItem(item, opts = {}) {
           <label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>
         </div>
       </details>
-      ${isNew ? `<label class="check"><span>Show my circles now<small id="pubNowHint">${pubNow ? "Goes straight to your wish list." : "Off: saves to Just me, where only you can see it."}</small></span><input type="checkbox" name="pubNow" ${pubNow ? "checked" : ""}></label>` : ""}
+      ${isNew ? `<label class="check"><span>Show my circles now<small id="pubNowHint">${pubNow ? "Goes straight to your wish list." : "Off: saves to Maybe, where only you can see it."}</small></span><input type="checkbox" name="pubNow" ${pubNow ? "checked" : ""}></label>` : ""}
       ${draft ? "" : `<label class="check"><span>Top pick<small>Shows a gold star so everyone knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
       ${familySwitches(item.hiddenFrom)}`}
       <div class="actions">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeItem">Remove</button>'}
-        <button class="btn primary" type="submit" id="itemSave">${isNew ? (pubNow ? "Add to my wish list" : "Save to Just me") : "Save"}</button>
+        <button class="btn primary" type="submit" id="itemSave">${isNew ? (pubNow ? "Add to my wish list" : "Save to Maybe") : "Save"}</button>
       </div>
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
     </form>`, (el) => {
@@ -2547,8 +2637,8 @@ function editItem(item, opts = {}) {
       form.elements.pubNow?.addEventListener("change", (e) => {
         const on = e.target.checked;
         writePubNow(on);
-        $("#itemSave", el).textContent = on ? "Add to my wish list" : "Save to Just me";
-        $("#pubNowHint", el).textContent = on ? "Goes straight to your wish list." : "Off: saves to Just me, where only you can see it.";
+        $("#itemSave", el).textContent = on ? "Add to my wish list" : "Save to Maybe";
+        $("#pubNowHint", el).textContent = on ? "Goes straight to your wish list." : "Off: saves to Maybe, where only you can see it.";
       });
       if (isNew) setTimeout(() => {
         // Link first, unless a starter idea or carried-over text already gave it a name.
@@ -2568,11 +2658,12 @@ function editItem(item, opts = {}) {
         const published = isNew && d.pubNow;
         if (published) await api("item/publish", { id });
         closeSheet();
-        if (isNew) toast(published ? "Added to your wish list" : "Saved to Just me", () => api("item/remove", { id }).then(() => { state.stale = true; render(); }, (e) => toast(e.message)));
+        if (isNew) toast(published ? "Added to your wish list" : "Saved to Maybe", () => api("item/remove", { id }).then(() => { state.stale = true; render(); }, (e) => toast(e.message)));
         else toast("Saved");
         if (published) state.burst = "pub:" + id;
         state.stale = true;
         state.flash = isNew ? id : null;
+        if (isNew) { state.mineView = published ? "list" : "maybe"; state.mineViewPinned = true; state.bumpCount = state.mineView; }
         if (isNew && (state.tab !== "mine" || state.person)) return setTab("mine");
         render();
       });
