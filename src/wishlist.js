@@ -325,17 +325,18 @@ const GIFT_STYLES = ["surprise", "experiences", "practical", "homemade", "consum
 const FAV_COLORS = ["red", "pink", "orange", "yellow", "green", "teal", "blue", "navy", "purple", "brown", "black", "white", "gray", "gold", "silver"];
 // Jewelry metals (migration 0028). Same rule: keys only, never rename one.
 const METALS = ["gold", "silver", "rosegold", "gunmetal"];
-function keysOut(v, allowed) {
+// max: how many can be picked (gift style is up to 3; colors are any of them).
+function keysOut(v, allowed, max = 3) {
   try {
     const a = JSON.parse(v || "[]");
-    return Array.isArray(a) ? a.filter((k) => allowed.includes(k)).slice(0, 3) : [];
+    return Array.isArray(a) ? a.filter((k) => allowed.includes(k)).slice(0, max) : [];
   } catch {
     return [];
   }
 }
-function keysIn(v, allowed) {
+function keysIn(v, allowed, max = 3) {
   const keys = [...new Set((Array.isArray(v) ? v : []).map(String))].filter((k) => allowed.includes(k));
-  if (keys.length > 3) fail(400, "Pick up to 3.");
+  if (keys.length > max) fail(400, `Pick up to ${max}.`);
   return keys.length ? JSON.stringify(keys) : null;
 }
 function profileOut(row) {
@@ -348,7 +349,9 @@ function profileOut(row) {
     avoid: row?.avoid || "",
     brands: brandsOut(row?.brands),
     giftStyle: keysOut(row?.gift_style, GIFT_STYLES),
-    colors: keysOut(row?.colors, FAV_COLORS),
+    colors: keysOut(row?.colors, FAV_COLORS, FAV_COLORS.length),
+    // Colors they'd rather not get (migration 0030). Never also a favorite.
+    colorsNo: keysOut(row?.colors_no, FAV_COLORS, FAV_COLORS.length).filter((k) => !keysOut(row?.colors, FAV_COLORS, FAV_COLORS.length).includes(k)),
     metals: (() => { try { const a = JSON.parse(row?.metals || "[]"); return Array.isArray(a) ? METALS.filter((k) => a.includes(k)) : []; } catch { return []; } })(),
     mixedMetals: !!row?.mixed_metals,
     loves: row?.loves || "",
@@ -3510,7 +3513,8 @@ const handlers = {
   // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
   // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text.
-  // brands: favorite brand names (free text). giftStyle, colors: up to 3 keys each. loves: short free text (old).
+  // brands: favorite brand names (free text). giftStyle: up to 3 keys. colors, colorsNo: any color keys (favorites and
+  // colors to skip; one color can't be both, favorites win). loves: short free text (old).
   // likes, dislikes: lists of short tags (Loves and Nopes). bio: one short line.
   // as: someone you look after (everything but the PIN). Absent = unchanged.
   async "POST profile"(req, env) {
@@ -3582,8 +3586,13 @@ const handlers = {
     if (b.giftStyle !== undefined) {
       await env.DB.prepare("UPDATE members SET gift_style = ? WHERE id = ?").bind(keysIn(b.giftStyle, GIFT_STYLES), who).run();
     }
-    if (b.colors !== undefined) {
-      await env.DB.prepare("UPDATE members SET colors = ? WHERE id = ?").bind(keysIn(b.colors, FAV_COLORS), who).run();
+    if (b.colors !== undefined || b.colorsNo !== undefined) {
+      const row = await env.DB.prepare("SELECT colors, colors_no FROM members WHERE id = ?").bind(who).first();
+      const all = FAV_COLORS.length;
+      const fav = b.colors !== undefined ? JSON.parse(keysIn(b.colors, FAV_COLORS, all) || "[]") : keysOut(row?.colors, FAV_COLORS, all);
+      const no = (b.colorsNo !== undefined ? JSON.parse(keysIn(b.colorsNo, FAV_COLORS, all) || "[]") : keysOut(row?.colors_no, FAV_COLORS, all)).filter((k) => !fav.includes(k));
+      await env.DB.prepare("UPDATE members SET colors = ?, colors_no = ? WHERE id = ?")
+        .bind(fav.length ? JSON.stringify(fav) : null, no.length ? JSON.stringify(no) : null, who).run();
     }
     if (b.metals !== undefined) {
       const metals = METALS.filter((k) => (Array.isArray(b.metals) ? b.metals.map(String) : []).includes(k));
