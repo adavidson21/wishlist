@@ -593,6 +593,8 @@
   .mg-hh .linkbtn { display: block; padding: 0; margin-top: 2px; font-size: 14px; }
   .mg-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .mg-btns .btn { width: 100%; }
+  .mg-btns #mgAdd { grid-column: 1 / -1; }
+  .mg-btns .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .more-list { display: grid; gap: 8px; margin-top: 8px; }
   /* The line under a name on the Circles tab: wish count, then chips for household (other than yours) and birthday soon. */
   .pchips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
@@ -4945,7 +4947,7 @@ function sizesNudge(member, name) {
     : daysSince(p.sizesAt) >= SIZES_STALE_DAYS ? `${esc(name)}'s sizes were updated ${monthsAgo(p.sizesAt)}. Kids grow fast.` : "";
   return msg ? `<p class="mg-nudge">${msg}<button class="linkbtn" type="button" data-mg-sizes>${has ? "Update" : "Add sizes"}</button></p>` : "";
 }
-// Their page shows this card: add wishes, edit their profile and gift cards, hand the list over, or remove them.
+// Their page shows this card: add wishes (hidden while the list is empty, the big "Add the first wish" button covers it), edit their profile and gift cards, hand the list over, or remove them.
 function manageCard(list, name) {
   const by = list.member.id && everyone().find((m) => m.id === list.member.id)?.managedBy;
   const who = by === state.me.id ? "You added" : by ? `${esc(personName(by))} looks after` : "Someone added";
@@ -4958,7 +4960,7 @@ function manageCard(list, name) {
       : `<span class="mg-txt">Not part of a household</span>`}</div>
     ${sizesNudge(list.member, name)}
     <div class="mg-btns">
-      <button class="btn primary small" type="button" id="mgAdd">${PLUS} Add a wish</button>
+      ${list.items.length ? `<button class="btn primary small" type="button" id="mgAdd">${PLUS} Add a wish for ${esc(name)}</button>` : ""}
       <button class="btn small" type="button" id="mgProfile">${PENCIL} Profile</button>
       <button class="btn small" type="button" id="mgCards">Gift cards</button>
       <button class="btn small" type="button" id="mgMore" aria-label="More options for ${esc(name)}">More</button>
@@ -4967,7 +4969,7 @@ function manageCard(list, name) {
 }
 function wireManageCard(v, list, name, id) {
   const add = () => editItem(null, { as: id });
-  $("#mgAdd", v).onclick = add;
+  $("#mgAdd", v)?.addEventListener("click", add);
   $("#firstWish", v)?.addEventListener("click", add);
   $("#mgProfile", v).onclick = () => editManagedProfile(list.member, name);
   $("[data-mg-sizes]", v)?.addEventListener("click", () => editManagedProfile(list.member, name));
