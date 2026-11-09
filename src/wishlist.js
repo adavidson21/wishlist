@@ -2155,6 +2155,51 @@ async function chatPosted(env, author, groupId, subjectId, msg) {
   }
 }
 
+// ---------- problems and notes for whoever runs Hints ----------
+// The owner is OWNER_ID (wrangler.jsonc vars) when it's set, otherwise the first person who ever joined (whoever
+// set Hints up). Only they get notes, the problem list (Settings > Inbox) and the morning "problems" notification.
+async function appOwner(env) {
+  if (env.OWNER_ID) {
+    const row = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?").bind(String(env.OWNER_ID)).first();
+    if (row) return row;
+  }
+  return env.DB.prepare("SELECT id, name FROM members WHERE managed_by IS NULL ORDER BY created_at, id LIMIT 1").first();
+}
+async function ownerOnly(env, me) {
+  if ((await appOwner(env))?.id !== me.id) fail(404, "Not found.");
+}
+const clip = (v, n) => String(v ?? "").slice(0, n);
+// Saves a problem the app or the API ran into. The same message from the same place is one row with a count,
+// and a repeat reopens it if it was marked done. Never form contents: just the message, where, and the browser.
+async function recordProblem(env, { where, message, detail = null, memberId = null }) {
+  const msg = clip(message, 300).trim() || "Unknown problem";
+  const sig = `e:${(await sha256(`${where}|${msg}`)).slice(0, 32)}`;
+  const t = now();
+  await env.DB.prepare(
+    `INSERT INTO reports (id, kind, member_id, body, detail, sig, count, created_at, last_at) VALUES (?, 'error', ?, ?, ?, ?, 1, ?, ?)
+     ON CONFLICT (sig) DO UPDATE SET count = reports.count + 1, last_at = excluded.last_at, detail = excluded.detail,
+       member_id = COALESCE(excluded.member_id, reports.member_id), done_at = NULL`,
+  ).bind(newId(), memberId, `${where}: ${msg}`, detail ? clip(detail, 4000) : null, sig, t, t).run();
+}
+// Browser and app version lines for a report (no IP address).
+const reportContext = (req, b) => [
+  b.page && `Page: ${clip(b.page, 200)}`,
+  b.version && `App version: ${clip(b.version, 80)}`,
+  `Browser: ${clip(req.headers.get("user-agent"), 300)}`,
+].filter(Boolean).join("\n");
+// Morning run: one notification to the owner when problems came up in the last day (once a day).
+async function problemPing(env, budget) {
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE kind = 'error' AND done_at IS NULL AND last_at > ?").bind(since).first();
+  if (!row?.n || budget.left <= 0) return 0;
+  const owner = await appOwner(env);
+  if (!owner || !(await onceOnly(env, `problems:${today()}`))) return 0;
+  return deliver(env, owner.id, {
+    title: `Hints ran into ${row.n === 1 ? "a problem" : `${row.n} problems`}`,
+    body: "Tap to see what happened.", url: "/#settings/inbox", tag: "problems",
+  }, budget);
+}
+
 // The Cron Trigger (src/worker.js, hourly). Every run: drop subscriptions whose device is gone. Outside quiet
 // hours: what quiet hours held (8 am), the wish digest, and from 9 am the daily reminders. One shared budget.
 export async function runSchedule(env) {
@@ -2168,6 +2213,9 @@ export async function runSchedule(env) {
     // Once a night: forget old digest keys (two days) and everything else after 400 days.
     await env.DB.prepare("DELETE FROM push_sent WHERE (key LIKE 'wishes:%' AND sent_at < ?) OR sent_at < ?")
       .bind(new Date(Date.now() - 2 * 86_400_000).toISOString(), new Date(Date.now() - 400 * 86_400_000).toISOString()).run().catch(() => {});
+    // Problems and notes: handled ones after 90 days, problems that stopped happening after 90 days.
+    const old = new Date(Date.now() - 90 * 86_400_000).toISOString();
+    await env.DB.prepare("DELETE FROM reports WHERE done_at < ?1 OR (kind = 'error' AND last_at < ?1)").bind(old).run().catch(() => {});
   }
   await settleReceived(env).catch((err) => console.error("settle", err));
   await snapshotGifts(env).catch((err) => console.error("history", err));
@@ -2175,7 +2223,8 @@ export async function runSchedule(env) {
   const wishes = await wishDigest(env, budget, hour).catch((err) => (console.error("digest", err), 0));
   // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
   const remind = (hour >= 9 && !isQuiet(hour)) || env.PUSH_DEV_REMIND === "1" ? await reminders(env, budget).catch((err) => (console.error("reminders", err), 0)) : 0;
-  console.log(`schedule hour=${hour} later=${later} wishes=${wishes} reminders=${remind} budget_left=${budget.left}`);
+  const problems = hour >= 9 && !isQuiet(hour) ? await problemPing(env, budget).catch((err) => (console.error("problems", err), 0)) : 0;
+  console.log(`schedule hour=${hour} later=${later} wishes=${wishes} reminders=${remind} problems=${problems} budget_left=${budget.left}`);
 }
 
 // Signing in as someone who is looked after isn't allowed until a manager hands their list over.
@@ -2337,6 +2386,18 @@ const handlers = {
     for (const g of groups) g.created_by = await adminOf(env, g.id);
     // People not on Hints yet in a circle you're the admin of: you can run their list too (canManage).
     const adminCircles = new Set(groups.filter((g) => g.created_by === me.id).map((g) => g.id));
+    // For circle admins only: who's signed in somewhere and who has notifications on, so Manage can show who
+    // still needs a hand getting set up. Nothing about when or how often anyone uses the app.
+    const setup = new Map();
+    if (adminCircles.size) {
+      const { results } = await env.DB.prepare(
+        `SELECT DISTINCT gm.member_id AS id,
+                EXISTS (SELECT 1 FROM devices d WHERE d.member_id = gm.member_id) AS signed_in,
+                EXISTS (SELECT 1 FROM push_subs s WHERE s.member_id = gm.member_id AND ${LIVE_SUB}) AS push_on
+           FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE g.created_by = ?`,
+      ).bind(me.id).all();
+      for (const r of results) setup.set(r.id, { signedIn: !!r.signed_in, push: !!r.push_on });
+    }
     const adminManaged = new Set(people.filter((p) => p.managed_by && adminCircles.has(p.group_id)).map((p) => p.id));
     const manages = (p) => !!p.managed_by && p.id !== me.id
       && (p.managed_by === me.id || (!!p.household_id && p.household_id === myHh) || adminManaged.has(p.id));
@@ -2356,6 +2417,8 @@ const handlers = {
       inviteSent: manages(p) && !!p.has_link,
       // Unread messages in the chat about them in this circle. Always 0 for yourself (chatUnread skips your thread).
       chatUnread: p.id === me.id ? 0 : unread.get(`${p.group_id}:${p.id}`) || 0,
+      // Circle admins only (see setup above): { signedIn, push }.
+      ...(adminCircles.has(p.group_id) && setup.has(p.id) ? { setup: setup.get(p.id) } : {}),
     });
     // Households of anyone you can see. Labels use only people you can see (and your nicknames for them),
     // except your own household, which lists everyone in it.
@@ -2397,6 +2460,11 @@ const handlers = {
     const solo = [...new Set([...people.filter((p) => !p.household_id).map((p) => p.id), ...(myHh ? [] : [me.id])])];
     const pets = await petsFor(env, Object.keys(households), solo);
     let pinCleared = null;
+    const owner = await appOwner(env);
+    const isOwner = owner?.id === me.id;
+    const openReports = isOwner
+      ? (await env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE done_at IS NULL").first())?.n || 0
+      : 0;
     const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, claim_hash IS NOT NULL AS has_link, add_key_hash IS NOT NULL AS has_add_key FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
     if (me.pinClearedAt) {
@@ -2419,6 +2487,8 @@ const handlers = {
         // You have an add key for the iPhone Shortcut (also can't be shown again).
         hasAddKey: !!prefsRow?.has_add_key,
       },
+      // Whoever runs Hints (appOwner): their name for "Send Alexis a note", and for them, the Inbox's open count.
+      owner: owner ? { name: owner.id === me.id ? me.name : nicks.get(owner.id) || owner.name, you: isOwner, open: openReports } : null,
       // How many wishes each person's list had when you last opened it, for the "N new" badges (any device).
       seen: Object.fromEntries(seenRows.map((r) => [r.owner_id, r.seen_count])),
       today: t,
@@ -4268,6 +4338,68 @@ const handlers = {
     }
   },
 
+  // ---------- problems and notes for whoever runs Hints (appOwner) ----------
+  // The app reports its own errors here (uncaught errors and failed promises), signed in or not.
+  async "POST report"(req, env) {
+    await rateLimit(env, `report:ip:${ipOf(req)}`, ABUSE.reportsPerIp);
+    if ((await hit(env, "report:all", 86400)) > ABUSE.reportsPerDay) return { ok: true };
+    const b = await body(req, 12_000);
+    if (!b.message) fail(400, "Nothing to report.");
+    const token = req.headers.get("x-wishlist-token");
+    const who = token ? await env.DB.prepare("SELECT member_id FROM devices WHERE token = ?").bind(String(token)).first() : null;
+    const detail = [b.where && `Where: ${clip(b.where, 300)}`, reportContext(req, b), b.stack && `\n${clip(b.stack, 3000)}`].filter(Boolean).join("\n");
+    await recordProblem(env, { where: "App", message: b.message, detail, memberId: who?.member_id || null });
+    return { ok: true };
+  },
+  // Settings > Questions or problems: a note to whoever runs Hints, with a notification to them.
+  async "POST note"(req, env) {
+    const me = await auth(req, env);
+    await rateLimit(env, `note:${me.id}`, ABUSE.notesPerMember, "That's a lot of notes for now. Try again later.");
+    const b = await body(req);
+    const msg = text(b.body, 2000, "Your note", true);
+    const owner = await appOwner(env);
+    if (!owner) fail(404, "There's nobody to send it to yet.");
+    const id = newId(), t = now();
+    await env.DB.prepare(
+      "INSERT INTO reports (id, kind, member_id, body, detail, sig, count, created_at, last_at) VALUES (?, 'note', ?, ?, ?, ?, 1, ?, ?)",
+    ).bind(id, me.id, msg, reportContext(req, b), `n:${id}`, t, t).run();
+    if (owner.id !== me.id) {
+      const name = (await nicknamesFor(env, owner.id)).get(me.id) || me.name;
+      await pushTo(env, owner.id, { title: `${name} sent you a note`, body: "Tap to read it.", url: "/#settings/inbox", tag: "notes" })
+        .catch((err) => console.error("note push", err));
+    }
+    return { ok: true, to: owner.name };
+  },
+  // Settings > Inbox (owner only): open notes and problems first, newest first.
+  async "GET reports"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    const { results } = await env.DB.prepare(
+      "SELECT r.*, m.name FROM reports r LEFT JOIN members m ON m.id = r.member_id ORDER BY r.done_at IS NOT NULL, r.last_at DESC LIMIT 200",
+    ).all();
+    const nicks = await nicknamesFor(env, me.id);
+    return {
+      reports: results.map((r) => ({
+        id: r.id, kind: r.kind, body: r.body, detail: r.detail || null, count: r.count, createdAt: r.created_at, lastAt: r.last_at,
+        done: !!r.done_at, from: r.member_id ? { id: r.member_id, name: nicks.get(r.member_id) || r.name || "Someone who left" } : null,
+      })),
+    };
+  },
+  async "POST reports/done"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    const b = await body(req);
+    await env.DB.prepare("UPDATE reports SET done_at = ? WHERE id = ?").bind(b.done === false ? null : now(), String(b.id || "")).run();
+    return { ok: true };
+  },
+  async "POST reports/delete"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    const b = await body(req);
+    await env.DB.prepare("DELETE FROM reports WHERE id = ?").bind(String(b.id || "")).run();
+    return { ok: true };
+  },
+
   async "POST signout"(req, env) {
     const me = await auth(req, env);
     // This device's notifications end with its sign-in, so the next person on it never gets yours.
@@ -4287,6 +4419,10 @@ async function handle(request, env, key, ctx) {
   } catch (err) {
     if (err instanceof HttpError) return json({ error: err.message }, err.status);
     console.error("wishlist", key, err);
+    // Shows up in Settings > Inbox for whoever runs Hints.
+    const saved = recordProblem(env, { where: `API ${key}`, message: err?.message || String(err), detail: clip(err?.stack, 3000) || null })
+      .catch(() => {});
+    if (ctx?.waitUntil) ctx.waitUntil(saved); else await saved;
     return json({ error: "Something went wrong. Try again." }, 500);
   }
 }

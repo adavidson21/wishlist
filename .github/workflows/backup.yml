@@ -1,0 +1,55 @@
+# Weekly off-site backup of the Hints database (docs/DEVELOPERS.md, "Backups and restore").
+# Exports the live D1 database, compresses it, encrypts it with BACKUP_PASSPHRASE, and keeps it as a workflow
+# artifact for 90 days. The repo is public, so the file is only ever stored encrypted.
+# Needs three repository secrets: CLOUDFLARE_API_TOKEN (Account > D1 > Edit), CLOUDFLARE_ACCOUNT_ID and
+# BACKUP_PASSPHRASE (a long random passphrase kept somewhere safe, like a password manager). Until they're all
+# set, it does nothing and says so.
+name: backup
+on:
+  schedule:
+    - cron: "17 8 * * 0" # Sundays, about 3 am New York
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: backup
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check secrets
+        id: ready
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$BACKUP_PASSPHRASE" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Backups are off. Add CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and BACKUP_PASSPHRASE as repository secrets to turn them on."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          node-version: 22
+      - name: Export, compress and encrypt
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler d1 export wishlist --remote --output hints.sql
+          gzip -9 hints.sql
+          gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+            --passphrase-fd 0 --output hints.sql.gz.gpg hints.sql.gz <<< "$BACKUP_PASSPHRASE"
+          rm hints.sql.gz
+          ls -l hints.sql.gz.gpg
+      - uses: actions/upload-artifact@v4
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          name: hints-backup-${{ github.run_number }}
+          path: hints.sql.gz.gpg
+          retention-days: 90
+          if-no-files-found: error

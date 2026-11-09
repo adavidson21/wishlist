@@ -588,6 +588,21 @@
     background: var(--panel); color: var(--muted); font-weight: 700; font-size: 15px; }
   .set-nav button[aria-current="page"] { background: var(--soft); color: var(--soft-ink); }
   .set-nav button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .set-nav .new-badge { margin-left: 0; vertical-align: 0; }
+  /* Settings > Inbox (whoever runs Hints): notes and problems. */
+  .report-head { display: flex; align-items: center; gap: 10px; }
+  .report-head .who { display: flex; flex-direction: column; min-width: 0; }
+  .report-head .who small { color: var(--muted); font-size: 13px; }
+  .report-ic { font-size: 24px; width: 38px; text-align: center; flex: none; }
+  .report-body { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .report details { margin-top: 8px; color: var(--muted); font-size: 14px; }
+  .report pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; max-height: 240px; overflow: auto; margin: 6px 0 0; }
+  .report .actions { margin-top: 10px; }
+  .report.is-done { opacity: .7; }
+  /* Circles > Manage: who still needs a hand getting set up. */
+  .setup-sum { margin: 4px 0 8px; color: var(--muted); font-size: 15px; }
+  .setup-sum b { color: var(--ink); }
+  .hh-row small.todo { color: var(--gold-ink); }
   .set-body > .label:first-child { margin-top: 0; }
   .set-card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 18px; margin-top: 12px; }
   /* Received wishes: "Did you get these?" after an occasion, and the Received section. */
@@ -2131,6 +2146,36 @@ function noteVersion(v) {
   if (!appVersion) appVersion = v;
   else if (v !== appVersion) $("#update").hidden = false;
 }
+// ---------- problem reports ----------
+// Uncaught errors and failed promises go to whoever runs Hints (Settings > Inbox), up to 5 different ones per page
+// load. Only the message, where in the code, the screen and the browser. Never anything typed into a form.
+const reportedProblems = new Set();
+function reportProblem(message, { stack = "", where = "" } = {}) {
+  try {
+    message = String(message || "").slice(0, 300);
+    if (!message || reportedProblems.has(message) || reportedProblems.size >= 5) return;
+    reportedProblems.add(message);
+    const headers = { "content-type": "application/json" };
+    const t = getToken();
+    if (t) headers["x-wishlist-token"] = t;
+    fetch(API + "report", {
+      method: "POST", headers, keepalive: true,
+      body: JSON.stringify({ message, where, stack: String(stack || "").slice(0, 3000), page: location.hash.split("/")[0] || "#", version: appVersion }),
+    }).catch(() => {});
+  } catch {}
+}
+addEventListener("error", (e) => {
+  // No message: an image or file didn't load. "Script error.": another site's script, nothing to see.
+  if (!e.message || e.message === "Script error.") return;
+  reportProblem(e.message, { stack: e.error?.stack, where: `${String(e.filename || "").replace(location.origin, "")}:${e.lineno}:${e.colno}` });
+});
+addEventListener("unhandledrejection", (e) => {
+  const r = e.reason;
+  // Offline, or an API answer (it has a status, and the server already logged anything that broke there).
+  if (!r || r.offline || r.status || r.name === "AbortError") return;
+  reportProblem(r.message || String(r), { stack: r.stack });
+});
+
 // Hard refresh: fetch the newest service worker, drop the offline copy of the app, then reload from the network.
 async function hardRefresh() {
   $("#update button").disabled = true;
@@ -2419,6 +2464,7 @@ async function refreshMe() {
   const data = await load("me");
   meAt = Date.now();
   state.me = data.me;
+  state.me.owner = data.owner || null; // whoever runs Hints (Settings > Questions or problems, and their Inbox)
   state.groups = data.groups;
   state.households = data.households || {};
   state.pets = data.pets || {};
@@ -4956,6 +5002,21 @@ function openInvite(g) {
 // Personal invite for someone who isn't on Hints yet (you set up their list). Opening the link signs them in
 // as themselves, so there's no shared PIN and no picking a name. One link per person; a new one replaces the old.
 const notJoined = (m) => (m.managedBy && m.canManage ? `<br><small>${m.inviteSent ? "Invite sent" : "Not joined yet"}</small>` : "");
+// Circles > Manage (admin only): who still needs a hand getting set up. setup comes from GET me for circles you
+// run: signedIn (on Hints on at least one phone or computer) and push (notifications on somewhere). People
+// someone looks after don't sign in, so they're left out.
+const setupPeople = (list) => list.filter((m) => m.setup && !m.managedBy);
+function setupTodo(m) {
+  if (!m.setup || m.managedBy) return "";
+  const todo = [!m.setup.signedIn && "Not signed in", !m.hasPin && "No PIN", !m.setup.push && "Notifications off"].filter(Boolean);
+  return `<br><small${todo.length ? ' class="todo"' : ""}>${todo.length ? esc(todo.join(" · ")) : "All set ✓"}</small>`;
+}
+function setupSummary(list) {
+  const ppl = setupPeople(list);
+  if (!ppl.length) return "";
+  const n = (f) => ppl.filter(f).length;
+  return `<p class="setup-sum"><b>${n((m) => m.setup.signedIn)} of ${ppl.length}</b> signed in · <b>${n((m) => m.hasPin)}</b> with a PIN · <b>${n((m) => m.setup.push)}</b> with notifications</p>`;
+}
 // A person row's buttons, kept together so they drop below the name as a group when space runs out.
 const hhActs = (html) => (html.trim() ? `<span class="hh-acts">${html}</span>` : "");
 const inviteBtn = (m) => (m.managedBy && m.canManage ? `<button class="btn small${m.inviteSent ? " quiet" : ""}" type="button" data-hi="${esc(m.id)}">${m.inviteSent ? "Resend" : "Invite"}</button>` : "");
@@ -7789,7 +7850,9 @@ async function renderSettings() {
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   setHero(`<button class="back" type="button" id="backBtn">${BACK} Profile</button>${heroTitle(state.me.name, "Settings")}`);
   const v = $("#view");
+  const owner = state.me.owner;
   const secs = [["app", "App"], ["circles", multi() ? "Circles" : "Circle"], ["household", "Household"]];
+  if (owner?.you) secs.push(["inbox", "Inbox"]);
   if (!secs.some(([k]) => k === state.setSec)) state.setSec = "app";
   const sec = state.setSec;
   const html = {
@@ -7848,6 +7911,16 @@ async function renderSettings() {
       <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
     </div>
 
+    ${owner && !owner.you ? `<div class="label">Questions or problems?</div>
+    <div class="set-card">
+      <p class="sub">Something not working, or an idea for Hints? This goes straight to ${esc(owner.name)}.</p>
+      <form id="noteForm" autocomplete="off">
+        <div class="err" hidden></div>
+        <label class="field"><span>Your note</span><textarea class="input" name="body" maxlength="2000" required placeholder="What happened, or what would make Hints better?"></textarea></label>
+        <button class="btn primary wide" type="submit">Send to ${esc(owner.name)}</button>
+      </form>
+    </div>` : ""}
+
     <div class="label">Download your budget${tip("An Excel file with your budgets, purchases and gift ideas. Only you can see these.")}</div>
     <div class="set-card">
       <div class="actions" style="margin-top:0">
@@ -7884,6 +7957,7 @@ async function renderSettings() {
     </div>
 
 `,
+    inbox: `<div id="inbox"><p class="sub">Loading...</p></div>`,
     household: `
     <div class="label">Your household${tip("People you live or gift with. Add them to a circle together in one tap.")}</div>
     <div class="set-card">${householdCard()}</div>
@@ -7895,11 +7969,15 @@ async function renderSettings() {
       <span class="set-nav-h">You</span>
       ${navBtn(secs[0])}
       <span class="set-nav-h">Groups</span>
-      ${secs.slice(1).map(navBtn).join("")}
+      ${secs.slice(1, 3).map(navBtn).join("")}
+      ${owner?.you ? `<span class="set-nav-h">Running Hints</span>${navBtn(secs[3])}` : ""}
     </nav>
     <div class="set-body">${html[sec]}</div>
   </div>`;
-  function navBtn([k, l]) { return `<button type="button" data-sec="${k}"${k === sec ? ' aria-current="page"' : ""}>${l}</button>`; }
+  function navBtn([k, l]) {
+    const n = k === "inbox" ? owner?.open || 0 : 0;
+    return `<button type="button" data-sec="${k}"${k === sec ? ' aria-current="page"' : ""}>${l}${n ? `<span class="new-badge" id="inboxCount">${n}</span>` : ""}</button>`;
+  }
   v.querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => {
     if (b.dataset.sec === sec) return;
     state.setSec = b.dataset.sec;
@@ -7944,6 +8022,13 @@ async function renderSettings() {
     paintPush($("#pushCard", v));
     paintMyLink($("#linkCard", v));
     paintAddKey($("#addKeyCard", v));
+    const nf = $("#noteForm", v);
+    if (nf) wireForm(nf, async ({ body }) => {
+      const { to } = await api("note", { body, page: location.hash.split("/")[0], version: appVersion });
+      nf.reset();
+      buzz();
+      toast(`Sent to ${to}. Thank you!`);
+    });
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
     $("#removePin", v)?.addEventListener("click", async () => {
       try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { oops(e.message); }
@@ -7982,6 +8067,49 @@ async function renderSettings() {
       }));
   }
   if (sec === "household") wireHousehold(v, reload);
+  if (sec === "inbox") paintInbox($("#inbox", v));
+}
+
+// Settings > Inbox, for whoever runs Hints: notes from Settings > Questions or problems, and problems the app or
+// the API ran into (the same problem counts up on one card, and comes back if it happens again after Done).
+async function paintInbox(box) {
+  let reports;
+  try { ({ reports } = await api("reports")); }
+  catch (e) { box.innerHTML = `<div class="set-card"><p class="sub" style="margin:0">${esc(e.message)}</p></div>`; return; }
+  const open = reports.filter((r) => !r.done), done = reports.filter((r) => r.done);
+  if (state.me.owner) state.me.owner.open = open.length;
+  const badge = $("#inboxCount");
+  if (badge) { badge.textContent = open.length; badge.hidden = !open.length; }
+  const when = (iso) => `${chatDay(iso)}, ${chatTime(iso)}`;
+  const card = (r) => {
+    const note = r.kind === "note";
+    const head = note
+      ? `${r.from ? avatar(r.from.name, r.from.id) : ""}<span class="who"><strong>${esc(r.from?.name || "Someone")}</strong><small>${esc(when(r.createdAt))}</small></span>`
+      : `<span class="report-ic" aria-hidden="true">⚠️</span><span class="who"><strong>Problem${r.count > 1 ? ` · ${r.count} times` : ""}</strong>
+          <small>${r.count > 1 ? `Last ${esc(when(r.lastAt))}` : esc(when(r.lastAt))}${r.from ? ` · ${esc(r.from.name)}` : ""}</small></span>`;
+    return `<div class="set-card report${r.done ? " is-done" : ""}">
+      <div class="report-head">${head}</div>
+      <p class="report-body">${esc(r.body)}</p>
+      ${r.detail ? `<details><summary>Details</summary><pre>${esc(r.detail)}</pre></details>` : ""}
+      <div class="actions">
+        <button class="btn small quiet danger" type="button" data-rdel="${esc(r.id)}">Delete</button>
+        <button class="btn small${r.done ? " quiet" : " primary"}" type="button" data-rdone="${esc(r.id)}" data-on="${r.done ? "" : "1"}">${r.done ? "Reopen" : "Done"}</button>
+      </div></div>`;
+  };
+  box.innerHTML = `<div class="label">Notes and problems${tip("Notes people send you from Settings, and errors the app ran into. Only you can see this.")}</div>
+    ${open.length ? open.map(card).join("") : `<div class="set-card"><p class="sub" style="margin:0">All clear. Nothing new.</p></div>`}
+    ${done.length ? `<div class="label">Done</div>${done.map(card).join("")}` : ""}
+    <p class="subtle" style="margin-top:14px">Done cards, and problems that stop happening, clear themselves after 90 days.</p>`;
+  const act = async (b, path, data, msg) => {
+    b.disabled = true;
+    try { await api(path, data); toast(msg); paintInbox(box); }
+    catch (e) { oops(e.message); b.disabled = false; }
+  };
+  box.querySelectorAll("[data-rdone]").forEach((b) => (b.onclick = () => act(b, "reports/done", { id: b.dataset.rdone, done: !!b.dataset.on }, b.dataset.on ? "Marked done" : "Reopened")));
+  box.querySelectorAll("[data-rdel]").forEach((b) => (b.onclick = async () => {
+    if (!(await ask("Delete this card? It can't be brought back.", { yes: "Delete", danger: true }))) return;
+    act(b, "reports/delete", { id: b.dataset.rdel }, "Deleted");
+  }));
 }
 
 // Manage a circle (Circles tab, admin only; the API checks too): photo, name, its households, and who's admin.
@@ -8013,9 +8141,10 @@ function openCircleManage(gid) {
     <button class="btn wide" type="button" id="cmHh" style="margin-top:8px">Manage households</button>
     <hr class="set-div">
     <h4>People${tip("Taking someone out stops them seeing this circle's lists, and this circle seeing theirs. They can come back with the invite code. Clear PIN lets someone who forgot theirs sign in again.")}</h4>
+    ${setupSummary(others)}
     <div style="margin-top:6px">${others.map((m) => {
       const viaHh = m.householdId && state.households[m.householdId]?.circles.includes(g.id);
-      return `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${viaHh ? `<br><small>In with ${esc(householdLabel(m.householdId))}</small>` : ""}${notJoined(m)}</strong>
+      return `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${viaHh ? `<br><small>In with ${esc(householdLabel(m.householdId))}</small>` : ""}${notJoined(m)}${setupTodo(m)}</strong>
         ${hhActs(`${inviteBtn(m)}${m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
         ${viaHh ? "" : `<button class="btn small quiet danger" type="button" data-kick="${esc(m.id)}">Remove</button>`}`)}</div>`;
     }).join("") || `<p class="subtle">Just you so far.</p>`}</div>

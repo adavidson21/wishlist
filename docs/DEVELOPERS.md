@@ -65,6 +65,8 @@ public/og-invite.png  Link preview image for invite links
 - **Edit wish:** grouped into the item, Details, and On your list, with Save and Remove pinned to the bottom of the sheet so they're always in reach on a phone.
 - **Ideas and suggestions:** an idea about someone is private to its author. "Share as a suggestion" shows it to everyone in the family except the person it's for, who never gets it from the API.
 - **Chat about a person:** "Chat about Mom" on her page is a thread for everyone in the circle except her (one thread per circle, `chat_messages`, migration 0026). She never gets a message, count or badge from it. Messages can be tagged to one of her wishes or a shared suggestion (the chat button on each card), and tapping the tag jumps to it. Unread counts show on the Circles tab. Edit your own message for 15 minutes; remove your own, or anyone's if you're the circle admin. Polls every 20 seconds while open. Messages are kept 6 months. Plan: `docs/plans/hidden-chat.md`.
+- **Inbox (whoever runs Hints):** the owner is `OWNER_ID` in `wrangler.jsonc` vars when set, otherwise the first person who ever joined (`appOwner()`). Everyone else gets **Settings > Questions or problems**, a note box labeled with the owner's name (`POST note`, which also notifies the owner, "Sam sent you a note"). The app reports its own uncaught errors and failed promises (`POST report`, up to 5 different ones per page load, message, code location, screen and browser only), and the API saves any 500 it hits. All of it lands in the owner's **Settings > Inbox** (`reports` table, migration 0040): the same problem counts up on one card and reopens if it happens again after Done. From 9 am, one notification a day tells the owner when problems came up in the last 24 hours. Done cards and problems that stopped happening are deleted after 90 days.
+- **Setup status (circle admins):** Circles > Manage shows "5 of 9 signed in · 4 with a PIN · 3 with notifications", and under each person what's left (Not signed in, No PIN, Notifications off) or "All set ✓". `GET me` adds `setup: { signedIn, push }` only for people in circles you're the admin of. People someone looks after are left out (they don't sign in).
 - **Autofill:** pasting a link (or typing one and leaving the box) calls `/api/preview`. Steps:
   - **Clean the link.** `cleanLink` drops tracking parameters (`utm_*`, `gclid`, `fbclid`, `ref`, Amazon's `ref=`/`th`/`psc`, Walmart's `athbdg`, ...) but keeps variant, size and color ones, and trims Amazon to `/dp/ASIN`. The cleaned link replaces what was pasted.
   - **Amazon.** Amazon blocks most requests from Cloudflare, so: share links (`a.co/d/...`, `amzn.to/...`) are followed to the real `/dp/ASIN` page first; the link's product words are kept as a name guess before trimming; the Gemini lookup is told the ASIN and to search Google for it, plus any share text; and if there's still no photo, it comes from Amazon's image-by-ASIN links. In the app, share text ("Check out X!") beats a name guessed from the link.
@@ -163,6 +165,25 @@ All the numbers live in `src/limits.js` (`LIMITS`), counted in the `rate_limits`
 - **Outbound fetches** (store pages, photos) only go to normal public sites: no IP addresses, internal names or odd ports, every redirect checked, at most 1.5 MB read.
 - **Headers:** every response gets nosniff, no framing, HSTS, a strict referrer policy and a locked-down permissions policy.
 - Over a limit, the API answers 429 with a friendly message the app shows as is.
+
+## Backups and restore
+
+Three layers, all free:
+
+1. **Time Travel (built into D1).** Restore the live database to any minute in the last 7 days (Workers Free; 30 on Workers Paid). Nothing to set up.
+   - `npx wrangler d1 time-travel info wishlist --timestamp=2026-12-01T09:00:00-05:00` shows the restore point for a moment.
+   - `npx wrangler d1 time-travel restore wishlist --timestamp=...` puts the database back to it. It overwrites everything after that moment, so take a fresh `npm run backup` first.
+2. **`npm run backup` (your computer).** Saves the whole database as SQL to `backups/hints-YYYY-MM-DD-HH-MM.sql` (gitignored, newest 12 kept). Needs `npx wrangler login` once.
+3. **Weekly encrypted backup (GitHub Actions, `.github/workflows/backup.yml`).** Sundays around 3 am New York, and on demand from the Actions tab (Run workflow). The export is gzipped and encrypted with a passphrase before upload, then kept 90 days as a workflow artifact. The repo is public, so it's only ever stored encrypted. Turn it on with three repository secrets (Settings > Secrets and variables > Actions):
+   - `CLOUDFLARE_API_TOKEN`: a Cloudflare API token with Account > D1 > Edit.
+   - `CLOUDFLARE_ACCOUNT_ID`: from the Cloudflare dashboard (Workers & Pages, right side).
+   - `BACKUP_PASSPHRASE`: a long random passphrase. Keep it in a password manager; without it the backups can't be opened.
+   Until all three are set, the workflow skips itself with a notice.
+
+**Restoring from a file** (older than Time Travel reaches, or the database is gone):
+1. Weekly backup only: download the artifact from the run's page, unzip it, then `gpg -d hints.sql.gz.gpg | gunzip > hints.sql`.
+2. `npx wrangler d1 create wishlist-restore`, then `npx wrangler d1 execute wishlist-restore --remote --file hints.sql`.
+3. Check it looks right (`npx wrangler d1 execute wishlist-restore --remote --command "SELECT COUNT(*) FROM items"`), then point `database_id` in `wrangler.jsonc` at the new database and deploy. The export includes the `d1_migrations` table, so future migrations carry on from the right number.
 
 ## Schema changes
 

@@ -46,6 +46,10 @@ export const LIMITS = {
   pushSubsPerMember: 15,
   pushTestPerMember: [[10, 3600]],
   groupAlertsPerMemberDay: [10, 86400],
+  // Problems the app reports on its own (per IP, and a whole-app daily backstop) and notes to the owner.
+  reportsPerIp: [[30, 3600], [100, 86400]],
+  reportsPerDay: 1000,
+  notesPerMember: [[10, 3600], [30, 86400]],
   // Whole app: Gemini calls per day (UTC). GEMINI_DAILY_CAP in wrangler.jsonc vars overrides it.
   geminiPerDay: 1500,
   // Request bodies.
