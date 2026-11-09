@@ -285,6 +285,13 @@
   .group-line .gbar i { display: block; height: 100%; background: var(--gold, #C9A227); border-radius: inherit; }
   .row-sub .linkbtn { align-self: flex-start; padding: 0; }
   .dchip.qty { font-weight: 700; }
+  .links { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+  .link-line { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--brand); }
+  .link-line svg { flex: none; }
+  .link-line.warn { color: var(--danger, #b3261e); }
+  .goes-box { margin: 12px 0 4px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--gold, #C9A227) 14%, transparent); font-size: 14px; }
+  .goes-box p { margin: 0 0 6px; }
+  .goes-box .check { margin: 0; }
   .burst { position: absolute; left: 40px; bottom: 30px; width: 0; height: 0; pointer-events: none; }
   .bit { position: absolute; left: 0; top: 0; width: 9px; height: 5px; border-radius: 2px; animation: burst .85s cubic-bezier(.15, .7, .4, 1) both; }
   .chips { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; scrollbar-width: none; }
@@ -3347,6 +3354,7 @@ function wireGiftBox(root, action) {
 // ---------- my list ----------
 // Two sides behind a switch: Wish list (published, what your circles see; opens by default) and Maybe
 // (drafts only you can see; new wishes start here). A published wish can go back with Move to Maybe.
+const LINK_I = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
 const MAYBE_NOTE = `<p class="maybe-note">${LOCK}<span><strong>Only you can see this.</strong></span></p>`;
 
 // Filters, sort and layout for My list. Shared by both sides; layout and sort are remembered per device.
@@ -3934,7 +3942,21 @@ function detailChips(i, { store = false, price = false } = {}) {
   const c = catOf(i);
   out.push(`<span class="dchip cat">${catIcon(c, 13)}${esc(CAT[c].label)}</span>`);
   if (store && i.url) out.push(`<a class="dchip store" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}${EXT_I}</a>`);
-  return `<div class="dchips">${out.join("")}</div>`;
+  return `<div class="dchips">${out.join("")}</div>${linkLine(i)}`;
+}
+// Linked wishes ("Goes with", from the API): together = both or neither, needs = only wanted with that one,
+// pairs = that one is only wanted with this. On your own list, a partner in Maybe keeps a published wish hidden.
+const LINK_WORDS = { together: "Together with", needs: "Only with", pairs: "Goes with" };
+function linkLine(i) {
+  const l = i.goesWith || [];
+  if (!l.length) return "";
+  const out = Object.keys(LINK_WORDS).map((k) => {
+    const these = l.filter((x) => x.kind === k);
+    if (!these.length) return "";
+    const names = these.map((x) => (x.removed ? "a removed wish" : esc(x.title) + (x.draft && !i.draft ? " (in Maybe, so this stays hidden for now)" : "")));
+    return `<span class="link-line${these.some((x) => x.removed) ? " warn" : ""}">${LINK_I}${LINK_WORDS[k]} ${andList(names)}</span>`;
+  }).join("");
+  return `<div class="links">${out}</div>`;
 }
 
 function sizeColorRow() {
@@ -4026,6 +4048,18 @@ function editItem(item, opts = {}) {
     ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}"${qtyNow === n ? " selected" : ""}>${n}</option>`).join("")}
     ${qtyNow > 10 ? `<option value="${qtyNow}" selected>${qtyNow}</option>` : ""}
     <option value="0"${qtyNow === 0 ? " selected" : ""}>As many as ${asId ? "they" : "I"} like</option></select></label>`;
+  // Goes with: link this wish to another on the same list (editing only). One link per wish.
+  const sibs = isNew ? [] : ((asId ? opts.list : state.myItems) || []).filter((o) => o.id !== item.id && !o.received_at && !o.removed);
+  const linkNow = (item.goesWith || []).find((x) => x.kind !== "pairs" && !x.removed) || null;
+  const pairsNow = (item.goesWith || []).filter((x) => x.kind === "pairs");
+  const goesSection = !sibs.length ? "" : `<section class="fsec"><h4 class="fsec-h">Goes with</h4>
+    <label class="field"><span>Linked wish</span><select class="input" name="goesWith"><option value="">Nothing</option>
+      ${sibs.map((o) => `<option value="${esc(o.id)}"${linkNow?.id === o.id ? " selected" : ""}>${esc(o.title)}${o.draft ? " (Maybe)" : ""}</option>`).join("")}</select></label>
+    <label class="field" data-goes-kind${linkNow ? "" : " hidden"}><span>How?</span><select class="input" name="goesKind">
+      <option value="together"${linkNow?.kind !== "needs" ? " selected" : ""}>Both or neither</option>
+      <option value="needs"${linkNow?.kind === "needs" ? " selected" : ""}>Only want this one with it</option></select></label>
+    ${pairsNow.length ? `<p class="hint" style="margin:0">${andList(pairsNow.map((x) => esc(x.title)))} ${pairsNow.length > 1 ? "are" : "is"} only wanted with this one.</p>` : ""}
+  </section>`;
   openSheet(`
     <h3>${asId ? (isNew ? `Add a wish for ${esc(asName)}` : `Edit ${esc(asName)}'s wish`) : isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser && !asId ? whoChips(state.me.id) : ""}
@@ -4046,6 +4080,7 @@ function editItem(item, opts = {}) {
       ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">${asId ? `On ${esc(asName)}'s list` : "On your list"}</h4>
         <label class="check"><span>Top pick<small>Gold star on ${asId ? "their" : "your"} list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
         ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
+      ${goesSection}
       ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>` : ""}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
       ${canMaybe ? `<button class="btn quiet wide" type="button" id="toMaybe">${LOCK} Move to Maybe</button>` : ""}
@@ -4075,6 +4110,15 @@ function editItem(item, opts = {}) {
         const mine = await api("list").catch(() => ({ giftCards: [] }));
         pickGiftCards(mine.giftCards);
       });
+      const goesSel = form.elements.goesWith;
+      goesSel?.addEventListener("change", () => { $("[data-goes-kind]", form).hidden = !goesSel.value; });
+      // Save the link only when it changed.
+      const saveLink = async (d) => {
+        if (!goesSel) return;
+        const w = d.goesWith || "", k = w ? d.goesKind || "together" : null;
+        if (w === (linkNow?.id || "") && (!w || k === linkNow.kind)) return;
+        await api("item/link", { id: item.id, with: w || null, kind: k, ...(asId ? { as: asId } : {}) });
+      };
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
         const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), quantity: Number(d.quantity ?? 1), ...sc.values(), unfilled: form.dataset.unfilled === "1" };
@@ -4083,6 +4127,7 @@ function editItem(item, opts = {}) {
         if (asId) {
           payload.as = asId;
           const { id } = await api("item/save", payload);
+          await saveLink(d);
           closeSheet();
           if (isNew) toast(`Added to ${asName}'s list`, () => api("item/remove", { id, as: asId }).then(() => render(), (e) => oops(e.message)));
           else toast("Saved");
@@ -4091,6 +4136,7 @@ function editItem(item, opts = {}) {
           return render();
         }
         const { id } = await api("item/save", payload);
+        await saveLink(d);
         const published = isNew && d.submitter === "list";
         if (published) await api("item/publish", { id });
         closeSheet();
@@ -5276,7 +5322,7 @@ async function renderPerson(id) {
   });
   v.querySelectorAll("[data-mark]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.mark.split(":");
-    markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name, id);
+    markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name, id, { list: all });
   }));
   v.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => {
     const itemId = b.dataset.chip.split(":")[1];
@@ -5714,7 +5760,7 @@ function wireManageCard(v, list, name, id) {
   $("#mgCards", v).onclick = () => pickGiftCards((list.giftCards || []).filter((c) => !c.removed), id, name);
   v.querySelectorAll("[data-edit-wish]").forEach((b) => (b.onclick = () => {
     const item = list.items.find((x) => x.id === b.dataset.editWish);
-    if (item) editItem(item, { as: id });
+    if (item) editItem(item, { as: id, list: list.items });
   }));
   $("#mgOut", v)?.addEventListener("click", async () => {
     if (!(await ask(`Take ${name} out of your household? They stay in the same circles, and you still look after their list.`, { yes: "Take out", danger: true }))) return;
@@ -6007,6 +6053,17 @@ function markPurchased(kind, x, name, personId, opts = {}) {
   const paid = chip ? (editing ? x.claim.price_cents : null) : editing ? x.claim.price_cents ?? x.price_cents : x.price_cents;
   const who = name || "them";
   const title = chip ? (editing ? "Your share" : joining ? "Chip in on this gift?" : "Go in on it together?") : editing ? "Your gift" : "Getting this one?";
+  // Linked wishes: offer to get the rest too. Together and "only with" partners start ticked, a wish that's
+  // only wanted with this one starts unticked. Ones someone already has just say who.
+  const linked = kind === "item" && !editing && !chip
+    ? (x.goesWith || []).map((l) => ({ l, p: (opts.list || []).find((o) => o.id === l.id) })).filter(({ p }) => p && !p.removed)
+    : [];
+  const goesBox = !linked.length ? "" : `<div class="goes-box">
+    <p>${LINK_I} ${linked.some(({ l }) => l.kind !== "pairs") ? `${esc(who)} only wants this with the rest:` : `Goes with this:`}</p>
+    ${linked.map(({ l, p }) => p.claim
+      ? `<p>${esc(p.title)}: ${p.claim.mine ? "you're getting it" : `${esc(p.claim.buyerName)} ${p.claim.many ? "are" : "is"} getting it`}</p>`
+      : `<label class="check"><span>Get ${esc(p.title)} too${p.price_cents ? ` <small>${money(p.price_cents)}</small>` : ""}</span><input type="checkbox" data-also="${esc(p.id)}"${l.kind === "pairs" ? "" : " checked"}></label>`).join("")}
+  </div>`;
   const chipHint = joining ? `${esc(grp.startedBy)} started this group gift${grp.pledged_cents ? `, ${money(grp.pledged_cents)} so far` : ""}. Add what you're putting in.`
     : `Start a group gift and anyone in your circle can chip in. ${esc(who)} won't see any of it.`;
   openSheet(`
@@ -6020,6 +6077,7 @@ function markPurchased(kind, x, name, personId, opts = {}) {
       <label class="field"><span>${chip ? "Your share" : editing ? "Price you paid" : "Price"}</span>
         <div class="input money-in"><span>$</span><input name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="${chip ? "Optional" : "0"}" aria-label="${chip ? "Your share" : "Price"}"></div></label>
       ${chip && grp && (joining || othersInGroup) ? "" : occPicker(personId, x.claim?.occasion)}
+      ${goesBox}
       ${editing || chip ? "" : `<p class="hint">Not bought yet? Mark it anyway so nobody doubles up.</p>`}
       ${editing ? `<div class="actions"><button class="btn danger" type="button" id="unmark">${chip ? "Leave group gift" : "Not getting it"}</button><button class="btn primary" type="submit">Save</button></div>`
         : `<button class="btn primary wide" type="submit">${chip ? (joining ? "Chip in" : "Start a group gift") : "Yes, I'm getting it"}</button><button class="btn quiet wide" type="button" id="cancelMark" style="margin-top:6px">Cancel</button>`}
@@ -6030,11 +6088,19 @@ function markPurchased(kind, x, name, personId, opts = {}) {
         const payload = { [key]: x.id, on: true, price, occasion: occasion() };
         if (kind === "item") { payload.chipIn = chip; if (!chip) payload.qty = Number(qty || 1); }
         const res = await api(path, payload);
+        // The linked wishes they ticked, for the same occasion. If one fails (someone just took it), say so.
+        const also = [...el.querySelectorAll("[data-also]:checked")].map((b) => linked.find(({ p }) => p.id === b.dataset.also).p);
+        const got = [];
+        for (const p of also) {
+          try { await api("claim", { itemId: p.id, on: true, price: priceIn(p.price_cents), occasion: payload.occasion, chipIn: false, qty: 1 }); got.push(p); }
+          catch (e) { oops(`${p.title}: ${e.message}`); }
+        }
         closeSheet();
         if (editing) { toast("Saved"); return render(); }
         buzz();
         const amount = price && parseFloat(price) > 0 ? money(Math.round(parseFloat(price) * 100)) : "";
-        const undo = () => api(path, { [key]: x.id, on: false }).then(render, (e) => oops(e.message));
+        const undo = () => Promise.all([x, ...got].map((p) => api(path, { [key]: p.id, on: false }))).then(render, (e) => oops(e.message));
+        if (got.length) { toast(`You're getting ${got.length === 1 ? "both" : `all ${got.length + 1}`}. Nobody else will.`, undo); state.burst = `${kind}:${x.id}`; return render(); }
         if (chip) toast(res.started ? "Group gift started. Others can chip in now." : `You're in${amount ? ` for ${amount}` : ""}`, undo);
         else toast(amount ? `Added ${amount} to ${who}'s budget` : x.gift && x.gift.quantity !== 1 ? "Marked so nobody doubles up." : "It's yours. Nobody else will get it.", undo);
         state.burst = `${kind}:${x.id}`;

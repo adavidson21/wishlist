@@ -436,6 +436,49 @@ const ITEM_VISIBLE = `i.draft = 0 AND i.held_season IS NULL AND i.received_at IS
    WHERE x.member_id = ? AND y.member_id = i.owner_id
      AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = x.group_id))`;
 
+// ---------- linked wishes ("Goes with") ----------
+// bundle_id: wishes that share one are all or nothing. needs_id: only wanted along with that wish (one way).
+// rows: all of an owner's items (id, title, draft, bundle_id, needs_id, removed_at, held_season, received_at).
+// shown: ids the viewer can see, or null for the owner (sees everything, nothing is blocked).
+// A partner that's held or received is already being given, so it no longer holds anything back.
+// Returns blocked (ids to keep from this viewer: a partner they can't see, or a needed wish that was removed)
+// and links (id -> [{ id, title, kind }], kind together | needs | pairs, where pairs = only wanted with this one).
+function linkInfo(rows, shown) {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const done = (r) => !!(r.held_season || r.received_at);
+  const live = (r) => r && !r.removed_at && !done(r);
+  const sees = (r) => !shown || shown.has(r.id);
+  const blocked = new Set();
+  const partners = (r) => (r.bundle_id ? rows.filter((o) => o.id !== r.id && o.bundle_id === r.bundle_id && live(o)) : []);
+  if (shown) for (const r of rows) {
+    if (!live(r)) continue;
+    if (partners(r).some((o) => !sees(o))) blocked.add(r.id);
+    if (r.needs_id) {
+      const t = byId.get(r.needs_id);
+      if (!t || (t.removed_at && !done(t)) || (live(t) && !sees(t))) blocked.add(r.id);
+    }
+  }
+  const ok = (o) => sees(o) && !blocked.has(o.id);
+  const out = (o, kind) => ({ id: o.id, title: o.title, kind, ...(shown ? {} : { draft: !!o.draft }) });
+  const links = new Map();
+  for (const r of rows) {
+    if (!live(r)) continue;
+    const l = partners(r).filter(ok).map((o) => out(o, "together"));
+    if (r.needs_id) {
+      const t = byId.get(r.needs_id);
+      if (live(t) && ok(t)) l.push(out(t, "needs"));
+      else if (!shown && (!t || t.removed_at)) l.push({ id: r.needs_id, title: t?.title || "", kind: "needs", removed: true });
+    }
+    for (const o of rows) if (o.needs_id === r.id && live(o) && ok(o)) l.push(out(o, "pairs"));
+    if (l.length) links.set(r.id, l);
+  }
+  return { blocked, links };
+}
+const LINK_COLS = "id, title, draft, bundle_id, needs_id, removed_at, held_season, received_at";
+// Drop a bundle that's down to one wish (it has nothing left to go with).
+const bundleCleanup = (env, bundleId) =>
+  env.DB.prepare("UPDATE items SET bundle_id = NULL WHERE bundle_id = ?1 AND (SELECT COUNT(*) FROM items WHERE bundle_id = ?1 AND removed_at IS NULL) < 2").bind(bundleId);
+
 // ---------- received wishes ----------
 // Once an occasion passes, a wish marked for it is held (held_season) until its owner answers "Did you get
 // this?": received, or settled (back on the list, not asked again for that occasion). Held wishes leave
@@ -517,7 +560,7 @@ main{max-width:860px;margin:0 auto;padding:18px 16px 40px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .w{background:var(--card);border-radius:16px;padding:12px;display:flex;gap:12px;box-shadow:0 1px 3px #2a1a1f14;text-decoration:none;color:inherit}
 .w .im{width:72px;height:72px;border-radius:12px;background:var(--gold-soft);flex:none;overflow:hidden;display:grid;place-items:center;font-size:26px}.w .im img{width:100%;height:100%;object-fit:contain;background:#fff}
-.w b{display:block}.w small{color:var(--muted);font-weight:600}.w .top{color:var(--gold);font-weight:800;font-size:13px}.w .pr{font-weight:800;color:var(--brand)}
+.w b{display:block}.w .lk{display:block;margin-top:2px}.w small{color:var(--muted);font-weight:600}.w .top{color:var(--gold);font-weight:800;font-size:13px}.w .pr{font-weight:800;color:var(--brand)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-weight:600}
 .sizes{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}.sizes div{background:var(--card);border-radius:12px;padding:10px 12px}.sizes small{display:block;color:var(--muted);font-weight:700;font-size:12px}
 .note{background:var(--gold-soft);border-radius:14px;padding:12px 14px;margin-top:16px;font-size:15px}
@@ -529,11 +572,20 @@ footer{text-align:center;color:var(--muted);padding:10px 16px 40px;font-size:14p
   const m = await env.DB.prepare("SELECT * FROM members WHERE share_token = ?").bind(token).first();
   if (!m) return gone();
   const p = profileOut(m);
-  const { results: items } = await env.DB.prepare(
+  const { results: all } = await env.DB.prepare(
     `SELECT * FROM items i WHERE i.owner_id = ? AND i.draft = 0 AND i.removed_at IS NULL AND i.held_season IS NULL AND i.received_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id)
       ORDER BY (i.priority = 'must') DESC, i.created_at`,
   ).bind(m.id).all();
+  // Linked wishes: same rule as the app, with what this page shows as what the viewer can see.
+  const { results: linkRows } = await env.DB.prepare(`SELECT ${LINK_COLS} FROM items WHERE owner_id = ?`).bind(m.id).all();
+  const link = linkInfo(linkRows, new Set(all.map((i) => i.id)));
+  const items = all.filter((i) => !link.blocked.has(i.id));
+  const linkLine = (i) => {
+    const l = link.links.get(i.id) || [];
+    const names = (k) => l.filter((x) => x.kind === k).map((x) => escHtml(x.title)).join(", ");
+    return [names("together") && `together with ${names("together")}`, names("needs") && `only with ${names("needs")}`, names("pairs") && `goes with ${names("pairs")}`].filter(Boolean).map((t) => `<small class="lk">🔗 ${t}</small>`).join("");
+  };
   const { results: cards } = await env.DB.prepare("SELECT brand FROM gift_cards WHERE member_id = ? ORDER BY created_at, brand").bind(m.id).all();
   const name = m.name;
   const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
@@ -541,7 +593,7 @@ footer{text-align:center;color:var(--muted);padding:10px 16px 40px;font-size:14p
     const inner = `<span class="im">${i.image_url ? `<img src="${escHtml(i.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "🎁"}</span>
       <span>${i.priority === "must" ? `<span class="top">★ Top pick</span>` : ""}<b>${escHtml(i.title)}</b>
       ${i.price_cents ? `<span class="pr">$${(i.price_cents / 100).toFixed(i.price_cents % 100 ? 2 : 0)}</span> ` : ""}${i.url ? `<small>${escHtml(host(i.url))}</small>` : ""}
-      ${(i.quantity ?? 1) !== 1 ? `<small> · ${i.quantity ? `wants ${i.quantity}` : "as many as you like"}</small>` : ""}</span>`;
+      ${(i.quantity ?? 1) !== 1 ? `<small> · ${i.quantity ? `wants ${i.quantity}` : "as many as you like"}</small>` : ""}${linkLine(i)}</span>`;
     return /^https?:\/\//.test(i.url || "") ? `<a class="w" href="${escHtml(i.url)}" target="_blank" rel="noopener nofollow">${inner}</a>` : `<div class="w">${inner}</div>`;
   };
   const sizes = SHARE_SIZES.filter(([k]) => p.sizes[k]);
@@ -2595,6 +2647,7 @@ const handlers = {
         .bind(me.id)
         .all();
       const results = all.filter((r) => !r.received_at);
+      const ownLinks = linkInfo(all, null).links;
       const { results: hidden } = await env.DB.prepare(
         "SELECT h.item_id, h.group_id FROM item_hidden h JOIN items i ON i.id = h.item_id WHERE i.owner_id = ?",
       )
@@ -2609,6 +2662,7 @@ const handlers = {
         items: results.map((r) => ({
           ...itemOut(r),
           hiddenFrom: hidden.filter((h) => h.item_id === r.id).map((h) => h.group_id),
+          goesWith: ownLinks.get(r.id) || [],
         })),
         // Just the brands. Who is giving one never comes back to the owner.
         giftCards: cards.filter((c) => GIFT_CARD_NAMES.has(c.brand)).map((c) => ({ brand: c.brand })),
@@ -2629,6 +2683,12 @@ const handlers = {
     )
       .bind(memberId, t, me.id, t, me.id)
       .all();
+    // Linked wishes: one whose partner this viewer can't see (a draft, hidden from their circles) stays out,
+    // unless they already marked it.
+    const { results: linkRows } = await env.DB.prepare(`SELECT ${LINK_COLS}, ${ITEM_VISIBLE} AS vis FROM items i WHERE i.owner_id = ?`)
+      .bind(me.id, memberId)
+      .all();
+    const link = linkInfo(linkRows, new Set(linkRows.filter((r) => r.vis).map((r) => r.id)));
     const { results: marks } = await env.DB.prepare(
       `SELECT c.item_id, c.season, c.buyer_id, c.qty, c.chip_in, c.price_cents, m.name AS buyer_name
          FROM claims c JOIN items i ON i.id = c.item_id JOIN members m ON m.id = c.buyer_id
@@ -2656,11 +2716,14 @@ const handlers = {
         return { received: receivedOut(mine), held: mine.filter((r) => r.held_season).map((r) => ({ id: r.id, title: r.title, held: r.held_season })) };
       })() : {}),
       giftCards: await giftCardsFor(env, memberId, me.id),
-      items: results.map((r) => ({
-        ...itemOut(r),
-        removed: !!r.removed_at,
-        ...giftOut(r, marks.filter((c) => c.item_id === r.id), me.id, nicks),
-      })),
+      items: results
+        .filter((r) => !link.blocked.has(r.id) || marks.some((c) => c.item_id === r.id && c.buyer_id === me.id))
+        .map((r) => ({
+          ...itemOut(r),
+          removed: !!r.removed_at,
+          ...giftOut(r, marks.filter((c) => c.item_id === r.id), me.id, nicks),
+          goesWith: link.links.get(r.id) || [],
+        })),
       suggestions: visible.filter((i) => !i.mine),
       myIdeas: visible.filter((i) => i.mine),
       // Messages tagged to each wish or suggestion, across the circles you share with them ("item:<id>" -> count).
@@ -2734,6 +2797,37 @@ const handlers = {
     ]);
     await markUnfilled(env, "items", id, b, fields[1]);
     return { id };
+  },
+
+  // Link one of your wishes to another ("Goes with"). kind: "together" (all or nothing: joins with's bundle,
+  // or starts one), "needs" (only wanted along with `with`, one way), or null to unlink.
+  // as: someone you look after.
+  async "POST item/link"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const owner = await ownerFor(env, me, b.as);
+    const mine = (id) => env.DB.prepare("SELECT id, bundle_id, needs_id FROM items WHERE id = ? AND owner_id = ? AND removed_at IS NULL").bind(String(id || ""), owner).first();
+    const item = await mine(b.id);
+    if (!item) fail(404, "Item not found.");
+    const kind = b.kind === "together" || b.kind === "needs" ? b.kind : null;
+    const other = kind ? await mine(b.with) : null;
+    if (kind && (!other || other.id === item.id)) fail(400, "Pick another wish on the list.");
+    if (kind === "needs" && other.needs_id === item.id) fail(400, "That one is already only wanted with this. Pick Both or neither instead.");
+    const rows = [];
+    if (kind === "together") {
+      const bundle = other.bundle_id || newId();
+      rows.push(
+        env.DB.prepare("UPDATE items SET bundle_id = ?, needs_id = NULL WHERE id = ?").bind(bundle, item.id),
+        env.DB.prepare("UPDATE items SET bundle_id = ? WHERE id = ?").bind(bundle, other.id),
+      );
+      // Two wishes can't be both "only with each other" and together; together wins.
+      if (other.needs_id === item.id) rows.push(env.DB.prepare("UPDATE items SET needs_id = NULL WHERE id = ?").bind(other.id));
+    } else {
+      rows.push(env.DB.prepare("UPDATE items SET bundle_id = NULL, needs_id = ? WHERE id = ?").bind(kind ? other.id : null, item.id));
+    }
+    if (item.bundle_id) rows.push(bundleCleanup(env, item.bundle_id));
+    await env.DB.batch(rows);
+    return { ok: true };
   },
 
   // Publish one of your "Maybe" items to your wish list. Undo with item/unpublish.
@@ -2816,6 +2910,10 @@ const handlers = {
       .first();
     if (!item) fail(404, "Item not found.");
     // Any mark, past or upcoming, keeps the wish (removed) so gift history and buyers' views survive.
+    // Leaves its bundle (the rest stay together). Wishes only wanted with this one stay hidden from others
+    // until the owner unlinks them (their own card says "Only with a removed wish").
+    const { bundle_id: bundle } = await env.DB.prepare("SELECT bundle_id FROM items WHERE id = ?").bind(id).first();
+    if (bundle) await env.DB.batch([env.DB.prepare("UPDATE items SET bundle_id = NULL WHERE id = ?").bind(id), bundleCleanup(env, bundle)]);
     const claimed = await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ?").bind(id).first();
     if (claimed) await snapshotGifts(env);
     if (claimed) {
