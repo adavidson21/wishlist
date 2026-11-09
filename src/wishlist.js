@@ -283,7 +283,9 @@ const IMAGE_SET = `image_url = CASE WHEN ?1 IS NOT NULL THEN ?1 WHEN url IS ?2 T
 
 // Save: the price syncs with the store only when it came from the link (the app sends priceAuto) and there's
 // a link and a price to sync. Typing a price by hand turns syncing off.
-const priceAuto = (b, fields) => (b.priceAuto && fields[1] && fields[2] != null ? 1 : 0);
+// price_auto: 0 typed by hand, 1 synced from the store, 2 synced but only an estimate (converted from another
+// currency, or from a search instead of the page). The app shows 2 as "~$X" and asks the owner to check it.
+const priceAuto = (b, fields) => (b.priceAuto && fields[1] && fields[2] != null ? (b.priceAuto === "guess" ? 2 : 1) : 0);
 
 function cents(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -1163,6 +1165,7 @@ const itemOut = (r) => ({
   image_checked: !!r.image_checked_at,
   price_checked: !!r.price_checked_at,
   price_auto: !!r.price_auto,
+  price_guess: r.price_auto === 2,
   price_est: r.price_est_cents > 0 ? r.price_est_cents : null, // rough guess when there's no price ("~$40")
   est_checked: r.price_est_cents != null,
 });
@@ -1183,6 +1186,7 @@ const ideaOut = (r, meId) => ({
   image_checked: !!r.image_checked_at,
   price_checked: !!r.price_checked_at,
   price_auto: !!r.price_auto,
+  price_guess: r.price_auto === 2,
   price_est: r.price_est_cents > 0 ? r.price_est_cents : null,
   est_checked: r.price_est_cents != null,
   updated_at: r.updated_at,
@@ -1393,6 +1397,57 @@ const toPrice = (v) => {
   return Number.isFinite(n) && n > 0 && n < 1_000_000 ? Math.round(n * 100) / 100 : null;
 };
 
+// ---------- currency: everything is shown in US dollars ----------
+// A store's own currency comes from JSON-LD (priceCurrency), price meta tags, or Shopify's page setup. Other
+// currencies are converted with the day's ECB rate (Frankfurter, free, no key, cached a day) and marked as a
+// guess, since rates move and stores price each country differently.
+const CUR_SIGNS = { "$": "USD", "US$": "USD", "£": "GBP", "€": "EUR", "C$": "CAD", "CA$": "CAD", "A$": "AUD", "AU$": "AUD", "¥": "JPY" };
+function currencyCode(v) {
+  const t = String(v || "").trim();
+  if (!t) return null;
+  if (CUR_SIGNS[t]) return CUR_SIGNS[t];
+  return /^[A-Za-z]{3}$/.test(t) ? t.toUpperCase() : null;
+}
+function pageCurrency(html, ld) {
+  if (!html) return null;
+  return currencyCode(ld?.currency)
+    || currencyCode(meta(html, "product:price:currency", "og:price:currency", "priceCurrency"))
+    || currencyCode(html.match(/Shopify\.currency\s*=\s*\{[^}]*"active"\s*:\s*"([A-Za-z]{3})"/)?.[1]);
+}
+// Shopify's product .js prices are in the currency the store shows us; /cart.js says which one.
+async function shopifyCurrency(url, html) {
+  const fromPage = pageCurrency(html, null);
+  if (fromPage) return fromPage;
+  try {
+    const res = await safeFetch(`${url.origin}/cart.js`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(3000) });
+    if (!res?.ok) { res?.body?.cancel().catch(() => {}); return null; }
+    return currencyCode(JSON.parse(await readCapped(res, 100_000))?.currency);
+  } catch { return null; }
+}
+const FX_TTL = 24 * 3600;
+async function usdRate(cur) {
+  const key = new Request(`https://fx.wishlist.invalid/${cur}`);
+  try { const hit = await caches.default.match(key); if (hit) return Number(await hit.text()) || null; } catch {}
+  let rate = null;
+  for (const u of [`https://api.frankfurter.dev/v1/latest?base=${cur}&symbols=USD`, `https://api.frankfurter.app/latest?from=${cur}&to=USD`]) {
+    try {
+      const r = await fetch(u, { signal: AbortSignal.timeout(3000) });
+      if (r.ok) rate = Number((await r.json())?.rates?.USD) || null;
+    } catch {}
+    if (rate) break;
+  }
+  if (rate) { try { await caches.default.put(key, new Response(String(rate), { headers: { "cache-control": `max-age=${FX_TTL}` } })); } catch {} }
+  else console.log(`fx ${cur} unavailable`);
+  return rate;
+}
+// A store price in US dollars. No currency means dollars. A currency we can't convert gives no price.
+async function inUsd(price, currency) {
+  const cur = currencyCode(currency);
+  if (price == null || !cur || cur === "USD") return { price, guess: false };
+  const rate = await usdRate(cur);
+  return rate ? { price: Math.round(price * rate * 100) / 100, guess: true, from: cur } : { price: null, guess: false };
+}
+
 // Finds a schema.org Product in JSON-LD blocks (most stores include one). The first one with a name wins.
 // Price: the first offer (or variant offer) with a real price, including prices tucked in priceSpecification.
 const offerPrice = (o) => o && typeof o === "object"
@@ -1404,7 +1459,10 @@ function jsonLdProduct(html) {
     if (!/Product/i.test(ldType(node))) continue;
     const offers = [].concat(node.offers || [], ...[].concat(node.hasVariant || []).map((v) => [].concat(v?.offers || [])));
     const flat = offers.flatMap((o) => [o, ...[].concat(o?.offers || [])]);
-    const price = flat.map(offerPrice).find((p) => p != null) ?? null;
+    const priced = flat.find((o) => offerPrice(o) != null);
+    const price = priced ? offerPrice(priced) : null;
+    const spec = priced && [].concat(priced.priceSpecification || []).find((x) => x?.priceCurrency);
+    const currency = priced ? String(priced.priceCurrency || spec?.priceCurrency || "").trim() || null : null;
     const img = [].concat(node.image || [])[0];
     const image = typeof img === "string" ? img : img?.url || img?.contentUrl || null;
     const avail = String(flat.map((o) => o?.availability).find(Boolean) || "");
@@ -1412,8 +1470,9 @@ function jsonLdProduct(html) {
     const b = [].concat(node.brand || node.manufacturer || [])[0];
     const brand = typeof b === "string" ? decode(b) : b?.name ? decode(b.name) : null;
     const name = typeof node.name === "string" ? decode(node.name) : null;
-    const out = { title: name || null, price, image, inStock, brand };
-    if (name) return unnamed ? { ...out, price: out.price ?? unnamed.price, image: out.image || unnamed.image } : out;
+    const out = { title: name || null, price, currency, image, inStock, brand };
+    if (name) return unnamed && out.price == null ? { ...out, price: unnamed.price, currency: unnamed.currency, image: out.image || unnamed.image }
+      : unnamed ? { ...out, image: out.image || unnamed.image } : out;
     unnamed ||= out;
   }
   return unnamed || {};
@@ -1607,8 +1666,9 @@ const LINK_PROMPT = `Someone pasted a product link into a gift wish list, and ou
 Open the URL (use Google Search if you can't open it) and report the product on that exact page:
 - found: false if you can't tell which product the link is for. Never invent or guess a product.
 - title: the product's name as a shopper would say it, brand first when known, under 80 characters
-- price: what the store charges for it right now in US dollars (the sale price if it's on sale, never a "was",
-  "comparable value" or list price), or null if you can't tell
+- price: what the store charges for it right now as a number, in the store's own currency (the sale price if it's
+  on sale, never a "was", "comparable value" or list price), or null if you can't tell
+- currency: the 3-letter code of that price's currency (USD, GBP, EUR...), or "" if unsure
 - image: the URL of the main product photo exactly as it appears on the page or in search results (an image file,
   usually on the store's image server), or "" if you didn't see one. Never build or guess a URL.
 - in_stock: true if that store currently shows it available to buy new, false if sold out or unavailable, null if unclear.
@@ -1621,6 +1681,7 @@ const LINK_SCHEMA = {
     found: { type: "boolean" },
     title: { type: "string" },
     price: { type: "number", nullable: true },
+    currency: { type: "string" },
     image: { type: "string" },
     in_stock: { type: "boolean", nullable: true },
     sizes: { type: "array", items: { type: "string" } },
@@ -1694,7 +1755,7 @@ async function lookupLink(env, url, hints = []) {
   const opened = openedPage(r.urlContext, url);
   let image = imageLink(d.image?.trim() || "");
   if (image && !(await isImage(image))) image = null;
-  return { opened, title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null,
+  return { opened, title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), currency: currencyCode(d.currency), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null,
     sizes: uniq(Array.isArray(d.sizes) ? d.sizes : []), colors: uniq(Array.isArray(d.colors) ? d.colors : []), size: tidyOption(d.size), color: tidyOption(d.color), brand: tidyBrand(d.brand) };
 }
 // A brand name worth showing: trimmed, not a placeholder, short enough for the label.
@@ -1708,8 +1769,8 @@ function tidyBrand(v) {
 // nothing stored in D1). Reads the store page; Gemini only for stores that block us. Misses are cached for
 // 6 hours so a blocked store isn't looked up on every visit.
 const LIVE_TTL = 12 * 3600, LIVE_MISS_TTL = 6 * 3600;
-// v3: drops cached answers from before Shopify feeds and the "did Gemini open it" check.
-const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v3/${encodeURIComponent(u)}`);
+// v4: drops cached answers from before currencies were converted.
+const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v4/${encodeURIComponent(u)}`);
 async function livePrice(env, rawUrl, { ai = true } = {}) {
   let clean;
   try { clean = cleanLink(await resolveShortLink(new URL(link(rawUrl)))); } catch { return null; }
@@ -1717,12 +1778,16 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
   try { const hit = await caches.default.match(liveKey(clean)); if (hit) return await hit.json(); } catch {}
   const url = new URL(clean);
   const site = url.hostname.replace(/^www\./, "");
-  let price = null, inStock = null, via = "page";
+  let price = null, inStock = null, via = "page", currency = null, guess = false;
   const shop = await shopifyProduct(url);
-  if (shop && (shop.price != null || shop.inStock !== null)) { price = shop.price; inStock = shop.inStock; via = "shopify"; }
+  if (shop && (shop.price != null || shop.inStock !== null)) {
+    price = shop.price; inStock = shop.inStock; via = "shopify";
+    if (price != null) currency = await shopifyCurrency(url, "");
+  }
   const { html } = via === "shopify" ? { html: "" } : await readPage(url, 5000);
   if (html && !BOT_PAGE.test(decode(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]) || "")) {
     const ld = jsonLdProduct(html);
+    currency = pageCurrency(html, ld);
     price = ld.price
       ?? toPrice(meta(html, "product:price:amount", "og:price:amount", "price"))
       ?? toPrice(html.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]); // Amazon
@@ -1737,15 +1802,16 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
     // (a $129 Coach bag came back as $275), so then only its stock status is used.
     if (found && matchesLink(found.title, url)) {
       inStock = found.inStock;
-      if (found.opened) { price = found.price; via = "ai-page"; } else via = "search";
+      if (found.opened) { price = found.price; currency = found.currency; via = "ai-page"; } else via = "search";
     }
   }
-  const out = { price, inStock, site, via, checkedAt: now() };
+  ({ price, guess } = await inUsd(price, currency));
+  const out = { price, inStock, site, via, guess, checkedAt: now() };
   const hit = price != null || inStock !== null;
   try {
     await caches.default.put(liveKey(clean), new Response(JSON.stringify(out), { headers: { "content-type": "application/json", "cache-control": `max-age=${hit ? LIVE_TTL : LIVE_MISS_TTL}` } }));
   } catch {}
-  console.log(`live ${site} -> ${via}${price != null ? ` $${price}` : ""}${inStock === false ? " out" : inStock ? " in" : ""}`);
+  console.log(`live ${site} -> ${via}${price != null ? ` $${price}${guess ? ` (from ${currency})` : ""}` : ""}${inStock === false ? " out" : inStock ? " in" : ""}`);
   return out;
 }
 
@@ -1765,10 +1831,11 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
   }
   const { html, finalUrl, status } = await readPage(url);
 
-  let title = null, price = null, siteName = null, image = null, brand = null;
+  let title = null, price = null, siteName = null, image = null, brand = null, currency = null;
   if (html) {
     siteName = meta(html, "og:site_name");
     const ld = jsonLdProduct(html);
+    currency = pageCurrency(html, ld);
     brand = ld.brand || meta(html, "product:brand", "og:brand", "brand")
       || decode(html.match(/id=["']bylineInfo["'][^>]*>([\s\S]*?)<\/a>/i)?.[1]).replace(/^(visit the|brand:)\s*/i, "").replace(/\s+store$/i, ""); // Amazon
     title = ld.title
@@ -1799,16 +1866,25 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
   // A Shopify store's product JSON is often readable even when the page isn't.
   if (!title && opts.shop?.title) title = cleanTitle(opts.shop.title, url.hostname, siteName);
   if (!brand && opts.shop?.brand) brand = opts.shop.brand;
-  if (price == null && opts.shop?.price != null) price = opts.shop.price;
+  if (price == null && opts.shop?.price != null) { price = opts.shop.price; currency = await shopifyCurrency(url, html); }
+  // Prices are shown in dollars; another currency is converted and flagged as an estimate.
+  const conv = await inUsd(price, currency);
+  price = conv.price;
   if (!imageUrl && opts.shop?.image && title) imageUrl = imageLink(opts.shop.image);
-  let out = { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !title && !!guess,
+  let out = { url: finalUrl.toString(), title: title || guess, price, priceGuess: conv.guess, image: imageUrl, site, found: !!title, guessed: !title && !!guess,
     sizes: opts.sizes, colors: opts.colors, size: opts.size, color: opts.color, brand: tidyBrand(brand) };
   // The page gave us no name, photo or price (blocked, a bot check, or an empty shell): look it up. The page's own
   // details win; the lookup only fills what's missing.
   if (ai && (!title || !imageUrl || out.price == null)) {
     const found = await lookupLink(env, clean, [hint, slugGuess]).catch(() => null);
     if (found && (title || matchesLink(found.title, url))) {
-      out = { ...out, title: title || found.title, price: price ?? found.price, image: imageUrl || found.image, found: true, guessed: false, via: "search",
+      // Gemini's price is only an estimate unless it really opened the page (and even then if it's another currency).
+      let fp = { price: null, guess: false };
+      if (price == null && found.price != null) {
+        fp = await inUsd(found.price, found.currency);
+        if (!found.opened) fp.guess = true;
+      }
+      out = { ...out, title: title || found.title, price: price ?? fp.price, priceGuess: price != null ? out.priceGuess : fp.guess, image: imageUrl || found.image, found: true, guessed: false, via: "search",
         sizes: out.sizes.length ? out.sizes : found.sizes, colors: out.colors.length ? out.colors : found.colors,
         size: out.size || found.size, color: out.color || found.color, brand: out.brand || found.brand };
     }
@@ -1891,7 +1967,7 @@ async function quickAdd(req, env) {
     // Not filled now (store blocked us, or over the limit): details_v 0 lets the app's details refresh try once more.
     ).bind(id, me.id, title, saveUrl, price, t, t, image, image ? t : null, p?.found ? DETAILS_V : 0),
     env.DB.prepare("UPDATE items SET price_auto = ?, quantity = 1, brand = ?, size = ?, color = ? WHERE id = ?")
-      .bind(price != null ? 1 : 0, str(p?.brand, LIMITS.brand), str(p?.size, LIMITS.size), str(p?.color, LIMITS.color), id),
+      .bind(price != null ? (p.priceGuess ? 2 : 1) : 0, str(p?.brand, LIMITS.brand), str(p?.size, LIMITS.size), str(p?.color, LIMITS.color), id),
   ]);
   console.log(`quickadd ${site} -> ${p?.found ? "filled" : "guess"}`);
   return `Added to your Maybe list in Hints: ${title}`;
@@ -2013,8 +2089,9 @@ async function checkLink(raw, brandDomain, grounded) {
   if (page) {
     if (!looksLikeProduct(page, finalUrl)) return null;
     const ld = jsonLdProduct(page);
-    const price = ld.price ?? toPrice(meta(page, "product:price:amount", "og:price:amount"))
+    const raw = ld.price ?? toPrice(meta(page, "product:price:amount", "og:price:amount"))
       ?? toPrice(page.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]);
+    const { price } = await inUsd(raw, pageCurrency(page, ld));
     return { url: finalUrl.toString(), host: finalUrl.hostname, tier, price, verified: true };
   }
   // Store blocked the check. Only trust the link if it came straight from Google Search.
@@ -2062,11 +2139,11 @@ async function refreshRow(env, table, row) {
     : "";
   const stmt = env.DB.prepare(
     `UPDATE ${table} SET details_v = ?1, image_url = COALESCE(image_url, ?2), image_checked_at = ?3, price_checked_at = ?3,
-       price_cents = COALESCE(?4, price_cents), price_auto = CASE WHEN ?4 IS NOT NULL THEN 1 ELSE price_auto END${extra}
+       price_cents = COALESCE(?4, price_cents), price_auto = CASE WHEN ?4 IS NOT NULL THEN ?10 ELSE price_auto END${extra}
       WHERE id = ?5 AND url IS ?6`,
   );
   const args = [DETAILS_V, image, t, price, row.id, row.url];
-  if (table === "items") args.push(ok ? p.brand || null : null, ok ? p.size || null : null, ok ? p.color || null : null);
+  args.push(...(table === "items" ? [ok ? p.brand || null : null, ok ? p.size || null : null, ok ? p.color || null : null] : [null, null, null]), p?.priceGuess ? 2 : 1);
   await stmt.bind(...args).run();
   return !!ok;
 }
@@ -3489,10 +3566,10 @@ const handlers = {
     // Only fills a price that is still empty, so an owner's own price always wins.
     await env.DB.prepare(
       `UPDATE ${table} SET image_url = ?1, image_checked_at = ?2, price_checked_at = ?2,
-         price_auto = CASE WHEN price_cents IS NULL AND ?3 IS NOT NULL THEN 1 ELSE price_auto END,
+         price_auto = CASE WHEN price_cents IS NULL AND ?3 IS NOT NULL THEN ?6 ELSE price_auto END,
          price_cents = CASE WHEN price_cents IS NULL THEN ?3 ELSE price_cents END
         WHERE id = ?4 AND url IS ?5`,
-    ).bind(image, now(), price, row.id, row.url).run();
+    ).bind(image, now(), price, row.id, row.url, needPrice && preview.priceGuess ? 2 : 1).run();
     return { image, price_cents: price };
   },
 
@@ -3522,16 +3599,17 @@ const handlers = {
     for (let i = 0; i < rows.length; i += 4) {
       await Promise.all(rows.slice(i, i + 4).map(async ([key, u, row]) => {
         const p = await livePrice(env, u).catch(() => null);
-        if (p && (p.price != null || p.inStock !== null)) prices[key] = { price: p.price, inStock: p.inStock, site: p.site, checkedAt: p.checkedAt };
+        if (p && (p.price != null || p.inStock !== null)) prices[key] = { price: p.price, inStock: p.inStock, site: p.site, guess: !!p.guess, checkedAt: p.checkedAt };
         // A price that came from the link follows the store. Hand-typed prices are never touched.
         const cur = p?.price != null ? Math.round(p.price * 100) : null;
         // A jump of more than half either way is more likely a misread than a real change: say "check the price"
         // instead of "Now $X", and don't save it.
         const odd = cur != null && row.price_cents > 0 && (cur > row.price_cents * 1.5 || cur < row.price_cents * 0.5);
         if (odd) prices[key].odd = true;
-        if (cur != null && !odd && row.price_auto && cur !== row.price_cents) {
+        // Only exact prices sync; an exact one also clears a saved estimate (price_auto 2 -> 1).
+        if (cur != null && !odd && !p.guess && row.price_auto && (cur !== row.price_cents || row.price_auto === 2)) {
           const table = key.startsWith("item:") ? "items" : "private_ideas";
-          await env.DB.prepare(`UPDATE ${table} SET price_cents = ? WHERE id = ? AND url IS ? AND price_auto = 1`)
+          await env.DB.prepare(`UPDATE ${table} SET price_cents = ?, price_auto = 1 WHERE id = ? AND url IS ? AND price_auto IN (1, 2)`)
             .bind(cur, row.id, u).run().catch(() => {});
           prices[key].synced = cur;
         }
