@@ -1828,7 +1828,13 @@ function setTab(tab, person = null) {
 window.addEventListener("popstate", () => { readHash(); render(); });
 function readHash() {
   const h = location.hash.slice(1);
-  if (h.startsWith("person/")) { if (state.person !== h.slice(7)) state.view = null; state.tab = "family"; state.person = h.slice(7); }
+  // #person/ID, or #person/ID/chat/CIRCLE (from a chat notification: opens that chat once the page loads).
+  if (h.startsWith("person/")) {
+    const [pid, sub, gid] = h.slice(7).split("/");
+    if (state.person !== pid) state.view = null;
+    state.tab = "family"; state.person = pid;
+    if (sub === "chat") { state.chatOnLoad = gid || true; history.replaceState(null, "", `#person/${pid}`); }
+  }
   else if (h === "budget" || h === "notes") { state.tab = "notes"; state.person = null; }
   else if (h.startsWith("settings/")) { state.tab = "settings"; state.person = null; state.setSec = h.slice(9); }
   else if (["mine", "family", "profile", "settings"].includes(h)) { state.tab = h; state.person = null; if (h === "settings") state.setSec = "app"; }
@@ -3937,6 +3943,7 @@ async function renderPerson(id) {
   $("#editBtn").onclick = () => editPerson(list.member, plan);
   $("#addIdea").onclick = () => addThing(id);
   $("#chatBar")?.addEventListener("click", () => openChat(id));
+  if (state.chatOnLoad) { const gid = state.chatOnLoad; state.chatOnLoad = null; openChat(id, typeof gid === "string" ? { group: gid } : {}); }
   v.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.ask.split(":");
     const x = (kind === "item" ? all : sugg).find((r) => r.id === itemId);
@@ -5569,7 +5576,8 @@ function setMotion(on) {
 // Web Push, per device. iPhones only allow it from the home screen app (iOS 16.4+). The server side is src/push.js.
 const PUSH_KINDS = [["wishes", "New wishes", "When someone adds to their list (at most once an hour)"],
   ["birthdays", "Birthdays and Christmas", "Two weeks and three days before, and in December if you still need gifts"],
-  ["groupGifts", "Group gifts", "When someone starts one you can chip in on"]];
+  ["groupGifts", "Group gifts", "When someone starts one you can chip in on"],
+  ["chat", "Chats", "New messages in a chat about someone (once until you read it)"]];
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 function keyBytes(b64) {
   const t = b64.replace(/-/g, "+").replace(/_/g, "/");
