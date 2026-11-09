@@ -526,6 +526,13 @@
   .set-card h4 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
   .set-card > p, .set-card .sub { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
   .set-card + .label { margin-top: 26px; }
+  /* Someone you look after (managed person): the card on their page and the line under their name. */
+  .manage-card { margin: 0 0 18px; border: 1.5px dashed color-mix(in srgb, var(--brand) 35%, transparent); }
+  .manage-card .actions { flex-wrap: wrap; }
+  .manage-card .actions .btn { flex: 1 1 auto; }
+  .manage-more { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; }
+  .manage-more .linkbtn { padding: 0; }
+  .looked-after { display: block; color: var(--muted); font-size: 13px; font-weight: 600; }
   .set-div { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
   .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
   .mode { border: 2px solid var(--line); background: var(--card); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 10px; text-align: left;
@@ -1808,6 +1815,8 @@ function everyone() {
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 const others = () => everyone().filter((m) => m.id !== state.me.id);
+// Someone who doesn't use the app, and you're one of the people who looks after their list.
+const canManageId = (id) => !!everyone().find((m) => m.id === id)?.canManage;
 const personName = (id) => everyone().find((m) => m.id === id)?.name || "Someone";
 const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a circle";
 
@@ -3146,11 +3155,13 @@ function wireSizeColor(form, item) {
 }
 
 // item: a wish to edit, or nothing for a new one. opts.title / opts.placeholder start a new one off (starter ideas).
+// opts.as: someone you look after. Their wishes skip Maybe and go straight on their list.
 function editItem(item, opts = {}) {
   const isNew = !item?.id;
   const c = opts.carry;
+  const asId = opts.as || null, asName = asId ? personName(asId) : "";
   item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, notes: c.notes } : {};
-  const draft = isNew || !!item.draft;
+  const draft = !asId && (isNew || !!item.draft);
   const hasDetails = item.price_cents != null || !!item.notes || !!item.category || !!item.brand;
   const priceField = `<label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="${isNew ? "Fills in from the link" : "From the link"}"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>`;
   const catField = `<label class="field"><span>Category</span>
@@ -3159,8 +3170,8 @@ function editItem(item, opts = {}) {
   const brandField = `<label class="field"><span>Brand</span><input class="input" name="brand" maxlength="40" value="${esc(item.brand || "")}" placeholder="Zara, Nike, LEGO" autocomplete="off"></label>`;
   const notesField = `<label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>`;
   openSheet(`
-    <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
-    ${isNew && opts.chooser ? whoChips(state.me.id) : ""}
+    <h3>${asId ? (isNew ? `Add a wish for ${esc(asName)}` : `Edit ${esc(asName)}'s wish`) : isNew ? "What would you like?" : "Edit wish"}</h3>
+    ${isNew && opts.chooser && !asId ? whoChips(state.me.id) : ""}
     ${draft && !isNew ? MAYBE_NOTE : ""}
     <form id="itemForm" autocomplete="off"${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}>
       <div class="err" hidden></div>
@@ -3170,19 +3181,20 @@ function editItem(item, opts = {}) {
       ${isNew ? "" : linkField(item.url)}
       ${sizeColorRow()}
       ${photoField()}
-      ${isNew ? `<p class="hint" style="margin-top:-6px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
+      ${isNew && !asId ? `<p class="hint" style="margin-top:-6px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       ${isNew ? `<details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes)</span></summary>
         <div>${brandField}${priceField}${catField}${notesField}</div>
       </details>` : `<section class="fsec"><h4 class="fsec-h">Details</h4>
         <div class="two pc">${priceField}${catField}</div>${notesField}</section>`}
-      ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">On your list</h4>
-        <label class="check"><span>Top pick<small>Gold star on your list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
-        ${familySwitches(item.hiddenFrom)}</section>`}
+      ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">${asId ? `On ${esc(asName)}'s list` : "On your list"}</h4>
+        <label class="check"><span>Top pick<small>Gold star on ${asId ? "their" : "your"} list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
+        ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
       <div class="actions sticky">
         ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
-        ${isNew
+        ${isNew && asId ? `<button class="btn primary" type="submit" value="list">Add to ${esc(asName)}'s list</button>`
+          : isNew
           ? `<button class="btn" type="submit" value="maybe">${LOCK} Add to Maybe</button>
         <button class="btn primary" type="submit" value="list">Add to wish list</button>`
           : `<button class="btn primary" type="submit" id="itemSave">Save</button>`}
@@ -3208,7 +3220,17 @@ function editItem(item, opts = {}) {
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
         const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
-        if (multi() && !draft) payload.hiddenFrom = hiddenFromForm(form);
+        if (multi() && !draft && !asId) payload.hiddenFrom = hiddenFromForm(form);
+        if (asId) {
+          payload.as = asId;
+          const { id } = await api("item/save", payload);
+          closeSheet();
+          if (isNew) toast(`Added to ${asName}'s list`, () => api("item/remove", { id, as: asId }).then(() => render(), (e) => toast(e.message)));
+          else toast("Saved");
+          state.flash = isNew ? id : null;
+          if (state.person !== asId) return setTab("family", asId);
+          return render();
+        }
         const { id } = await api("item/save", payload);
         const published = isNew && d.submitter === "list";
         if (published) await api("item/publish", { id });
@@ -3225,7 +3247,7 @@ function editItem(item, opts = {}) {
       $("#publishItem", el)?.addEventListener("click", () => confirmPublish(item));
       $("#removeItem", el)?.addEventListener("click", async () => {
         if (!confirmRemove()) return;
-        try { await api("item/remove", { id: item.id }); closeSheet(); toast("Removed"); state.stale = true; render(); }
+        try { await api("item/remove", { id: item.id, as: asId || undefined }); closeSheet(); toast("Removed"); state.stale = true; render(); }
         catch (e) { toast(e.message); }
       });
     });
@@ -3500,7 +3522,7 @@ async function renderFamily() {
         const soon = bday && daysUntil(bday) <= 30 ? `<small class="occ-when">Birthday ${inDays(bday)}${bday.turning ? `, turning ${bday.turning}` : ""}</small>` : "";
         return `<button class="member slide" style="animation-delay:${i * 0.06}s" type="button" data-id="${esc(m.id)}">
           ${avatar(m.name, m.id, true)}
-          <span class="who"><strong>${esc(m.name)}${newBadge(m)}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${soon}${budgetMini(p)}</span>${CHEV}
+          <span class="who"><strong>${esc(m.name)}${newBadge(m)}</strong><small>${wishes}${getting ? `, you're getting ${getting}` : ""}${real}</small>${soon}${m.managedBy ? `<small class="looked-after">${m.managedBy === state.me.id ? "You look after this list" : m.canManage ? "Your household looks after this list" : `Looked after by ${esc(personName(m.managedBy))}`}</small>` : ""}${budgetMini(p)}</span>${CHEV}
         </button>`;
   };
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
@@ -3513,6 +3535,7 @@ async function renderFamily() {
     <div class="label">You</div>
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
+      <button class="add soft" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>
     </div>` : `
     ${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${isAdmin(g) ? `<button class="btn quiet small" type="button" data-manage="${esc(g.id)}">Manage</button>` : ""}</div><div class="stack" style="margin-top:12px">
       ${peopleHtml(people, personBtn)}</div>` : `
@@ -3520,12 +3543,14 @@ async function renderFamily() {
     <div class="label">You</div>
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
+      <button class="add soft" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>
     </div>
     <div class="label">Invite someone</div>
     <div style="margin-top:12px">${g ? inviteCard(g) : ""}</div>
     <p class="footnote">In another circle too, like friends or your partner's family? Join it from Settings and keep one list for both.</p>`;
   v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
   $("#meRow").onclick = () => setTab("mine");
+  v.querySelectorAll("[data-add-managed]").forEach((b) => (b.onclick = addManaged));
   if (g && !multi()) wireInviteCard(v, g);
   v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((x) => x.id === b.dataset.share))));
   v.querySelectorAll("[data-manage]").forEach((b) => (b.onclick = () => openCircleManage(b.dataset.manage)));
@@ -3738,6 +3763,9 @@ async function renderPerson(id) {
   const sugg = list.suggestions || [];
   const mine = list.myIdeas || [];
   const all = list.items;
+  // Someone you look after: you add and edit their wishes and profile here.
+  const manage = !!list.canManage;
+  state.manageList = manage;
 
   // Summary numbers.
   const open = all.filter((i) => !i.claim && !i.removed);
@@ -3803,6 +3831,7 @@ async function renderPerson(id) {
 
   const v = $("#view");
   v.innerHTML = `<div class="person-layout"><div class="person-side">
+    ${manage ? manageCard(list, name) : ""}
     ${hintsCard(list.member.profile)}
     ${knowCard(list.member.profile)}
     ${all.length ? `<div class="stats">
@@ -3816,9 +3845,10 @@ async function renderPerson(id) {
       : `<div class="nomatch"><strong>Nothing matches</strong><p>Try another category or price.</p><button class="btn small" type="button" id="clearFilters2">Show everything</button></div>`}</div>` : `
       <div class="empty">
         ${giftBox(`Add your own idea for ${name}`)}
-        <strong>${esc(name)} hasn't added any wishes yet</strong>
-        <p>Give ${esc(name)} a little nudge, or jot down your own idea. ${esc(name)} will never see your ideas.</p>
-        <div class="stack"><button class="add" type="button" id="nudge">${MSG} Send ${esc(name)} a reminder</button></div>
+        <strong>${esc(name)} ${manage ? "doesn't have any wishes yet" : "hasn't added any wishes yet"}</strong>
+        <p>${manage ? `Add what ${esc(name)} would love, so everyone can see it.` : `Give ${esc(name)} a little nudge, or jot down your own idea. ${esc(name)} will never see your ideas.`}</p>
+        <div class="stack">${manage ? `<button class="add" type="button" id="firstWish">${PLUS} Add the first wish for ${esc(name)}</button>`
+          : `<button class="add" type="button" id="nudge">${MSG} Send ${esc(name)} a reminder</button>`}</div>
       </div>`}
     ${theirGiftCards(list.giftCards, name, id)}
     ${sugg.length ? `<div class="label">Ideas from others${tip(`Hidden from ${name}.`)}</div>
@@ -3832,6 +3862,7 @@ async function renderPerson(id) {
   $("#editBtn").onclick = () => editPerson(list.member, plan);
   $("#addIdea").onclick = () => addThing(id);
   $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
+  if (manage) wireManageCard(v, list, name, id);
   wireGiftBox(v, () => addThing(id));
   const redo = () => render();
   v.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { view.cat = b.dataset.cat; redo(); }));
@@ -3848,6 +3879,107 @@ async function renderPerson(id) {
     const [kind, itemId] = b.dataset.mark.split(":");
     markPurchased(kind, byKind[kind].find((x) => x.id === itemId), name, id);
   }));
+}
+
+// ---------- someone you look after ----------
+// Their page shows this card: add wishes, edit their profile and gift cards, hand the list over, or remove them.
+function manageCard(list, name) {
+  const by = list.member.id && everyone().find((m) => m.id === list.member.id)?.managedBy;
+  const who = by === state.me.id ? "You added" : by ? `${esc(personName(by))} added` : "Someone added";
+  return `<section class="set-card manage-card">
+    <h4>You look after ${esc(name)}'s list</h4>
+    <p class="sub">${who} ${esc(name)}, who doesn't use the app. Add wishes for them here. You can still see what's been bought.</p>
+    <div class="actions">
+      <button class="btn primary small" type="button" id="mgAdd">${PLUS} Add a wish</button>
+      <button class="btn small" type="button" id="mgProfile">${PENCIL} Edit profile</button>
+      <button class="btn small" type="button" id="mgCards">Gift cards</button>
+    </div>
+    <div class="manage-more">
+      <button class="linkbtn" type="button" id="mgRelease">Let ${esc(name)} sign in</button>
+      <button class="linkbtn" type="button" id="mgRemove">Remove ${esc(name)}</button>
+    </div>
+  </section>`;
+}
+function wireManageCard(v, list, name, id) {
+  const add = () => editItem(null, { as: id });
+  $("#mgAdd", v).onclick = add;
+  $("#firstWish", v)?.addEventListener("click", add);
+  $("#mgProfile", v).onclick = () => editManagedProfile(list.member, name);
+  $("#mgCards", v).onclick = () => pickGiftCards((list.giftCards || []).filter((c) => !c.removed), id, name);
+  v.querySelectorAll("[data-edit-wish]").forEach((b) => (b.onclick = () => {
+    const item = list.items.find((x) => x.id === b.dataset.editWish);
+    if (item) editItem(item, { as: id });
+  }));
+  $("#mgRelease", v).onclick = async () => {
+    if (!window.confirm(`Let ${name} sign in? They'll pick their name on the sign-in screen with your circle's code. From then on it's their own list: they won't see what's been bought, and you won't be able to edit it.`)) return;
+    try { await api("managed/release", { memberId: id }); toast(`${name} can sign in now`); state.stale = true; render(); } catch (e) { toast(e.message); }
+  };
+  $("#mgRemove", v).onclick = async () => {
+    if (!window.confirm(`Remove ${name}? They'll leave every circle and nobody will see their list anymore.`)) return;
+    try { await api("managed/remove", { memberId: id }); toast(`Removed ${name}`); state.stale = true; setTab("family"); } catch (e) { toast(e.message); }
+  };
+}
+// Add someone who doesn't use the app (a kid, a grandparent). They join your household too, if you have one.
+function addManaged() {
+  const hh = state.me.household;
+  openSheet(`
+    <h3>Add someone who doesn't use the app</h3>
+    <p class="subtle">A kid, or a grandparent who'd rather not. You'll add their wishes for them, and everyone can shop from their list.${hh ? ` They'll join ${esc(hh.label)}, so everyone in it can help.` : ""}</p>
+    <form id="mgForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Their name</span><input class="input" name="name" maxlength="40" placeholder="Ella" required></label>
+      ${multi() ? `<fieldset class="fsec"><h4 class="fsec-h">Which circles?</h4>
+        ${state.groups.map((g) => `<label class="check"><span>${esc(g.name)}</span><input type="checkbox" name="g:${esc(g.id)}" checked></label>`).join("")}</fieldset>` : ""}
+      <button class="btn primary wide" type="submit">Add them</button>
+    </form>`, (el) => {
+      setTimeout(() => $("#mgForm", el).elements.name.focus(), 300);
+      wireForm($("#mgForm", el), async (d) => {
+        const groupIds = multi() ? state.groups.filter((g) => d[`g:${g.id}`]).map((g) => g.id) : undefined;
+        if (groupIds && !groupIds.length) throw new Error("Pick at least one circle.");
+        const { id } = await api("managed/add", { name: d.name, groupIds });
+        closeSheet();
+        buzz();
+        toast(`Added ${d.name.trim()}. Now add what they'd love.`);
+        state.stale = true;
+        setTab("family", id);
+      });
+    });
+}
+// Their name, birthday, photo, sizes, loves, nopes and allergies. A short version of your own profile page.
+function editManagedProfile(member, name) {
+  const p = member.profile || {};
+  const [bm, bd] = p.birthday ? p.birthday.split("-").map(Number) : [0, 0];
+  const real = member.fullName || member.name;
+  openSheet(`
+    <h3>${esc(name)}'s profile</h3>
+    <div id="mgPhoto">${photoRowHtml(real, member.id)}</div>
+    <form id="mgProfileForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Name</span><input class="input" name="name" maxlength="40" value="${esc(real)}" required></label>
+      <div class="two"><label class="field"><span>Birthday month</span><select class="input" name="bm"><option value="">None</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select></label>
+        <label class="field"><span>Day</span><select class="input" name="bd"><option value=""></option>${Array.from({ length: 31 }, (_, k) => `<option${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select></label></div>
+      <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span>${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(p.sizes?.[k] || "")}"></label>`).join("")}</div>
+      <label class="field"><span>Loves <em style="font-weight:600;color:var(--muted)">(commas between)</em></span><input class="input" name="likes" value="${esc((p.likes || []).join(", "))}" placeholder="Unicorns, dinosaurs, drawing"></label>
+      <label class="field"><span>Nopes</span><input class="input" name="dislikes" value="${esc((p.dislikes || []).join(", "))}" placeholder="Scary stuff, glitter"></label>
+      <label class="field"><span>Allergies and hard nos</span><textarea class="input" name="avoid" maxlength="300">${esc(p.avoid || "")}</textarea></label>
+      <button class="btn primary wide" type="submit">Save</button>
+    </form>`, (el) => {
+      wirePhotoRow($("#mgPhoto", el), async (photo) => { await api("profile", { as: member.id, photo }); closeSheet(); toast(photo ? "Photo saved" : "Photo removed"); state.stale = true; render(); });
+      wireForm($("#mgProfileForm", el), async (d) => {
+        if ((d.bm && !d.bd) || (!d.bm && d.bd)) throw new Error("Pick both the month and the day, or neither.");
+        const tags = (v) => v.split(",").map((x) => x.trim()).filter(Boolean);
+        await api("profile", {
+          as: member.id, name: d.name,
+          birthday: d.bm ? `${String(d.bm).padStart(2, "0")}-${String(d.bd).padStart(2, "0")}` : "",
+          sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, d[`size_${k}`].trim()])),
+          likes: tags(d.likes), dislikes: tags(d.dislikes), avoid: d.avoid,
+        });
+        closeSheet();
+        toast("Saved");
+        state.stale = true;
+        render();
+      });
+    });
 }
 
 // Edit someone: your own name for them ("Grandma" instead of "Jane Doe") and your budget for them. Both only for you.
@@ -3895,6 +4027,7 @@ function personRow(i, kind, n = 0) {
       <button class="btn small primary" type="button" data-mark="${key}">${GIFT_SM} I'll get this</button>`;
   }
   if (i.removed) foot = `<span class="taken-line">Removed by ${esc(personName(state.person))}</span><span class="spacer"></span>` + foot;
+  else if (kind === "item" && state.manageList) foot += `<button class="btn small quiet" type="button" data-edit-wish="${esc(i.id)}" aria-label="Edit this wish">${PENCIL}</button>`;
   const top = kind === "item" && i.priority === "must" && !i.claim;
   const notes = kind === "idea" ? i.note : i.notes;
   const paid = i.claim?.mine && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
@@ -4362,6 +4495,7 @@ function editIdea(idea, subjectId, opts = {}) {
   openSheet(`
     <h3>${purchase ? "Add a purchase" : isNew ? "Gift idea" : "Edit idea"}</h3>
     ${chips}
+    ${isNew && !purchase && subjectId && canManageId(subjectId) ? `<p class="hint" style="margin-top:0">You look after ${esc(personName(subjectId))}'s list. <button class="linkbtn" type="button" id="toTheirList">Add it to their wish list instead</button></p>` : ""}
     <form id="ideaForm" autocomplete="off"${idea.price_auto ? ` data-price-auto="${esc(priceIn(idea.price_cents))}"` : ""}>
       <div class="err" hidden></div>
       ${chips ? (subjectId ? `<p class="what">For ${esc(personName(subjectId))}${lockTip(`${personName(subjectId)} never sees this.`)}</p>` : "") : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
@@ -4389,6 +4523,10 @@ function editIdea(idea, subjectId, opts = {}) {
       wireAutofill(form);
       wireWhoChips(el);
       restoreImage(form, c);
+      $("#toTheirList", el)?.addEventListener("click", () => {
+        const f = form.elements;
+        editItem(null, { as: subjectId, carry: { title: f.title.value, url: f.url.value, price: f.price.value, priceAuto: autoPrice(form), notes: f.note.value, image: form.dataset.image, imageFor: form.dataset.imageFor } });
+      });
       if (isNew && !form.elements.title.value && !form.elements.url.value) setTimeout(() => form.elements.url.focus(), 300);
       if (opts.fill) form.fillFromLink?.();
       // Which occasion it's for: shown when you're getting it and the person has a birthday too.
@@ -4486,12 +4624,13 @@ function myGiftCards(cards = []) {
 }
 
 // Pick gift cards: tap stores on and off, then save. Replaces the whole set.
-function pickGiftCards(current = []) {
+// as / asName: someone you look after (their gift cards instead of yours).
+function pickGiftCards(current = [], as = null, asName = "") {
   const before = new Set(current.map((c) => c.brand).filter((k) => GC[k]));
   const chosen = new Set(before);
   const card = (g) => `<button class="gc-item" type="button" data-pick="${g.key}" aria-pressed="${chosen.has(g.key)}" aria-label="${esc(g.name)}">${giftCard(g, `<span class="gc-check">${CHECK}</span>`)}</button>`;
   openSheet(`
-    <h3>Gift cards you'd love</h3>
+    <h3>${as ? `Gift cards ${esc(asName)} would love` : "Gift cards you'd love"}</h3>
     <input class="input gc-search" type="search" placeholder="Search stores" aria-label="Search stores" autocomplete="off">
     ${GC_GROUPS.map((grp) => `<section data-group><div class="gc-group">${esc(grp)}</div>
       <div class="gc-pick">${GIFT_LIST.filter((g) => g.group === grp).map(card).join("")}</div></section>`).join("")}
@@ -4534,10 +4673,11 @@ function pickGiftCards(current = []) {
         err.hidden = true;
         save.disabled = true;
         try {
-          await api("giftcards/save", { brands: [...chosen] });
+          await api("giftcards/save", { brands: [...chosen], as: as || undefined });
           closeSheet();
           buzz();
-          toast(added.length ? `Added ${plural(added.length, "gift card", "gift cards")} to your list` : "Gift cards saved");
+          toast(added.length ? `Added ${plural(added.length, "gift card", "gift cards")} to ${as ? `${asName}'s` : "your"} list` : "Gift cards saved");
+          if (as) return render();
           state.stale = true;
           state.gcNew = new Set(added);
           if (added.length) setTimeout(() => party(innerWidth / 2, innerHeight / 2.4, 26), 350);

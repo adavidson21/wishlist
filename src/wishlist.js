@@ -438,6 +438,25 @@ async function manageableHousehold(env, meId, householdId) {
   fail(403, "Only the circle's admin can change someone else's household.");
 }
 
+// ---------- people someone looks after ----------
+// A managed person (members.managed_by, migration 0022) doesn't use the app: a kid, or a grandparent. Whoever
+// added them manages them, and so does anyone in the same household as them. Managers edit their list and
+// profile, and still see purchased marks (the person themself never signs in, so there's no surprise to keep).
+// Nobody can sign in as them until a manager hands the list over (managed/release).
+async function canManage(env, meId, memberId) {
+  if (!memberId || memberId === meId) return false;
+  const row = await env.DB.prepare("SELECT managed_by, household_id FROM members WHERE id = ?").bind(String(memberId)).first();
+  if (!row?.managed_by) return false;
+  if (row.managed_by === meId) return true;
+  return !!row.household_id && (await householdOf(env, meId)) === row.household_id;
+}
+// Whose list or profile a write is for: yours, or (as: id) someone you look after.
+async function ownerFor(env, me, as) {
+  if (!as || as === me.id) return me.id;
+  if (!(await canManage(env, me.id, as))) fail(403, "You can only change lists you look after.");
+  return String(as);
+}
+
 // Each circle has one admin (groups.created_by): renames it, sets its photo, manages its households and can
 // hand admin to someone else. If the admin is no longer in the circle (left, or dropped with a household),
 // it passes to whoever has been in it longest. Returns the admin's member id, or null for an empty circle.
@@ -448,8 +467,10 @@ async function adminOf(env, groupId) {
   ).bind(groupId).first();
   if (!row) return null;
   if (row.admin && row.inIt) return row.admin;
+  // Never someone who doesn't use the app (a managed person).
   const next = await env.DB.prepare(
-    "SELECT member_id FROM group_members WHERE group_id = ? ORDER BY direct DESC, joined_at, member_id LIMIT 1",
+    `SELECT gm.member_id FROM group_members gm JOIN members m ON m.id = gm.member_id
+      WHERE gm.group_id = ? AND m.managed_by IS NULL ORDER BY gm.direct DESC, gm.joined_at, gm.member_id LIMIT 1`,
   ).bind(groupId).first();
   const id = next?.member_id || null;
   if (id) await env.DB.prepare("UPDATE groups SET created_by = ? WHERE id = ?").bind(id, groupId).run();
@@ -1164,6 +1185,13 @@ async function refreshRow(env, table, row) {
 
 // ---------- handlers ----------
 
+// Signing in as someone who is looked after isn't allowed until a manager hands their list over.
+async function notManaged(env, member) {
+  if (!member.managed_by) return;
+  const by = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(member.managed_by).first();
+  fail(409, `${member.name}'s list is looked after by ${by?.name || "someone in this circle"}. Ask them to tap "Let ${member.name} sign in" on ${member.name}'s list first.`);
+}
+
 const handlers = {
   // Step 1 of joining: show the family name and who is already in it.
   // `from` (optional) is the id of whoever sent the invite link; their name comes back as `inviter`.
@@ -1172,7 +1200,8 @@ const handlers = {
     const group = await groupByCode(env, b.code);
     const info = b.from ? await inviteInfo(env, b.code, b.from) : null;
     const { results } = await env.DB.prepare(
-      "SELECT m.id, m.name, m.pin_hash, m.photo_at FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? ORDER BY m.name COLLATE NOCASE",
+      // People someone looks after can't be picked: they don't sign in until their list is handed over.
+      "SELECT m.id, m.name, m.pin_hash, m.photo_at FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.managed_by IS NULL ORDER BY m.name COLLATE NOCASE",
     )
       .bind(group.id)
       .all();
@@ -1190,18 +1219,20 @@ const handlers = {
     let member;
     if (b.memberId) {
       member = await env.DB.prepare(
-        "SELECT m.id, m.pin_hash FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
+        "SELECT m.id, m.name, m.pin_hash, m.managed_by FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
       )
         .bind(group.id, b.memberId)
         .first();
       if (!member) fail(404, "That person isn't in this circle.");
+      await notManaged(env, member);
     } else {
       const name = text(b.name, LIMITS.name, "Name", true);
       member = await env.DB.prepare(
-        "SELECT m.id, m.pin_hash FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
+        "SELECT m.id, m.name, m.pin_hash, m.managed_by FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
       )
         .bind(group.id, name)
         .first();
+      if (member) await notManaged(env, member);
       if (!member) {
         const pin = pinValue(b.pin);
         const id = newId();
@@ -1258,7 +1289,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes,
+      `SELECT gm.group_id, m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes, m.managed_by,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -1269,15 +1300,18 @@ const handlers = {
       .all();
     const nicks = await nicknamesFor(env, me.id);
     const t = today();
+    const myHh = await householdOf(env, me.id);
     const person = (p) => ({
       id: p.id, name: nicks.get(p.id) || p.name, fullName: p.name, itemCount: p.item_count, photo: p.photo_at || null,
       occasions: occasionsFor(p, t), householdId: p.household_id || null,
       // Their Nopes (shown on their page anyway), so the app can warn when an idea for them matches one.
       nopes: tagsOut(p.dislikes),
+      // Someone who doesn't use the app: who added them, and whether you can run their list (canManage, same rule).
+      managedBy: p.managed_by || null,
+      canManage: !!p.managed_by && (p.managed_by === me.id || (!!p.household_id && p.household_id === myHh)),
     });
     // Households of anyone you can see. Labels use only people you can see (and your nicknames for them),
     // except your own household, which lists everyone in it.
-    const myHh = await householdOf(env, me.id);
     const hhIds = [...new Set(people.map((p) => p.household_id).filter(Boolean))];
     if (myHh && !hhIds.includes(myHh)) hhIds.push(myHh);
     const households = {};
@@ -1337,6 +1371,7 @@ const handlers = {
     const member = await env.DB.prepare("SELECT id, name, photo_at AS photo FROM members WHERE id = ?").bind(memberId).first();
     if (!member) fail(404, "List not found.");
     const own = memberId === me.id;
+    const manage = !own && (await canManage(env, me.id, memberId));
     const nicks = own ? new Map() : await nicknamesFor(env, me.id);
     member.fullName = member.name;
     member.name = nicks.get(member.id) || member.name;
@@ -1392,6 +1427,7 @@ const handlers = {
     return {
       member,
       own,
+      canManage: manage,
       giftCards: await giftCardsFor(env, memberId, me.id),
       items: results.map((r) => ({
         ...itemOut(r),
@@ -1407,14 +1443,17 @@ const handlers = {
 
   // Add (no id) or edit (id) one of your own items. size and color: free text, absent = unchanged. New items start in "Maybe" (draft) until published.
   // "Must have" only applies to published items, so it is dropped on drafts.
+  // as: someone you look after (their wishes skip Maybe and go straight on their list).
   async "POST item/save"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
+    const owner = await ownerFor(env, me, b.as);
+    const forOther = owner !== me.id;
     const existing = b.id
-      ? await env.DB.prepare("SELECT draft FROM items WHERE id = ? AND owner_id = ? AND removed_at IS NULL").bind(b.id, me.id).first()
+      ? await env.DB.prepare("SELECT draft FROM items WHERE id = ? AND owner_id = ? AND removed_at IS NULL").bind(b.id, owner).first()
       : null;
     if (b.id && !existing) fail(404, "Item not found.");
-    const isDraft = existing ? !!existing.draft : true;
+    const isDraft = existing ? !!existing.draft : !forOther;
     const fields = [
       text(b.title, LIMITS.title, "Title", true),
       link(b.url),
@@ -1426,7 +1465,7 @@ const handlers = {
     const image = fields[1] ? imageLink(b.image) : null;
     // hiddenFrom: family ids to hide this item from (absent = leave as is). Only your own families count.
     const hideRows = (id) => async () => {
-      if (!Array.isArray(b.hiddenFrom)) return [];
+      if (!Array.isArray(b.hiddenFrom) || forOther) return [];
       const mine = new Set(await myGroupIds(env, me.id));
       const ids = [...new Set(b.hiddenFrom.map(String))].filter((g) => mine.has(g));
       return [
@@ -1439,7 +1478,7 @@ const handlers = {
         `UPDATE items SET ${IMAGE_SET}, title = ?4, url = ?2, price_cents = ?5, notes = ?6, priority = ?7, updated_at = ?3
           WHERE id = ?8 AND owner_id = ?9 AND removed_at IS NULL`,
       )
-        .bind(image, fields[1], t, fields[0], fields[2], fields[3], fields[4], b.id, me.id)
+        .bind(image, fields[1], t, fields[0], fields[2], fields[3], fields[4], b.id, owner)
         .run();
       if (!res.meta.changes) fail(404, "Item not found.");
       const rows = await hideRows(b.id)();
@@ -1454,8 +1493,8 @@ const handlers = {
     const id = newId();
     await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft, details_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ${DETAILS_V})`,
-      ).bind(id, me.id, ...fields, t, t, image, image ? t : null, category(b.category)),
+        `INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft, details_v) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${DETAILS_V})`,
+      ).bind(id, owner, ...fields, t, t, image, image ? t : null, category(b.category), isDraft ? 1 : 0),
       env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), id),
       ...(await hideRows(id)()),
       ...sizeColorRows(env, id, b),
@@ -1481,9 +1520,10 @@ const handlers = {
   // Remove one of your items. If someone already bought it, keep it for them (flagged "removed").
   async "POST item/remove"(req, env) {
     const me = await auth(req, env);
-    const { id } = await body(req);
+    const { id, as } = await body(req);
+    const owner = await ownerFor(env, me, as);
     const item = await env.DB.prepare("SELECT id FROM items WHERE id = ? AND owner_id = ? AND removed_at IS NULL")
-      .bind(id, me.id)
+      .bind(id, owner)
       .first();
     if (!item) fail(404, "Item not found.");
     const claimed = await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ? AND season >= ?").bind(id, today()).first();
@@ -1545,7 +1585,8 @@ const handlers = {
   // Removing a brand someone is already giving keeps their gift (they see it flagged "removed").
   async "POST giftcards/save"(req, env) {
     const me = await auth(req, env);
-    const { brands } = await body(req);
+    const { brands, as } = await body(req);
+    const owner = await ownerFor(env, me, as);
     if (!Array.isArray(brands)) fail(400, "Pick some gift cards.");
     const keys = [...new Set(brands.map(String))].filter((k) => GIFT_CARD_NAMES.has(k));
     if (keys.length > LIMITS.giftCards) fail(400, "That's more gift cards than we can show.");
@@ -1553,10 +1594,10 @@ const handlers = {
     const marks = keys.map(() => "?").join(", ");
     await env.DB.batch([
       keys.length
-        ? env.DB.prepare(`DELETE FROM gift_cards WHERE member_id = ? AND brand NOT IN (${marks})`).bind(me.id, ...keys)
-        : env.DB.prepare("DELETE FROM gift_cards WHERE member_id = ?").bind(me.id),
+        ? env.DB.prepare(`DELETE FROM gift_cards WHERE member_id = ? AND brand NOT IN (${marks})`).bind(owner, ...keys)
+        : env.DB.prepare("DELETE FROM gift_cards WHERE member_id = ?").bind(owner),
       // Keeps the original date for brands already there, so the order on the list stays put.
-      ...keys.map((k) => env.DB.prepare("INSERT OR IGNORE INTO gift_cards (member_id, brand, created_at) VALUES (?, ?, ?)").bind(me.id, k, t)),
+      ...keys.map((k) => env.DB.prepare("INSERT OR IGNORE INTO gift_cards (member_id, brand, created_at) VALUES (?, ?, ?)").bind(owner, k, t)),
     ]);
     return { ok: true, brands: keys };
   },
@@ -2030,8 +2071,11 @@ const handlers = {
     if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
     if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can pick a new admin.");
     if (!memberId || memberId === me.id) fail(400, "Pick someone else.");
-    const them = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, String(memberId)).first();
+    const them = await env.DB.prepare(
+      "SELECT m.managed_by FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND gm.member_id = ?",
+    ).bind(groupId, String(memberId)).first();
     if (!them) fail(404, "They aren't in this circle.");
+    if (them.managed_by) fail(400, "Pick someone who uses the app.");
     await env.DB.prepare("UPDATE groups SET created_by = ? WHERE id = ?").bind(String(memberId), groupId).run();
     return { ok: true };
   },
@@ -2078,6 +2122,63 @@ const handlers = {
       env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(groupId, me.id),
     ]);
     await adminOf(env, groupId);
+    return { ok: true };
+  },
+
+  // ---------- people you look after ----------
+
+  // Add someone who doesn't use the app (a kid, a grandparent). groupIds: which of your circles they're in
+  // (absent = all of them). If you have a household they join it too, so everyone in it can run their list.
+  async "POST managed/add"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const name = text(b.name, LIMITS.name, "Their name", true);
+    const mine = await myGroupIds(env, me.id);
+    const picked = Array.isArray(b.groupIds) ? [...new Set(b.groupIds.map(String))].filter((g) => mine.includes(g)) : mine;
+    if (!picked.length) fail(400, "Pick at least one circle.");
+    const hh = await householdOf(env, me.id);
+    const hhCircles = hh ? (await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all()).results.map((r) => r.group_id) : [];
+    for (const g of new Set([...picked, ...hhCircles])) {
+      const clash = await env.DB.prepare(
+        "SELECT g.name FROM group_members gm JOIN members m ON m.id = gm.member_id JOIN groups g ON g.id = gm.group_id WHERE gm.group_id = ? AND m.name = ? COLLATE NOCASE",
+      ).bind(g, name).first();
+      if (clash) fail(409, `Someone named ${name} is already in ${clash.name}. Add a last initial to tell them apart.`);
+    }
+    const id = newId();
+    const t = now();
+    await env.DB.batch([
+      // onboarded_at: there's no welcome tour for someone who never opens the app.
+      env.DB.prepare("INSERT INTO members (id, name, created_at, managed_by, household_id, onboarded_at) VALUES (?, ?, ?, ?, ?, ?)").bind(id, name, t, me.id, hh, t),
+      ...picked.map((g) => env.DB.prepare(JOIN_DIRECT).bind(g, id, t)),
+      ...hhCircles.map((g) => env.DB.prepare(
+        "INSERT INTO group_members (group_id, member_id, joined_at, direct) VALUES (?, ?, ?, 0) ON CONFLICT DO NOTHING",
+      ).bind(g, id, t)),
+    ]);
+    return { id };
+  },
+
+  // Hand someone's list over to them: they can now pick their name on the sign-in screen, and from then on
+  // they never see purchased marks, like everyone else. Their managers can no longer edit it.
+  async "POST managed/release"(req, env) {
+    const me = await auth(req, env);
+    const { memberId } = await body(req);
+    if (!(await canManage(env, me.id, memberId))) fail(404, "Person not found.");
+    await env.DB.prepare("UPDATE members SET managed_by = NULL WHERE id = ?").bind(String(memberId)).run();
+    return { ok: true };
+  },
+
+  // Take someone you look after out of every circle (and their household). Nobody can see their list after that.
+  async "POST managed/remove"(req, env) {
+    const me = await auth(req, env);
+    const { memberId } = await body(req);
+    if (!(await canManage(env, me.id, memberId))) fail(404, "Person not found.");
+    const id = String(memberId);
+    await leaveHousehold(env, id);
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM item_hidden WHERE item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(id),
+      env.DB.prepare("DELETE FROM group_members WHERE member_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM devices WHERE member_id = ?").bind(id),
+    ]);
     return { ok: true };
   },
 
@@ -2214,16 +2315,19 @@ const handlers = {
   // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text.
   // brands: favorite brand names (free text). giftStyle, colors: up to 3 keys each. loves: short free text (old).
   // likes, dislikes: lists of short tags (Loves and Nopes). bio: one short line.
-  // Absent = unchanged.
+  // as: someone you look after (everything but the PIN). Absent = unchanged.
   async "POST profile"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
+    // as: someone you look after. Their PIN is never set from here (they don't sign in).
+    const who = await ownerFor(env, me, b.as);
+    if (who !== me.id && b.pin !== undefined) fail(400, "Only they can set their own PIN.");
     if (b.name !== undefined) {
       const name = text(b.name, LIMITS.name, "Name", true);
-      await env.DB.prepare("UPDATE members SET name = ? WHERE id = ?").bind(name, me.id).run();
+      await env.DB.prepare("UPDATE members SET name = ? WHERE id = ?").bind(name, who).run();
     }
     if (b.birthday !== undefined || b.birthYear !== undefined) {
-      const before = await env.DB.prepare("SELECT birthday, birth_year FROM members WHERE id = ?").bind(me.id).first();
+      const before = await env.DB.prepare("SELECT birthday, birth_year FROM members WHERE id = ?").bind(who).first();
       const birthday = b.birthday !== undefined ? birthdayValue(b.birthday) : before?.birthday || null;
       let year = b.birthYear !== undefined ? b.birthYear : before?.birth_year;
       year = birthday && year !== null && year !== undefined && year !== "" ? Number(year) : null;
@@ -2235,17 +2339,17 @@ const handlers = {
       const oldBday = occasionsFor(before).find((o) => o.birthday && !o.christmas)?.code;
       const next = occasionsFor(after);
       const newCode = (next.find((o) => o.birthday) || next.find((o) => o.christmas)).code;
-      const rows = [env.DB.prepare("UPDATE members SET birthday = ?, birth_year = ? WHERE id = ?").bind(birthday, year, me.id)];
+      const rows = [env.DB.prepare("UPDATE members SET birthday = ?, birth_year = ? WHERE id = ?").bind(birthday, year, who)];
       // Budgets and marks family filed for your upcoming birthday follow it to the new date (or to Christmas
       // if you removed it). You never see them; this just keeps their plans together.
       if (oldBday && oldBday !== newCode) {
         rows.push(
-          env.DB.prepare("UPDATE OR IGNORE budgets SET season = ? WHERE subject_id = ? AND season = ?").bind(newCode, me.id, oldBday),
+          env.DB.prepare("UPDATE OR IGNORE budgets SET season = ? WHERE subject_id = ? AND season = ?").bind(newCode, who, oldBday),
           // Someone who already had a budget for the new date keeps that one.
-          env.DB.prepare("DELETE FROM budgets WHERE subject_id = ? AND season = ?").bind(me.id, oldBday),
-          env.DB.prepare("UPDATE OR IGNORE claims SET season = ? WHERE season = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(newCode, oldBday, me.id),
-          env.DB.prepare("UPDATE OR IGNORE idea_claims SET season = ? WHERE season = ? AND idea_id IN (SELECT id FROM private_ideas WHERE subject_id = ?)").bind(newCode, oldBday, me.id),
-          env.DB.prepare("UPDATE OR IGNORE gift_card_gifts SET season = ? WHERE member_id = ? AND season = ?").bind(newCode, me.id, oldBday),
+          env.DB.prepare("DELETE FROM budgets WHERE subject_id = ? AND season = ?").bind(who, oldBday),
+          env.DB.prepare("UPDATE OR IGNORE claims SET season = ? WHERE season = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(newCode, oldBday, who),
+          env.DB.prepare("UPDATE OR IGNORE idea_claims SET season = ? WHERE season = ? AND idea_id IN (SELECT id FROM private_ideas WHERE subject_id = ?)").bind(newCode, oldBday, who),
+          env.DB.prepare("UPDATE OR IGNORE gift_card_gifts SET season = ? WHERE member_id = ? AND season = ?").bind(newCode, who, oldBday),
         );
       }
       await env.DB.batch(rows);
@@ -2253,10 +2357,10 @@ const handlers = {
     if (b.sizes !== undefined) {
       const src = b.sizes && typeof b.sizes === "object" ? b.sizes : {};
       const sizes = Object.fromEntries(SIZE_KEYS.map((k) => [k, text(src[k], LIMITS.size, "Size") || ""]).filter(([, v]) => v));
-      await env.DB.prepare("UPDATE members SET sizes = ? WHERE id = ?").bind(Object.keys(sizes).length ? JSON.stringify(sizes) : null, me.id).run();
+      await env.DB.prepare("UPDATE members SET sizes = ? WHERE id = ?").bind(Object.keys(sizes).length ? JSON.stringify(sizes) : null, who).run();
     }
     if (b.avoid !== undefined) {
-      await env.DB.prepare("UPDATE members SET avoid = ? WHERE id = ?").bind(text(b.avoid, LIMITS.avoid, "Dislikes and allergies"), me.id).run();
+      await env.DB.prepare("UPDATE members SET avoid = ? WHERE id = ?").bind(text(b.avoid, LIMITS.avoid, "Dislikes and allergies"), who).run();
     }
     if (b.brands !== undefined) {
       const seen = new Set(), brands = [];
@@ -2265,13 +2369,13 @@ const handlers = {
         if (name && !seen.has(name.toLowerCase())) { seen.add(name.toLowerCase()); brands.push(name); }
       }
       if (brands.length > LIMITS.brands) fail(400, `That's a lot of brands. Keep it to ${LIMITS.brands}.`);
-      await env.DB.prepare("UPDATE members SET brands = ? WHERE id = ?").bind(brands.length ? JSON.stringify(brands) : null, me.id).run();
+      await env.DB.prepare("UPDATE members SET brands = ? WHERE id = ?").bind(brands.length ? JSON.stringify(brands) : null, who).run();
     }
     if (b.giftStyle !== undefined) {
-      await env.DB.prepare("UPDATE members SET gift_style = ? WHERE id = ?").bind(keysIn(b.giftStyle, GIFT_STYLES), me.id).run();
+      await env.DB.prepare("UPDATE members SET gift_style = ? WHERE id = ?").bind(keysIn(b.giftStyle, GIFT_STYLES), who).run();
     }
     if (b.colors !== undefined) {
-      await env.DB.prepare("UPDATE members SET colors = ? WHERE id = ?").bind(keysIn(b.colors, FAV_COLORS), me.id).run();
+      await env.DB.prepare("UPDATE members SET colors = ? WHERE id = ?").bind(keysIn(b.colors, FAV_COLORS), who).run();
     }
     if (b.likes !== undefined || b.dislikes !== undefined) {
       const likes = b.likes !== undefined ? tagsIn(b.likes, "Loves") : undefined;
@@ -2279,24 +2383,24 @@ const handlers = {
       const both = new Set([...JSON.parse(likes || "[]"), ...JSON.parse(dislikes || "[]")].map((t) => t.toLowerCase()));
       if (likes && dislikes && both.size < JSON.parse(likes).length + JSON.parse(dislikes).length) fail(400, "Something is in both Loves and Nopes. Pick one.");
       // Saving likes replaces the old free-text loves for good.
-      if (likes !== undefined) await env.DB.prepare("UPDATE members SET likes = ?, loves = NULL WHERE id = ?").bind(likes || "[]", me.id).run();
-      if (dislikes !== undefined) await env.DB.prepare("UPDATE members SET dislikes = ? WHERE id = ?").bind(dislikes, me.id).run();
+      if (likes !== undefined) await env.DB.prepare("UPDATE members SET likes = ?, loves = NULL WHERE id = ?").bind(likes || "[]", who).run();
+      if (dislikes !== undefined) await env.DB.prepare("UPDATE members SET dislikes = ? WHERE id = ?").bind(dislikes, who).run();
     }
     if (b.bio !== undefined) {
-      await env.DB.prepare("UPDATE members SET bio = ? WHERE id = ?").bind(text(b.bio, LIMITS.bio, "Bio") || null, me.id).run();
+      await env.DB.prepare("UPDATE members SET bio = ? WHERE id = ?").bind(text(b.bio, LIMITS.bio, "Bio") || null, who).run();
     }
     if (b.loves !== undefined) {
-      await env.DB.prepare("UPDATE members SET loves = ? WHERE id = ?").bind(text(b.loves, LIMITS.loves, "Little things you love") || null, me.id).run();
+      await env.DB.prepare("UPDATE members SET loves = ? WHERE id = ?").bind(text(b.loves, LIMITS.loves, "Little things you love") || null, who).run();
     }
     if (b.pin !== undefined) {
       const pin = pinValue(b.pin);
       await env.DB.prepare("UPDATE members SET pin_hash = ? WHERE id = ?")
-        .bind(pin ? await hashPin(me.id, pin) : null, me.id)
+        .bind(pin ? await hashPin(who, pin) : null, who)
         .run();
     }
     if (b.photo !== undefined) {
       const photo = photoValue(b.photo);
-      await env.DB.prepare("UPDATE members SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, me.id).run();
+      await env.DB.prepare("UPDATE members SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, who).run();
     }
     return { ok: true };
   },
