@@ -5805,9 +5805,12 @@ function bdayIn(b) {
   return Math.round((next - t) / 86400000);
 }
 // Fun profile extras. Keys must match GIFT_STYLES and FAV_COLORS in src/wishlist.js (never rename one).
-const GIFT_STYLES = [["surprise", "🎁 Surprise me"], ["experiences", "🎟️ Experiences over things"], ["practical", "🧰 Practical please"],
-  ["homemade", "🧶 Homemade melts my heart"], ["consumable", "🍫 No clutter, treats please"], ["books", "📚 Books, always"],
-  ["together", "☕ Time together"], ["giftcards", "💳 Gift cards are great"]];
+// Labels can change freely; keys can't. "surprise" and "list" can't both be picked.
+const GIFT_STYLES = [["surprise", "🎁 Surprise me"], ["list", "📝 Stick to my list"], ["experiences", "🎟️ Experiences"], ["practical", "🧰 Practical"],
+  ["homemade", "🧶 Handmade"], ["sentimental", "💌 Sentimental"], ["funny", "😂 Make me laugh"], ["consumable", "🍫 No clutter"],
+  ["books", "📚 Books"], ["together", "☕ Quality time"], ["thrifted", "♻️ Thrifted is great"],
+  ["giftcards", "💳 Gift cards"], ["cash", "💵 Cash works"]];
+const GIFT_STYLE_MAX = 5;
 const FAV_COLORS = [["red", "Red", "#C62E2E"], ["pink", "Pink", "#F08AB0"], ["orange", "Orange", "#EE8A2E"], ["yellow", "Yellow", "#F2C94C"],
   ["green", "Green", "#4E9A5A"], ["teal", "Teal", "#2A9D8F"], ["blue", "Blue", "#4A8FD8"], ["navy", "Navy", "#1F3263"], ["purple", "Purple", "#8A5CC2"],
   ["brown", "Brown", "#8B5E3C"], ["black", "Black", "#1C1C1C"], ["white", "White", "#FFFFFF"], ["gray", "Gray", "#9A9A9A"], ["gold", "Gold", "#C9A227"], ["silver", "Silver", "#C4C8CC"]];
@@ -6027,7 +6030,7 @@ async function renderProfileEdit() {
         <button class="btn small" type="button" id="brandAdd">${PLUS} Add</button>
       </div>
       <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
-      <span class="flabel">Gift style <em>(up to 3)</em></span>
+      <span class="flabel">Gift style${tip(`How you like to get gifts. Pick up to ${GIFT_STYLE_MAX}.`)}</span>
       <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
       <span class="flabel">Favorite colors <em>(pick any)</em></span>
       <div class="swatches" id="colorPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch" type="button" data-color="${k}" aria-pressed="${(prof.colors || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
@@ -6156,11 +6159,13 @@ async function renderProfileEdit() {
   $("#brandAdd", v).onclick = () => { addBrand(); brandIn.focus(); };
   brandIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addBrand(); } });
   brandIn.addEventListener("input", (e) => { if (e.inputType === "insertReplacementText" || (!e.inputType && GIFT_LIST.some((g) => g.name === brandIn.value))) addBrand(); });
-  // Gift style: tap on and off, up to 3.
+  // Gift style: tap on and off, up to GIFT_STYLE_MAX. Surprise me and Stick to my list swap with each other.
   const picked = (attr) => [...v.querySelectorAll(`[${attr}][aria-pressed="true"]`)].map((b) => b.getAttribute(attr));
   v.querySelectorAll("[data-style]").forEach((b) => (b.onclick = () => {
     const on = b.getAttribute("aria-pressed") !== "true";
-    if (on && picked("data-style").length >= 3) return toast("Pick up to 3 gift styles");
+    const other = { surprise: "list", list: "surprise" }[b.dataset.style];
+    if (on && other) v.querySelector(`[data-style="${other}"]`)?.setAttribute("aria-pressed", "false");
+    if (on && picked("data-style").length >= GIFT_STYLE_MAX) return toast(`Pick up to ${GIFT_STYLE_MAX}`);
     b.setAttribute("aria-pressed", String(on));
     buzz();
   }));
