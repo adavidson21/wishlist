@@ -3241,7 +3241,7 @@ async function renderMine() {
       <p>So your people can tell you apart from anyone else named ${esc(state.me.name)}.</p><div class="err" hidden></div>
       <label class="field"><span>Last name</span><input class="input" name="lastName" maxlength="40" required></label>
       <div class="actions" style="margin:0"><button class="btn primary" type="submit">Save</button></div></form>`;
-  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards) + receivedSection(data.received)) + "</div>" : `
+  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards) + receivedSection(data.received) + shareRow()) + "</div>" : `
     <div class="empty">
       ${giftBox("Drop your first hint")}
       <strong>Let's start your list</strong>
@@ -3294,7 +3294,10 @@ async function renderMine() {
   wireMineItems(v, data.items);
   wireMineTools(v, sideItems, data.items);
   wireReceived(v);
+  $("#shareOut", v)?.addEventListener("click", () => shareOutside(state.me.shareToken || null));
 }
+// The small "share outside your circles" link at the end of My list.
+const shareRow = () => `<p class="hint" style="text-align:center;margin:26px 0 6px"><button class="linkbtn" type="button" id="shareOut">${state.me.shareToken ? "Your share link is on · Manage" : "Share your list with someone outside your circles"}</button></p>`;
 
 // Clicks on cards: open to edit, Top pick, Publish.
 function wireMineItems(root, all) {
@@ -4980,12 +4983,13 @@ function wireManageCard(v, list, name, id) {
   $("#mgMore", v).onclick = () => {
     openSheet(`<h3>${esc(name)}'s list</h3>
       <div class="more-list">
+        <button class="btn wide" type="button" data-m="share">Share ${esc(name)}'s list outside the circle</button>
         <button class="btn wide" type="button" data-m="handoff">Hand off to someone else</button>
         <button class="btn wide" type="button" data-m="invite">Send ${esc(name)} their invite</button>
         <button class="btn wide" type="button" data-m="release">Let ${esc(name)} sign in</button>
         <button class="btn wide quiet danger" type="button" data-m="remove">Remove ${esc(name)}</button>
       </div>`, (el) => {
-      const go = { handoff: () => handOff(id, name), invite: () => sendPersonalInvite(id), release, remove };
+      const go = { share: () => shareOutside(list.shareToken || null, id, name, (t) => { list.shareToken = t; }), handoff: () => handOff(id, name), invite: () => sendPersonalInvite(id), release, remove };
       el.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { closeSheet(); setTimeout(go[b.dataset.m], 250); }));
     });
   };
@@ -6134,6 +6138,39 @@ function wireReceived(v, as = null) {
   v.querySelectorAll("[data-unreceive]").forEach((b) => (b.onclick = async () => {
     try { await api("item/unreceive", { id: b.dataset.unreceive, as: as || undefined }); toast("Back on the list"); state.stale = true; render(); } catch (e) { oops(e.message); }
   }));
+}
+
+// ---------- share outside your circle ----------
+// A read-only link (/s/TOKEN) for people who aren't in your circles. as / asName: someone you look after.
+// saved(token) keeps the caller's copy of the token current.
+function shareOutside(token, as = null, asName = "", saved = (t) => { state.me.shareToken = t; }) {
+  const whose = as ? `${esc(asName)}'s` : "your";
+  const link = (t) => `${location.origin}/s/${t}`;
+  openSheet(`<h3>Share ${whose} list</h3>
+    <p class="subtle">For people outside ${as ? "the" : "your"} circles, like a coworker or a friend. They see wishes, gift cards, sizes and loves. Never what's been bought, and nothing in Maybe or hidden from a circle.</p>
+    <div id="shareBody"></div>`, (el) => {
+    const body = $("#shareBody", el);
+    const set = async (on, msg) => {
+      try { const r = await api("share/link", { on, as: as || undefined }); token = r.token; saved(token); paint(); if (msg) toast(msg); }
+      catch (e) { toast(e.message); }
+    };
+    const paint = () => {
+      if (!token) {
+        body.innerHTML = `<button class="btn primary wide" type="button" id="shareMake">Make a link</button>`;
+        $("#shareMake", body).onclick = () => set(true);
+        return;
+      }
+      body.innerHTML = `<label class="field"><span>Anyone with this link can see ${whose} list</span><input class="input" readonly value="${esc(link(token))}" id="shareUrl"></label>
+        <div class="actions">${navigator.share ? `<button class="btn" type="button" id="shareSend">Share</button>` : ""}<button class="btn primary" type="button" id="shareCopy">Copy link</button></div>
+        <p class="hint" style="margin-top:12px"><button class="linkbtn" type="button" id="shareNew" style="padding:0">Make a new link</button> (the old one stops working) · <button class="linkbtn" type="button" id="shareOff" style="padding:0">Turn off</button></p>`;
+      $("#shareUrl", body).onclick = (e) => e.target.select();
+      $("#shareCopy", body).onclick = async () => { try { await navigator.clipboard.writeText(link(token)); buzz(); toast("Link copied"); } catch { $("#shareUrl", body).select(); } };
+      $("#shareSend", body)?.addEventListener("click", () => navigator.share({ title: as ? `${asName}'s wish list` : `${state.me.name}'s wish list`, url: link(token) }).catch(() => {}));
+      $("#shareNew", body).onclick = () => set(true, "New link made. The old one no longer works.");
+      $("#shareOff", body).onclick = () => set(false, "Link turned off");
+    };
+    paint();
+  });
 }
 
 function myGiftCards(cards = []) {

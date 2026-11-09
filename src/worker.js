@@ -2,7 +2,7 @@
 // retired wishlist.alexisdavidson.org can redirect everything here. API calls go to src/wishlist.js, invite links (/join/CODE) get the app page
 // with a link preview for that circle, everything else is a static file.
 // Every response gets the security headers below and an x-app-version header (the deploy id). API calls and invite pages also pass a per-IP burst cap (src/limits.js).
-import { routes, inviteInfo, runSchedule } from "./wishlist.js";
+import { routes, inviteInfo, runSchedule, sharePage } from "./wishlist.js";
 import { json } from "./gemini.js";
 import { LIMITS, burstOk, hit, ipOf } from "./limits.js";
 
@@ -55,13 +55,16 @@ export default {
 async function route(request, env, url, ctx) {
   const isApi = url.pathname.startsWith("/api/");
   const join = url.pathname.match(/^\/join\/([A-Za-z0-9]{3,12})\/?$/);
-  if ((isApi || join) && !(await burstOk(env, request))) {
+  // A read-only list shared outside the circle (src/wishlist.js sharePage).
+  const share = url.pathname.match(/^\/s\/([A-Za-z0-9_-]{1,64})\/?$/);
+  if ((isApi || join || share) && !(await burstOk(env, request))) {
     return isApi ? tooMany() : new Response("Too many requests. Wait a minute and try again.", { status: 429, headers: { "retry-after": "60" } });
   }
   const handler = routes[url.pathname];
   if (handler) return handler(request, env, ctx);
   if (isApi) return json({ error: "Not found." }, 404);
   if (join && (request.method === "GET" || request.method === "HEAD")) return invitePage(request, env, url, join[1]);
+  if (share && (request.method === "GET" || request.method === "HEAD")) return sharePage(env, share[1], url);
   return env.ASSETS.fetch(request);
 }
 
