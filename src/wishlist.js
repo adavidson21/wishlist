@@ -27,7 +27,7 @@ import "../public/giftcards.js";
 const BASE = "/api/";
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
 const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
-const LIMITS = { household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { color: 40, household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -467,6 +467,8 @@ const itemOut = (r) => ({
   url: r.url,
   price_cents: r.price_cents,
   notes: r.notes,
+  size: r.size || null,
+  color: r.color || null,
   priority: r.priority,
   category: r.category || null,
   draft: !!r.draft,
@@ -541,6 +543,106 @@ async function setIdeaClaim(env, me, ideaId, on, price, occasion) {
   }
 }
 
+// Size and color on a wish: separate UPDATEs so a save without them (the Top pick toggle) leaves them alone.
+function sizeColorRows(env, id, b) {
+  const rows = [];
+  if (b.size !== undefined) rows.push(env.DB.prepare("UPDATE items SET size = ? WHERE id = ?").bind(text(b.size, LIMITS.size, "Size"), id));
+  if (b.color !== undefined) rows.push(env.DB.prepare("UPDATE items SET color = ? WHERE id = ?").bind(text(b.color, LIMITS.color, "Color"), id));
+  return rows;
+}
+
+// ---------- sizes and colors from a product link ----------
+// Three places, best first: a Shopify store's public product JSON (/products/<handle>.js, which lists every
+// option and variant), the page's JSON-LD (ProductGroup.hasVariant, or size/color on the Product), and the
+// link's own query (?color=navy&size=M, ?variant=<id> on Shopify).
+const SIZE_NAME = /^(size|sizes|taille|talla|shoe size|ring size|waist|length|inseam|fit)$/i;
+const COLOR_NAME = /^(colou?r|colou?rs|colorway|shade|finish|pattern|style colou?r)$/i;
+const SIZE_PARAM = /^(size|sz|selectedsize|size_code|sizecode|shoesize|dimension_size)$/i;
+const COLOR_PARAM = /^(colou?r|colou?r_code|selectedcolou?r|colorway|shade|swatch)$/i;
+const tidyOption = (v) => decode(String(v ?? "")).replace(/[_+]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+const uniq = (list) => [...new Map(list.map(tidyOption).filter(Boolean).map((v) => [v.toLowerCase(), v])).values()].slice(0, 40);
+const niceParam = (v) => {
+  const t = tidyOption(v);
+  // Codes like "0001" or "BLK-123" aren't worth showing; words and sizes ("M", "8.5", "32x30") are.
+  return /^[0-9]{3,}$/.test(t) || /^[A-Z0-9]{2,}-[A-Z0-9-]{2,}$/.test(t) ? "" : t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+function optionsFromJsonLd(html) {
+  const sizes = [], colors = [];
+  let size = "", color = "";
+  for (const m of html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
+    let data;
+    try { data = JSON.parse(m[1].trim()); } catch { continue; }
+    const queue = [data];
+    while (queue.length) {
+      const node = queue.shift();
+      if (!node || typeof node !== "object") continue;
+      if (Array.isArray(node)) { queue.push(...node); continue; }
+      if (node["@graph"]) queue.push(node["@graph"]);
+      const type = [].concat(node["@type"] || []).join(" ");
+      if (!/Product/i.test(type)) continue;
+      for (const v of [].concat(node.hasVariant || [])) {
+        if (v?.size) sizes.push(typeof v.size === "object" ? v.size.name : v.size);
+        if (v?.color) colors.push(v.color);
+      }
+      if (!/ProductGroup/i.test(type)) {
+        if (node.size && !size) size = typeof node.size === "object" ? node.size.name : node.size;
+        if (node.color && !color) color = node.color;
+      }
+    }
+  }
+  return { sizes: uniq(sizes), colors: uniq(colors), size: tidyOption(size), color: tidyOption(color) };
+}
+
+async function optionsFromShopify(url, html) {
+  const handle = url.pathname.match(/\/products\/([^/?#]+)/)?.[1];
+  if (!handle || (html && !/shopify/i.test(html))) return null;
+  try {
+    const res = await fetch(`${url.origin}/products/${handle}.js`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) });
+    if (!res.ok || !/json/i.test(res.headers.get("content-type") || "")) return null;
+    const p = await res.json();
+    const opts = Array.isArray(p.options) ? p.options : [];
+    const at = (re) => opts.findIndex((o) => re.test(String(typeof o === "object" ? o.name : o).trim()));
+    const si = at(SIZE_NAME), ci = at(COLOR_NAME);
+    const values = (i) => (i < 0 ? [] : uniq([].concat(opts[i]?.values || (p.variants || []).map((v) => v[`option${i + 1}`]))));
+    const vid = url.searchParams.get("variant");
+    const chosen = vid ? (p.variants || []).find((v) => String(v.id) === vid) : null;
+    return {
+      sizes: values(si), colors: values(ci),
+      size: chosen && si >= 0 ? tidyOption(chosen[`option${si + 1}`]) : "",
+      color: chosen && ci >= 0 ? tidyOption(chosen[`option${ci + 1}`]) : "",
+      title: p.title ? decode(p.title) : null,
+      price: chosen ? toPrice(chosen.price / 100) : toPrice((p.price ?? p.price_min) / 100),
+      image: p.featured_image ? (String(p.featured_image).startsWith("//") ? `https:${p.featured_image}` : p.featured_image) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function optionsFromQuery(url) {
+  let size = "", color = "";
+  for (const [k, v] of url.searchParams) {
+    if (!size && SIZE_PARAM.test(k)) size = niceParam(v);
+    if (!color && COLOR_PARAM.test(k)) color = niceParam(v);
+  }
+  return { size, color };
+}
+
+// Everything we can tell about sizes and colors. Lists are what the store offers; size/color is what the link picked.
+async function linkOptions(url, html) {
+  const shop = await optionsFromShopify(url, html);
+  const ld = html ? optionsFromJsonLd(html) : { sizes: [], colors: [], size: "", color: "" };
+  const q = optionsFromQuery(url);
+  return {
+    shop,
+    sizes: shop?.sizes.length ? shop.sizes : ld.sizes,
+    colors: shop?.colors.length ? shop.colors : ld.colors,
+    size: shop?.size || ld.size || q.size,
+    color: shop?.color || ld.color || q.color,
+  };
+}
+
 // ---------- link preview (autofill a wish from a URL) ----------
 
 const decode = (s) =>
@@ -581,7 +683,7 @@ function jsonLdProduct(html) {
       if (Array.isArray(node)) { queue.push(...node); continue; }
       const type = [].concat(node["@type"] || []).join(" ");
       if (/Product/i.test(type)) {
-        const offers = [].concat(node.offers || []);
+        const offers = [].concat(node.offers || [].concat(node.hasVariant || [])[0]?.offers || []); // ProductGroup: first variant's offer
         const offer = offers[0] || {};
         const price = toPrice(offer.price ?? offer.lowPrice ?? offer.priceSpecification?.price ?? [].concat(offer.offers || [])[0]?.price);
         const img = [].concat(node.image || [])[0];
@@ -694,7 +796,9 @@ Open the URL (use Google Search if you can't open it) and report the product on 
 - price: the current price in US dollars as a number, or null if you can't tell
 - image: the URL of the main product photo exactly as it appears on the page or in search results (an image file,
   usually on the store's image server), or "" if you didn't see one. Never build or guess a URL.
-- in_stock: true if that store currently shows it available to buy new, false if sold out or unavailable, null if unclear.`;
+- in_stock: true if that store currently shows it available to buy new, false if sold out or unavailable, null if unclear.
+- sizes, colors: the size and color choices that page offers (as written there), or empty lists if none.
+- size, color: the size and color this exact link has selected (for example from the URL), or "" if none.`;
 const LINK_SCHEMA = {
   type: "object",
   properties: {
@@ -703,8 +807,12 @@ const LINK_SCHEMA = {
     price: { type: "number", nullable: true },
     image: { type: "string" },
     in_stock: { type: "boolean", nullable: true },
+    sizes: { type: "array", items: { type: "string" } },
+    colors: { type: "array", items: { type: "string" } },
+    size: { type: "string" },
+    color: { type: "string" },
   },
-  required: ["found", "title", "price", "image", "in_stock"],
+  required: ["found", "title", "price", "image", "in_stock", "sizes", "colors", "size", "color"],
 };
 async function isImage(u) {
   try {
@@ -724,7 +832,8 @@ async function lookupLink(env, url) {
   if (!d?.found || !d.title?.trim()) return null;
   let image = imageLink(d.image?.trim() || "");
   if (image && !(await isImage(image))) image = null;
-  return { title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null };
+  return { title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null,
+    sizes: uniq(Array.isArray(d.sizes) ? d.sizes : []), colors: uniq(Array.isArray(d.colors) ? d.colors : []), size: tidyOption(d.size), color: tidyOption(d.color) };
 }
 
 // ---------- live prices: what a linked store charges right now ----------
@@ -803,13 +912,21 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
     try { imageUrl = imageLink(new URL(image, finalUrl).toString()); } catch {}
   }
   const site = url.hostname.replace(/^www\./, "");
-  let out = { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !!guess };
+  const opts = await linkOptions(url, html);
+  // A Shopify store's product JSON is often readable even when the page isn't.
+  if (!title && opts.shop?.title) title = cleanTitle(opts.shop.title, url.hostname, siteName);
+  if (price == null && opts.shop?.price != null) price = opts.shop.price;
+  if (!imageUrl && opts.shop?.image && title) imageUrl = imageLink(opts.shop.image);
+  let out = { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !title && !!guess,
+    sizes: opts.sizes, colors: opts.colors, size: opts.size, color: opts.color };
   // The page gave us no name or no photo (blocked, a bot check, or an empty shell): look it up. The page's own
   // details win; the lookup only fills what's missing.
   if (ai && (!title || !imageUrl)) {
     const found = await lookupLink(env, clean).catch(() => null);
     if (found && (title || matchesLink(found.title, url))) {
-      out = { ...out, title: title || found.title, price: price ?? found.price, image: imageUrl || found.image, found: true, guessed: false, via: "search" };
+      out = { ...out, title: title || found.title, price: price ?? found.price, image: imageUrl || found.image, found: true, guessed: false, via: "search",
+        sizes: out.sizes.length ? out.sizes : found.sizes, colors: out.colors.length ? out.colors : found.colors,
+        size: out.size || found.size, color: out.color || found.color };
     }
   }
   console.log(`preview ${site} http=${status} page=${title ? "name" : html ? "noname" : "blocked"}${imageUrl ? "+photo" : ""} -> ${out.via || (out.guessed ? "guess" : "page")}${out.image ? " photo" : ""}${out.price != null ? " price" : ""}`);
@@ -1180,7 +1297,7 @@ const handlers = {
     };
   },
 
-  // Add (no id) or edit (id) one of your own items. New items start in "Just me" (draft) until published.
+  // Add (no id) or edit (id) one of your own items. size and color: free text, absent = unchanged. New items start in "Just me" (draft) until published.
   // "Must have" only applies to published items, so it is dropped on drafts.
   async "POST item/save"(req, env) {
     const me = await auth(req, env);
@@ -1218,6 +1335,7 @@ const handlers = {
         .run();
       if (!res.meta.changes) fail(404, "Item not found.");
       const rows = await hideRows(b.id)();
+      rows.push(...sizeColorRows(env, b.id, b));
       // category absent (e.g. the Top pick toggle) leaves it as is.
       if (b.category !== undefined) rows.push(env.DB.prepare("UPDATE items SET category = ? WHERE id = ?").bind(category(b.category), b.id));
       if (rows.length) await env.DB.batch(rows);
@@ -1229,6 +1347,7 @@ const handlers = {
         "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
       ).bind(id, me.id, ...fields, t, t, image, image ? t : null, category(b.category)),
       ...(await hideRows(id)()),
+      ...sizeColorRows(env, id, b),
     ]);
     return { id };
   },

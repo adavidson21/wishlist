@@ -436,6 +436,13 @@
   .ts-preview { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-top: 10px; color: var(--ink); font-size: 16px; }
   .ts-preview small { display: block; color: var(--muted); font-size: 13px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* Size and color on a wish: dropdowns when the store lists them, otherwise a box with suggestions. */
+  .sc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .sc-row .flabel { margin-bottom: 7px; }
+  .sc-mine { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .sc-mine button { border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; color: var(--muted); min-height: 32px; }
+  .sc-found { grid-column: 1 / -1; margin: -6px 0 0; font-size: 13px; color: var(--muted); }
+  .variant { display: block; font-size: 14px; font-weight: 700; color: var(--ink); margin-top: 1px; }
   .two label.field { margin-bottom: 12px; }
   select.input { appearance: none; -webkit-appearance: none; padding-right: 34px;
     background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23887' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
@@ -2029,6 +2036,7 @@ function itemRow(i, n = 0) {
     <div class="row-top">${tile(i, "item")}
       <div class="row-main">
         <span class="row-title">${esc(i.title)}</span>
+        ${variantText(i) ? `<span class="variant">${esc(variantText(i))}</span>` : ""}
         ${i.notes ? `<span class="row-notes">${esc(i.notes)}</span>` : ""}
         <span class="from"><span class="cat-tag">${catIcon(catOf(i), 14)}${esc(CAT[catOf(i)].label)}</span>${i.url ? ` from <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : ""}</span>
         ${i.draft ? "" : hiddenTag(i)}
@@ -2135,6 +2143,86 @@ function restoreImage(form, carry) {
   if (carry?.image) { form.dataset.image = carry.image; form.dataset.imageFor = carry.imageFor || ""; }
 }
 
+// ---------- size and color on a wish ----------
+// Shown for clothing, shoes, and bags & jewelry (picked or guessed from the name), or whenever the link offered
+// sizes or colors. A store's own list becomes a dropdown (with "Other..." to type); otherwise a box with suggestions.
+const SC_CATS = new Set(["clothing", "shoes", "accessories"]);
+const SIZE_SUGGEST = {
+  clothing: ["XS", "S", "M", "L", "XL", "XXL", "0", "2", "4", "6", "8", "10", "12", "14", "16"],
+  shoes: ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"],
+  accessories: ["One size", "4", "5", "6", "7", "8", "9", "10"],
+};
+const COLOR_SUGGEST = ["Black", "White", "Gray", "Navy", "Blue", "Green", "Olive", "Red", "Burgundy", "Pink", "Purple", "Yellow", "Orange", "Brown", "Tan", "Beige", "Cream", "Gold", "Silver"];
+// Which of your profile sizes fit this kind of thing.
+const MY_SIZE_KEYS = { clothing: ["shirt", "pants"], shoes: ["shoe"], accessories: ["ring"] };
+const variantText = (i) => [i.size ? `Size ${i.size}` : "", i.color || ""].filter(Boolean).join(" · ");
+
+function sizeColorRow() {
+  return `<div class="sc-row" id="scRow" hidden>
+    <div data-sc="size"><span class="flabel">Size</span><div class="sc-in"></div><div class="sc-mine"></div></div>
+    <div data-sc="color"><span class="flabel">Color</span><div class="sc-in"></div></div>
+    <p class="sc-found" id="scFound" hidden></p>
+  </div>`;
+}
+// Wires the size and color boxes on a wish form. Returns setters the autofill uses.
+function wireSizeColor(form, item) {
+  const row = form.querySelector("#scRow");
+  const lists = { size: [], color: [] };
+  const kindOf = () => form.elements.category?.value || catOf({ title: form.elements.title.value });
+  const valueOf = (k) => form.elements[k]?.value === "__other" ? "" : (form.elements[k]?.value || "").trim();
+  const paint = (k, value) => {
+    const box = row.querySelector(`[data-sc="${k}"] .sc-in`);
+    const opts = lists[k];
+    if (opts.length) {
+      const all = value && !opts.some((o) => o.toLowerCase() === value.toLowerCase()) ? [value, ...opts] : opts;
+      box.innerHTML = `<select class="input" name="${k}" aria-label="${k === "size" ? "Size" : "Color"}"><option value="">${k === "size" ? "Pick a size" : "Pick a color"}</option>
+        ${all.map((o) => `<option${o.toLowerCase() === (value || "").toLowerCase() ? " selected" : ""}>${esc(o)}</option>`).join("")}<option value="__other">Other...</option></select>`;
+      box.querySelector("select").onchange = (e) => { if (e.target.value === "__other") { lists[k] = []; paint(k, ""); form.elements[k].focus(); } };
+    } else {
+      const sug = k === "size" ? SIZE_SUGGEST[kindOf()] || SIZE_SUGGEST.clothing : COLOR_SUGGEST;
+      box.innerHTML = `<input class="input" name="${k}" maxlength="${k === "size" ? 30 : 40}" list="sc-${k}-list" value="${esc(value)}" placeholder="${k === "size" ? "M, 8.5, 32x30" : "Navy"}" aria-label="${k === "size" ? "Size" : "Color"}" autocomplete="off">
+        <datalist id="sc-${k}-list">${sug.map((v) => `<option value="${esc(v)}">`).join("")}</datalist>`;
+    }
+  };
+  // Your own sizes from your profile, one tap to use.
+  const paintMine = () => {
+    const sizes = state.me?.profile?.sizes || {};
+    const keys = (MY_SIZE_KEYS[kindOf()] || []).filter((k) => sizes[k]);
+    row.querySelector(".sc-mine").innerHTML = keys.map((k) => `<button type="button" data-my-size="${esc(sizes[k])}">My ${k}: ${esc(sizes[k])}</button>`).join("");
+    row.querySelectorAll("[data-my-size]").forEach((b) => (b.onclick = () => {
+      const v = b.dataset.mySize, el = form.elements.size;
+      if (el.tagName === "SELECT" && ![...el.options].some((o) => o.value.toLowerCase() === v.toLowerCase())) { lists.size = []; paint("size", v); }
+      else el.value = [...(el.options || [])].find((o) => o.value.toLowerCase() === v.toLowerCase())?.value || v;
+      buzz();
+    }));
+  };
+  const show = () => {
+    row.hidden = !(SC_CATS.has(kindOf()) || lists.size.length || lists.color.length || valueOf("size") || valueOf("color"));
+    paintMine();
+  };
+  paint("size", item.size || "");
+  paint("color", item.color || "");
+  show();
+  form.elements.title.addEventListener("input", show);
+  form.elements.category?.addEventListener("change", () => { if (!lists.size.length) paint("size", valueOf("size")); show(); });
+  // From the autofill: the store's choices and what the link picked. force (the Fill button) replaces what's there.
+  form.addEventListener("linkoptions", (e) => {
+    const r = e.detail, force = e.force;
+    for (const k of ["size", "color"]) {
+      const offered = r[k === "size" ? "sizes" : "colors"] || [];
+      const keep = valueOf(k);
+      if (offered.length) lists[k] = offered;
+      paint(k, force || !keep ? r[k] || keep : keep);
+    }
+    const n = (r.sizes || []).length, m = (r.colors || []).length;
+    const found = $("#scFound", form);
+    found.textContent = n || m ? `${[n ? `${n} size${n === 1 ? "" : "s"}` : "", m ? `${m} color${m === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ")} from ${r.site}. Pick yours.` : "";
+    found.hidden = !(n || m);
+    show();
+  });
+  return { values: () => ({ size: valueOf("size"), color: valueOf("color") }) };
+}
+
 // item: a wish to edit, or nothing for a new one. opts.title / opts.placeholder start a new one off (starter ideas).
 function editItem(item, opts = {}) {
   const isNew = !item?.id;
@@ -2152,6 +2240,7 @@ function editItem(item, opts = {}) {
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || "Warm slippers, size 8")}" required></label>
       ${isNew ? `<p class="hint" style="margin-top:-10px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       ${linkField(item.url)}
+      ${sizeColorRow()}
       <details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
         <div>
@@ -2159,7 +2248,7 @@ function editItem(item, opts = {}) {
           <label class="field"><span>Category</span>
             <select class="input" name="category"><option value="">Pick for me${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
               ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-          <label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Size, color, where to buy">${esc(item.notes)}</textarea></label>
+          <label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>
         </div>
       </details>
       ${isNew ? `<label class="check"><span>Show my circles now<small id="pubNowHint">${pubNow ? "Goes straight to your wish list." : "Off: saves to Just me, where only you can see it."}</small></span><input type="checkbox" name="pubNow" ${pubNow ? "checked" : ""}></label>` : ""}
@@ -2175,6 +2264,7 @@ function editItem(item, opts = {}) {
       // type=url rejects links without https://, so let the server fix those up instead.
       form.noValidate = true;
       wireAutofill(form);
+      const sc = wireSizeColor(form, item);
       wireWhoChips(el);
       restoreImage(form, c);
       form.elements.pubNow?.addEventListener("change", (e) => {
@@ -2190,7 +2280,7 @@ function editItem(item, opts = {}) {
       });
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form) };
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
         if (multi() && !draft) payload.hiddenFrom = hiddenFromForm(form);
         const { id } = await api("item/save", payload);
         const published = isNew && d.pubNow;
@@ -2381,6 +2471,8 @@ function wireAutofill(form) {
       if (r.clean && r.clean !== v && url.value.trim() === v) { url.value = r.clean; last = r.clean; }
       if (!r.title && hint) r.title = hint;
       if (r.image) { form.dataset.image = r.image; form.dataset.imageFor = url.value.trim(); } else { delete form.dataset.image; }
+      // Sizes and colors the store offers (only the wish form listens).
+      if (r.sizes?.length || r.colors?.length || r.size || r.color) form.dispatchEvent(Object.assign(new CustomEvent("linkoptions", { detail: r }), { force }));
       let filled = [];
       if (r.title && (force || !title.value.trim())) { title.value = r.title; filled.push("name"); }
       if (r.price != null && (force || !price.value.trim())) { price.value = String(r.price); filled.push("price"); }
@@ -2850,6 +2942,7 @@ function personRow(i, kind, n = 0) {
     <div class="row-top">${tile(i, kind)}
       <div class="row-main">
         <span class="row-title">${esc(i.title)}</span>
+        ${variantText(i) ? `<span class="variant">${esc(variantText(i))}</span>` : ""}
         ${price}
         ${i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" hidden></span>` : ""}
         <div class="wish-meta">${meta}</div>
