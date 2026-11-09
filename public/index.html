@@ -103,7 +103,6 @@
   .hero-row h1 { margin: 0; }
   .hero-row .who-name { flex: 1; min-width: 0; }
   .realname { display: block; color: var(--hero-muted); font-size: 14px; margin-top: 2px; }
-  .lockline { display: inline-flex; align-items: center; gap: 5px; color: var(--hero-muted); font-size: 14px; font-weight: 600; margin-top: 8px; }
   .hero-meter { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; }
   .hero-meter .bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .16); overflow: hidden; }
   .hero-meter .bar i { display: block; height: 100%; border-radius: 4px; background: var(--gold); transform-origin: left; animation: fill 1s var(--spring) .2s both; }
@@ -408,7 +407,16 @@
   .tip::before { content: ""; position: absolute; inset: -12px; }
   .tip[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
   .tip:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
-  .tip-pop { margin: 4px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--panel); color: var(--ink); font-size: 14px; font-weight: 400; font-family: inherit; animation: fade .2s ease both; }
+  /* Lock variant: the icon itself is the trigger; the explanation lives in the tooltip. */
+  .tip.lock-tip { border: 0; width: 22px; height: 22px; color: var(--muted); }
+  .tip.lock-tip[aria-expanded="true"] { background: var(--soft); color: var(--brand); }
+  .tip.lock-tip.on-hero { color: var(--hero-muted); width: 28px; height: 28px; }
+  .tip.lock-tip.on-hero svg { width: 18px; height: 18px; }
+  .tip.lock-tip.on-hero[aria-expanded="true"] { background: rgba(255,255,255,.14); color: var(--hero-ink); }
+  /* One shared floating tooltip: hover or focus on desktop, tap on touch. Positioned in JS so it never runs off screen. */
+  .tip-pop { position: fixed; z-index: 1000; max-width: min(280px, calc(100vw - 24px)); padding: 9px 12px; border-radius: 12px;
+    background: var(--ink); color: var(--bg); font-size: 14px; font-weight: 500; line-height: 1.4; font-family: inherit;
+    letter-spacing: normal; text-transform: none; text-align: left; box-shadow: 0 8px 24px rgba(0,0,0,.22); pointer-events: none; animation: fade .15s ease both; }
   .actions { display: flex; gap: 10px; margin-top: 8px; }
   .actions .btn { flex: 1; }
   details.more { margin-bottom: 16px; }
@@ -1452,18 +1460,55 @@ const CHEV = '<svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill=
 const CHEV_D = '<svg class="chev-d" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
 const PUBLISH_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
-// Help button: one line of guidance on tap, instead of a paragraph under every heading.
+// Help button: one line of guidance in a tooltip (hover or focus on desktop, tap on touch), instead of a paragraph under every heading.
 const tip = (text) => `<button class="tip" type="button" aria-label="More info" aria-expanded="false" data-tip="${esc(text)}">?</button>`;
+// Same tooltip, but the lock icon is the trigger. Use for "only you see this" style notes.
+const lockTip = (text, hero) => `<button class="tip lock-tip${hero ? " on-hero" : ""}" type="button" aria-label="${esc(text)}" aria-expanded="false" data-tip="${esc(text)}">${LOCK}</button>`;
+let tipEl = null, tipFor = null;
+function hideTip() {
+  tipEl?.remove();
+  tipFor?.setAttribute("aria-expanded", "false");
+  tipEl = tipFor = null;
+}
+function showTip(b) {
+  if (tipFor === b) return;
+  hideTip();
+  tipFor = b;
+  b.setAttribute("aria-expanded", "true");
+  tipEl = document.createElement("div");
+  tipEl.className = "tip-pop";
+  tipEl.setAttribute("role", "tooltip");
+  tipEl.id = "tipPop";
+  tipEl.textContent = b.dataset.tip;
+  document.body.append(tipEl);
+  b.setAttribute("aria-describedby", "tipPop");
+  const r = b.getBoundingClientRect(), t = tipEl.getBoundingClientRect(), pad = 12;
+  const left = Math.min(Math.max(pad, r.left + r.width / 2 - t.width / 2), innerWidth - t.width - pad);
+  const below = r.bottom + 8, above = r.top - t.height - 8;
+  tipEl.style.left = `${left}px`;
+  tipEl.style.top = `${below + t.height > innerHeight - pad && above > pad ? above : below}px`;
+}
+const hoverable = matchMedia("(hover: hover)");
+document.addEventListener("mouseover", (e) => {
+  if (!hoverable.matches) return;
+  const b = e.target.closest?.(".tip");
+  if (b) showTip(b);
+  else if (tipFor && tipFor.dataset.pinned !== "1") hideTip();
+});
+document.addEventListener("focusin", (e) => { if (e.target.matches?.(".tip:focus-visible")) showTip(e.target); });
+document.addEventListener("focusout", (e) => { if (e.target === tipFor) hideTip(); });
 document.addEventListener("click", (e) => {
   const b = e.target.closest?.(".tip");
-  if (!b) return;
+  if (!b) { if (tipFor) hideTip(); return; }
   e.preventDefault();
-  const host = b.closest(".field") || b.parentElement;
-  const open = host.nextElementSibling?.classList.contains("tip-pop") ? host.nextElementSibling : null;
-  if (open) open.remove();
-  else host.insertAdjacentHTML("afterend", `<p class="tip-pop" role="note">${esc(b.dataset.tip)}</p>`);
-  b.setAttribute("aria-expanded", String(!open));
-});
+  e.stopPropagation();
+  if (tipFor === b && b.dataset.pinned === "1") { delete b.dataset.pinned; hideTip(); return; }
+  showTip(b);
+  b.dataset.pinned = "1";
+}, true);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && tipFor) hideTip(); });
+addEventListener("scroll", () => tipFor && hideTip(), { passive: true, capture: true });
+addEventListener("resize", () => tipFor && hideTip());
 const LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const CAMERA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
@@ -3428,14 +3473,13 @@ function editPerson(member, plan) {
   const forWhat = !next ? "" : next.christmas && !next.birthday ? `Christmas ${occParts(next)[0]}` : `${member.name}'s ${occName(next)} (${occDay(next)})`;
   const hasNick = member.name !== real;
   openSheet(`
-    <h3>Edit ${esc(member.name)}</h3>
+    <h3>Edit ${esc(member.name)}${lockTip("Only you see these.")}</h3>
     <form id="personForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span>Nickname</span>
         <input class="input" name="nickname" maxlength="40" value="${hasNick ? esc(member.name) : ""}" placeholder="${esc(real)}"></label>
       ${next ? `<label class="field"><span>Budget for ${esc(forWhat)}</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(next.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>` : ""}
-      <p class="hint">${LOCK} Only you see these.</p>
       <button class="btn primary wide" type="submit">Save</button>
     </form>`, (el) => {
       wireForm($("#personForm", el), async ({ nickname, amount }) => {
@@ -3575,7 +3619,7 @@ async function renderTracker() {
   renderBudgetTab(t);
 }
 
-const budgetTitle = () => `<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1>Budget</h1><span class="lockline">${LOCK} just for you</span></div>`;
+const budgetTitle = () => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h1>Budget</h1>${lockTip("Just for you. Nobody else can see your budgets, ideas, or purchases.", true)}</div>`;
 
 // Draws the tab strip and the chosen tab, from the tracker already loaded (switching tabs doesn't refetch).
 function renderBudgetTab(t) {
@@ -3751,7 +3795,7 @@ async function advancePurchase({ x, o, p }, t, redraw) {
 function editPurchase(x, p, o) {
   const at = stageAt(x.status);
   openSheet(`
-    <h3>${esc(x.title)}</h3>
+    <h3>${esc(x.title)}${lockTip(`Only you see this. ${p.name} never will.`)}</h3>
     <p class="what">For ${esc(p.name)} · ${esc(occLabel(p, o))} · ${esc(x.from)}</p>
     <form id="buyForm" autocomplete="off">
       <div class="err" hidden></div>
@@ -3761,7 +3805,6 @@ function editPurchase(x, p, o) {
       <label class="field"><span>Where it's hidden</span><input class="input" name="stash" maxlength="80" value="${esc(x.stash)}" placeholder="Hall closet, top shelf"></label>
       <label class="field"><span>${x.kind === "giftcard" ? "Amount" : "Price you paid"}</span>
         <div class="input money-in"><span>$</span><input name="paid" inputmode="decimal" value="${esc(priceIn(x.paid_cents ?? x.list_cents))}" aria-label="Price you paid"></div></label>
-      <p class="hint">${LOCK} Only you see this. ${esc(p.name)} never will.</p>
       <div class="actions">
         <button class="btn danger" type="button" id="unbuy">Not getting it</button>
         <button class="btn primary" type="submit">Save</button>
@@ -3865,12 +3908,11 @@ function personCard(p, o, view, n = 0, still = false) {
 function editBudget(p, o) {
   const forWhat = o.christmas && !o.birthday ? `Christmas ${occParts(o)[0]}` : `${p.name}'s ${occName(o)} (${occDay(o)})`;
   openSheet(`
-    <h3>Budget for ${esc(p.name)}</h3>
+    <h3>Budget for ${esc(p.name)}${lockTip(`Only you see this. Resets after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.`)}</h3>
     <form id="budgetForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span>How much for ${esc(forWhat)}?</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(o.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
-      <p class="hint">${LOCK} Only you see this. Resets after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.</p>
       <div class="actions">
         ${o.budget_cents != null ? '<button class="btn danger" type="button" id="clearBudget">Clear</button>' : ""}
         <button class="btn primary" type="submit">Save</button>
@@ -3942,7 +3984,7 @@ function editIdea(idea, subjectId, opts = {}) {
     ${chips}
     <form id="ideaForm" autocomplete="off"${idea.price_auto ? ` data-price-auto="${esc(priceIn(idea.price_cents))}"` : ""}>
       <div class="err" hidden></div>
-      ${chips ? (subjectId ? `<p class="what">${LOCK} ${esc(personName(subjectId))} never sees this</p>` : "") : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
+      ${chips ? (subjectId ? `<p class="what">For ${esc(personName(subjectId))}${lockTip(`${personName(subjectId)} never sees this.`)}</p>` : "") : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
           <option value="">Choose someone</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`
         : `<p class="what">For ${esc(personName(idea.subject_id))}</p>`}
       ${isNew ? linkField(idea.url, true) : ""}
@@ -4161,7 +4203,7 @@ function giveGiftCard(c, member, name, personId) {
   const mineAt = (code) => mine.find((m) => String(m.occasion) === String(code));
   const first = mine[0]?.occasion;
   openSheet(`
-    <h3>${mine.length ? "Your gift card" : `Give ${esc(who)} a gift card?`}</h3>
+    <h3>${mine.length ? "Your gift card" : `Give ${esc(who)} a gift card?`}${lockTip(`${who} won't see it's from you.`)}</h3>
     <div class="gc-hero">${giftCard(g)}</div>
     ${c.removed ? `<p class="hint" style="margin-top:0">${esc(who)} removed this from their list.</p>` : ""}
     ${c.others ? `<p class="hint" style="margin-top:0">${c.others === 1 ? "1 other person is" : `${c.others} others are`} giving one too.</p>` : ""}
@@ -4170,7 +4212,6 @@ function giveGiftCard(c, member, name, personId) {
       ${occPicker(personId, first)}
       <label class="field"><span>Amount</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" placeholder="25" aria-label="Gift card amount"></div></label>
-      <p class="hint">${LOCK} ${esc(who)} won't see it's from you.</p>
       <div id="giveActions"></div>
       <a class="btn quiet wide gc-find" href="${esc(gcFindUrl(g))}" target="_blank" rel="noopener">Find ${esc(g.name)} gift cards ${OUT}</a>
     </form>`, (el) => {
