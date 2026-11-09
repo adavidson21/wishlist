@@ -524,7 +524,9 @@
   .about { text-align: center; color: var(--faint); font-size: 13px; margin-top: 22px; }
 
   /* Bottom tabs: My list, Circles, [Add], Budget, Settings */
-  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: color-mix(in srgb, var(--card) 96%, transparent);
+  /* Android paints the system navigation strip under the app with the manifest's theme_color (#241D20, the
+     dark card color) in light and dark mode alike, so the bar is solid here to sit flush with it in dark mode. */
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--card);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line);
     padding: 6px max(4px, env(safe-area-inset-left, 0px)) calc(env(safe-area-inset-bottom, 0px) + 8px); }
   nav.tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); align-items: start; }
