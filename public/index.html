@@ -234,9 +234,8 @@
   .maybe-head { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
   .maybe-head .lockdot { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--brand); flex: none; }
   .maybe-head strong { font-size: 17px; }
-  .maybe-zone .maybe-sub { color: var(--muted); font-size: 14px; line-height: 1.4; margin: 0 0 14px; }
   .maybe-empty { text-align: center; padding: 18px 8px 8px; color: var(--muted); }
-  .maybe-empty p { margin: 6px 0 14px; line-height: 1.45; }
+  .maybe-empty strong { display: block; margin-bottom: 16px; }
   .maybe-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel); border-radius: 14px; padding: 12px 14px; margin: 0 0 16px; }
   .maybe-hint span { color: var(--muted); font-size: 14px; }
   .maybe-hint button { border: 0; background: none; color: var(--brand); font-weight: 700; font-size: 15px; min-height: 44px; padding: 0 4px; }
@@ -296,6 +295,7 @@
   .live.out { color: var(--warn); }
   .wish-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
   .wish-meta a { color: inherit; }
+  .wish-meta:empty { display: none; }
   .wish-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--faint); }
   .cat-tag { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--ink); }
   .cat-tag svg { color: var(--brand); }
@@ -419,6 +419,18 @@
     letter-spacing: normal; text-transform: none; text-align: left; box-shadow: 0 8px 24px rgba(0,0,0,.22); pointer-events: none; animation: fade .15s ease both; }
   .actions { display: flex; gap: 10px; margin-top: 8px; }
   .actions .btn { flex: 1; }
+  /* Long forms in a sheet: Save stays in reach at the bottom while you scroll */
+  .actions.sticky { position: sticky; bottom: 0; z-index: 3; margin: 16px -20px calc(-22px - env(safe-area-inset-bottom, 0px));
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--bg) 90%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-top: 1px solid var(--line); }
+  .actions.sticky .btn.danger { flex: 0 0 auto; padding-left: 18px; padding-right: 18px; }
+  dialog.sheet :is(.input, textarea) { scroll-margin-bottom: 110px; }
+  /* Sections in the edit wish sheet */
+  .fsec { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 6px; }
+  .fsec-h { margin: 0 0 12px; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .two.pc { grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); align-items: start; }
+  .two.pc label.field { margin-bottom: 16px; }
+  @media (max-width: 359px) { .two.pc, .sc-row { grid-template-columns: 1fr; } }
   details.more { margin-bottom: 16px; }
   details.more summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 48px; font-weight: 700; color: var(--brand); }
   details.more summary::-webkit-details-marker { display: none; }
@@ -476,7 +488,19 @@
   .sc-mine { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .sc-mine button { border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; color: var(--muted); min-height: 32px; }
   .sc-found { grid-column: 1 / -1; margin: -6px 0 0; font-size: 13px; color: var(--muted); }
-  .variant { display: block; font-size: 14px; font-weight: 700; color: var(--ink); margin-top: 1px; }
+  .brand-line { font-size: 12.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); line-height: 1.2; overflow-wrap: anywhere; }
+  .brand-line + .row-title { margin-top: -1px; }
+  /* Item details on a card: size, color (with a swatch), category, store */
+  .dchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+  .dchip { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 10px; border-radius: 999px; background: var(--panel); color: var(--ink);
+    font-size: 13px; font-weight: 700; line-height: 1; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+  .dchip small { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
+  .dchip.var { background: var(--soft); color: var(--soft-ink); }
+  .dchip .sw { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18), 0 0 0 1.5px color-mix(in srgb, var(--card) 70%, transparent); }
+  .dchip.cat svg { color: var(--brand); flex: none; }
+  .dchip.store { background: none; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--muted); }
+  .dchip.store svg { flex: none; opacity: .8; }
+  .wish .dchips { margin-top: 2px; }
   .two label.field { margin-bottom: 12px; }
   select.input { appearance: none; -webkit-appearance: none; padding-right: 34px;
     background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23887' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
@@ -1119,6 +1143,7 @@
     dialog.sheet[open] { animation: sheetPop .45s cubic-bezier(.2, 1.2, .4, 1) both; }
     dialog.sheet::backdrop { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
     .sheet-in { padding: 18px 28px 26px; }
+    .actions.sticky { margin: 16px -28px -26px; padding: 14px 28px 16px; }
     .grab { display: none; }
 
     body:has(#tabs:not([hidden])) .toast { left: calc(50% + var(--side) / 2); bottom: 32px; }
@@ -2428,7 +2453,7 @@ function wireGiftBox(root, action) {
 // ---------- my list ----------
 // Two sides behind a switch: Wish list (published, what your circles see; opens by default) and Maybe
 // (drafts only you can see; new wishes start here). Publishing is one way: a published wish never goes back to Maybe.
-const MAYBE_NOTE = `<p class="maybe-note">${LOCK}<span><strong>Only you can see this.</strong> Publish it when you're sure. Once published, it stays on your wish list.</span></p>`;
+const MAYBE_NOTE = `<p class="maybe-note">${LOCK}<span><strong>Only you can see this.</strong></span></p>`;
 
 async function renderMine() {
   const data = await load("list");
@@ -2462,10 +2487,8 @@ async function renderMine() {
   </div>`;
   const maybeSection = `<div class="maybe-zone slide">
     <div class="maybe-head"><span class="lockdot">${LOCK}</span><strong>Only you can see these</strong></div>
-    <p class="maybe-sub">Ideas you're not sure about yet. Publish one to put it on your wish list. Publishing can't be undone.</p>
     ${drafts.length ? `<div class="stack">${drafts.map((i, k) => itemRow(i, k)).join("")}</div>` : `<div class="maybe-empty">
       <strong>No maybes right now</strong>
-      <p>New wishes land here first, so you can think them over before anyone sees them.</p>
       <button class="add" type="button" id="maybeAdd">${PLUS} Add a maybe</button></div>`}
   </div>`;
   const maybeHint = drafts.length ? `<div class="maybe-hint slide"><span>${LOCK} ${plural(drafts.length, "maybe", "maybes")} waiting for you</span><button type="button" data-mview="maybe">Review</button></div>` : "";
@@ -2570,10 +2593,9 @@ function itemRow(i, n = 0) {
   return `<div class="row${i.draft ? " draft" : ""}${anim}" style="animation-delay:${anim === " slide" ? n * 0.04 : 0}s" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
     <div class="row-top">${tile(i, "item")}
       <div class="row-main">
-        <span class="row-title">${esc(i.title)}</span>
-        ${variantText(i) ? `<span class="variant">${esc(variantText(i))}</span>` : ""}
+        ${nameBlock(i)}
+        ${detailChips(i, { store: true })}
         ${i.notes ? `<span class="row-notes">${esc(i.notes)}</span>` : ""}
-        <span class="from"><span class="cat-tag">${catIcon(catOf(i), 14)}${esc(CAT[catOf(i)].label)}</span>${i.url ? ` from <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : ""}</span>
         ${i.draft ? "" : hiddenTag(i)}
         <div class="row-foot">
           ${i.price_cents != null ? `<span class="price-tag">${money(i.price_cents)}</span>` : '<span class="anyprice">Any price</span>'}
@@ -2592,7 +2614,7 @@ function confirmPublish(item) {
   openSheet(`
     <h3>Publish to your wish list?</h3>
     <p class="lead"><strong>${esc(item.title)}</strong> goes on your wish list.</p>
-    <p class="maybe-note">${LOCK}<span><strong>Can't go back to Maybe.</strong> You can still edit or remove it.</span></p>
+    <p class="maybe-note">${LOCK}<span><strong>Can't go back to Maybe.</strong></span></p>
     <div class="actions">
       <button class="btn" type="button" id="pubCancel">Not yet</button>
       <button class="btn primary" type="button" id="pubGo">${PUBLISH_ICON} Publish</button>
@@ -2695,7 +2717,56 @@ const SIZE_SUGGEST = {
 const COLOR_SUGGEST = ["Black", "White", "Gray", "Navy", "Blue", "Green", "Olive", "Red", "Burgundy", "Pink", "Purple", "Yellow", "Orange", "Brown", "Tan", "Beige", "Cream", "Gold", "Silver"];
 // Which of your profile sizes fit this kind of thing.
 const MY_SIZE_KEYS = { clothing: ["shirt", "pants"], shoes: ["shoe"], accessories: ["ring"] };
-const variantText = (i) => [i.size ? `Size ${i.size}` : "", i.color || ""].filter(Boolean).join(" · ");
+// A dot of the wish's color when the name is one we can draw ("Brown", "Heather Navy", "Burgundy").
+const SWATCH = { burgundy: "#800020", wine: "#722F37", cream: "#F3E9D2", charcoal: "#36454F", camel: "#C19A6B", oatmeal: "#D8CBB3", mocha: "#7B5B47",
+  nude: "#E3BC9A", rose: "#E8A0A8", "rose gold": "#B76E79", sage: "#9CAF88", mauve: "#B784A7", taupe: "#8B8589", natural: "#E8DCC4", stone: "#B9B1A3",
+  ecru: "#E8DFC8", espresso: "#4B3621", cognac: "#9A463D", denim: "#3B5B8C", mint: "#AAF0D1", blush: "#F4C2C2", heather: "#B7B2B5",
+  multi: "conic-gradient(#E85D75, #F2C14E, #5BBF8A, #4A90D9, #9B6BD3, #E85D75)", multicolor: "conic-gradient(#E85D75, #F2C14E, #5BBF8A, #4A90D9, #9B6BD3, #E85D75)" };
+const NOT_COLORS = new Set(["inherit", "initial", "unset", "revert", "transparent", "currentcolor"]);
+function swatchOf(name) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return "";
+  const words = n.split(/[\s/-]+/).filter(Boolean);
+  for (const w of [n, n.replace(/[\s-]+/g, ""), words[words.length - 1], words[0]]) {
+    if (!w) continue;
+    if (SWATCH[w]) return SWATCH[w];
+    if (/^[a-z]+$/.test(w) && !NOT_COLORS.has(w) && window.CSS?.supports?.("color", w)) return w;
+  }
+  return "";
+}
+const EXT_I = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
+// The brand: what was saved, or the store's name when the title starts with it ("Zara Puffer" from zara.com).
+function brandOf(i) {
+  if (i.brand) return i.brand;
+  if (!i.url || !i.title) return "";
+  const label = host(i.url).replace(/^www\./, "").split(".")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+  const words = i.title.split(/\s+/);
+  for (let n = 1; n <= Math.min(3, words.length - 1); n++) {
+    const lead = words.slice(0, n).join(" ");
+    if (label.length > 2 && lead.toLowerCase().replace(/[^a-z0-9]/g, "") === label) return lead;
+  }
+  return "";
+}
+// Name and brand for a card: the brand on its own line, and not repeated at the start of the name.
+function nameBlock(i) {
+  const brand = brandOf(i);
+  let title = i.title;
+  if (brand && title.toLowerCase().startsWith(brand.toLowerCase() + " ")) title = title.slice(brand.length + 1).replace(/^[-|:,]\s*/, "");
+  return `${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}<span class="row-title">${esc(title)}</span>`;
+}
+// Size, color, category and (optionally) the store as small chips under a wish's name.
+function detailChips(i, { store = false } = {}) {
+  const out = [];
+  if (i.size) out.push(`<span class="dchip var"><small>Size</small>${esc(i.size)}</span>`);
+  if (i.color) {
+    const sw = swatchOf(i.color);
+    out.push(`<span class="dchip var">${sw ? `<i class="sw" style="background:${esc(sw)}"></i>` : ""}${esc(i.color)}</span>`);
+  }
+  const c = catOf(i);
+  out.push(`<span class="dchip cat">${catIcon(c, 13)}${esc(CAT[c].label)}</span>`);
+  if (store && i.url) out.push(`<a class="dchip store" href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}${EXT_I}</a>`);
+  return `<div class="dchips">${out.join("")}</div>`;
+}
 
 function sizeColorRow() {
   return `<div class="sc-row" id="scRow" hidden>
@@ -2769,8 +2840,14 @@ function editItem(item, opts = {}) {
   const c = opts.carry;
   item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, notes: c.notes } : {};
   const draft = isNew || !!item.draft;
-  const hasDetails = item.price_cents != null || !!item.notes || !!item.category;
+  const hasDetails = item.price_cents != null || !!item.notes || !!item.category || !!item.brand;
   const pubNow = isNew && readPubNow();
+  const priceField = `<label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="${isNew ? "Fills in from the link" : "From the link"}"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>`;
+  const catField = `<label class="field"><span>Category</span>
+    <select class="input" name="category"><option value="">${isNew ? "Pick for me" : "Auto"}${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
+      ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>`;
+  const brandField = `<label class="field"><span>Brand</span><input class="input" name="brand" maxlength="40" value="${esc(item.brand || "")}" placeholder="Zara, Nike, LEGO" autocomplete="off"></label>`;
+  const notesField = `<label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>`;
   openSheet(`
     <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser ? whoChips(state.me.id) : ""}
@@ -2779,28 +2856,25 @@ function editItem(item, opts = {}) {
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "Warm slippers, size 8"))}" required></label>
+      ${isNew ? "" : brandField}
       ${isNew ? "" : linkField(item.url)}
       ${sizeColorRow()}
       ${photoField()}
       ${isNew ? `<p class="hint" style="margin-top:-6px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
-      <details class="more"${hasDetails ? " open" : ""}>
-        <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
-        <div>
-          <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="Fills in from the link"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>
-          <label class="field"><span>Category</span>
-            <select class="input" name="category"><option value="">Pick for me${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
-              ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-          <label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>
-        </div>
-      </details>
+      ${isNew ? `<details class="more"${hasDetails ? " open" : ""}>
+        <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes)</span></summary>
+        <div>${brandField}${priceField}${catField}${notesField}</div>
+      </details>` : `<section class="fsec"><h4 class="fsec-h">Details</h4>
+        <div class="two pc">${priceField}${catField}</div>${notesField}</section>`}
       ${isNew ? `<label class="check"><span>Show my circles now<small id="pubNowHint">${pubNow ? "Goes straight to your wish list." : "Off: saves to Maybe, where only you can see it."}</small></span><input type="checkbox" name="pubNow" ${pubNow ? "checked" : ""}></label>` : ""}
-      ${draft ? "" : `<label class="check"><span>Top pick<small>Shows a gold star so everyone knows it matters most</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
-      ${familySwitches(item.hiddenFrom)}`}
-      <div class="actions">
-        ${isNew ? "" : '<button class="btn danger" type="button" id="removeItem">Remove</button>'}
+      ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">On your list</h4>
+        <label class="check"><span>Top pick<small>Gold star on your list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
+        ${familySwitches(item.hiddenFrom)}</section>`}
+      ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
+      <div class="actions sticky">
+        ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
         <button class="btn primary" type="submit" id="itemSave">${isNew ? (pubNow ? "Add to my wish list" : "Save to Maybe") : "Save"}</button>
       </div>
-      ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
     </form>`, (el) => {
       const form = $("#itemForm", el);
       // type=url rejects links without https://, so let the server fix those up instead.
@@ -2827,7 +2901,7 @@ function editItem(item, opts = {}) {
       });
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
         if (multi() && !draft) payload.hiddenFrom = hiddenFromForm(form);
         const { id } = await api("item/save", payload);
         const published = isNew && d.pubNow;
@@ -3042,6 +3116,8 @@ function wireAutofill(form) {
       if (r.sizes?.length || r.colors?.length || r.size || r.color) form.dispatchEvent(Object.assign(new CustomEvent("linkoptions", { detail: r }), { force }));
       let filled = [];
       if (r.title && (force || !title.value.trim())) { title.value = r.title; filled.push("name"); }
+      const brandEl = form.elements.brand;
+      if (brandEl && r.brand && (force || !brandEl.value.trim())) { brandEl.value = r.brand; filled.push("brand"); }
       // A price still showing what the link gave last time counts as empty, so it follows the new link.
       if (r.price != null && (force || !price.value.trim() || autoPrice(form))) { price.value = String(r.price); setAutoPrice(form, price.value); filled.push("price"); }
       if (filled.includes("price")) { const d = form.querySelector("details.more"); if (d) d.open = true; }
@@ -3512,14 +3588,12 @@ function personRow(i, kind, n = 0) {
   }
   if (i.removed) foot = `<span class="taken-line">Removed by ${esc(personName(state.person))}</span><span class="spacer"></span>` + foot;
   const top = kind === "item" && i.priority === "must" && !i.claim;
-  const cat = catOf(i);
   const notes = kind === "idea" ? i.note : i.notes;
   const paid = i.claim?.mine && i.claim.price_cents != null ? i.claim.price_cents : i.price_cents;
   const lookingUp = paid == null && i.url && !i.price_checked;
   const price = paid != null ? `<span class="wish-price">${money(paid)}</span>`
     : `<span class="wish-price none"${lookingUp ? ` data-price-slot="${esc(key)}"` : ""}>No price listed</span>`;
   const meta = [
-    `<span class="cat-tag">${catIcon(cat, 14)}${esc(CAT[cat].label)}</span>`,
     kind === "idea" ? `<span>Idea from ${esc(i.author_name)}</span>` : i.created_at ? `<span>${addedOn(i.created_at)}</span>` : "",
     (i.claim || i.removed) && i.url ? `<a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : "",
   ].filter(Boolean).join('<span class="dot" aria-hidden="true"></span>');
@@ -3528,8 +3602,8 @@ function personRow(i, kind, n = 0) {
     ${top ? `<span class="top-ribbon">${STAR} Top pick</span>` : ""}
     <div class="row-top">${tile(i, kind)}
       <div class="row-main">
-        <span class="row-title">${esc(i.title)}</span>
-        ${variantText(i) ? `<span class="variant">${esc(variantText(i))}</span>` : ""}
+        ${nameBlock(i)}
+        ${detailChips(i)}
         ${price}
         ${i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" hidden></span>` : ""}
         <div class="wish-meta">${meta}</div>
@@ -3999,7 +4073,7 @@ function editIdea(idea, subjectId, opts = {}) {
       <label class="check"${purchase ? " hidden" : ""}><span>I'm getting this</span><input type="checkbox" name="bought" ${idea.claim?.mine || purchase ? "checked" : ""}></label>
       <div id="occField"></div>
       <label class="field" id="paidField"><span>Price you paid</span><input class="input" name="paid" inputmode="decimal" value="${esc(priceIn(idea.claim?.price_cents ?? idea.price_cents))}"></label>`}
-      <div class="actions">
+      <div class="actions sticky">
         ${isNew ? "" : '<button class="btn danger" type="button" id="removeIdea">Delete</button>'}
         <button class="btn primary" type="submit">${purchase ? "Save purchase" : "Save"}</button>
       </div>
