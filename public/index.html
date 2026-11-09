@@ -642,6 +642,12 @@
   .swatch[aria-pressed="true"] { border-color: var(--card); box-shadow: 0 0 0 3px var(--brand); }
   .swatch[aria-pressed="true"]::after { content: ""; position: absolute; inset: 0; margin: auto; width: 12px; height: 12px; border-radius: 50%;
     background: var(--tick, #fff); box-shadow: 0 0 0 1.5px rgba(0,0,0,.18); }
+  /* Colors to skip: a slash instead of a dot when picked */
+  .swatch.no[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--muted); }
+  .swatch.no[aria-pressed="true"]::after { width: 3px; height: 30px; border-radius: 2px; transform: rotate(45deg); }
+  .cdot.no i { position: relative; }
+  .cdot.no i::after { content: ""; position: absolute; left: 50%; top: -2px; width: 2px; height: 18px; margin-left: -1px; border-radius: 1px;
+    background: var(--card); box-shadow: 0 0 0 1px var(--ink); transform: rotate(45deg); }
   .swatch:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
   .cdots { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .cdot { display: inline-flex; align-items: center; gap: 6px; }
@@ -5812,7 +5818,7 @@ const METAL_OF = Object.fromEntries(METALS.map(([k, l, c]) => [k, { l, c }]));
 const metalDots = (keys, mixed) => `<span class="cdots">${keys.filter((k) => METAL_OF[k]).map((k) => `<span class="cdot"><i style="--c:${METAL_OF[k].c}"></i>${METAL_OF[k].l}</span>`).join("")}${
   mixed ? `<span class="cdot"><i style="--c:conic-gradient(#C9A227 0 33%,#BFC4C9 0 66%,#D99A85 0)"></i>${keys.length ? "Mixing is fine" : "Mixed metals are fine"}</span>` : ""}</span>`;
 const STYLE_LABEL = Object.fromEntries(GIFT_STYLES), COLOR_OF = Object.fromEntries(FAV_COLORS.map(([k, l, c]) => [k, { l, c }]));
-const colorDots = (keys) => `<span class="cdots">${keys.filter((k) => COLOR_OF[k]).map((k) => `<span class="cdot"><i style="--c:${COLOR_OF[k].c}"></i>${COLOR_OF[k].l}</span>`).join("")}</span>`;
+const colorDots = (keys, no) => `<span class="cdots">${keys.filter((k) => COLOR_OF[k]).map((k) => `<span class="cdot${no ? " no" : ""}"><i style="--c:${COLOR_OF[k].c}"></i>${COLOR_OF[k].l}</span>`).join("")}</span>`;
 // ---------- loves and nopes ----------
 // A little emoji for a love or nope, guessed from its words. No match shows a plain dot.
 const TAG_EMOJI = [
@@ -5858,7 +5864,7 @@ const andList = (a) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")
 const hasHints = (p) => !!p && !!(p.bio || p.likes?.length || p.dislikes?.length);
 const brandChips = (brands, edit) => `<span class="brand-chips${edit ? " edit" : ""}">${brands.map((b, k) => `<span class="brand-chip">${esc(b)}${edit
   ? `<button type="button" data-unbrand="${k}" aria-label="Remove ${esc(b)}">&times;</button>` : ""}</span>`).join("")}</span>`;
-const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || p.metals?.length || p.mixedMetals || Object.values(p.sizes || {}).some(Boolean));
+const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || p.colorsNo?.length || p.metals?.length || p.mixedMetals || Object.values(p.sizes || {}).some(Boolean));
 
 // Someone else's bio, loves and nopes, at the top of their page. Loves you share are gold.
 function hintsCard(p) {
@@ -5889,6 +5895,7 @@ function detailsHtml(p) {
   if (p.giftStyle?.length) rows.push(["Gift style", brandChips(p.giftStyle.filter((k) => STYLE_LABEL[k]).map((k) => STYLE_LABEL[k])).replace(/(<span class="brand-chip">)(\S+) /g, '$1<span aria-hidden="true">$2</span> ')]);
   if (p.brands?.length) rows.push(["Favorite brands", brandChips(p.brands)]);
   if (p.colors?.length) rows.push(["Favorite colors", colorDots(p.colors)]);
+  if (p.colorsNo?.length) rows.push(["Colors to skip", colorDots(p.colorsNo, true)]);
   if (p.metals?.length || p.mixedMetals) rows.push(["Jewelry metals", metalDots(p.metals || [], p.mixedMetals)]);
   return `${sizes.length ? `<div class="sz">${sizes.map(([k, l]) => `<div><span>${l.replace(" / top", "")}</span><b>${esc(p.sizes[k])}</b></div>`).join("")}</div>` : ""}
     ${rows.length ? `<div class="det">${rows.map(([t, d]) => `<div class="det-row"><span class="det-l">${t}</span>${d}</div>`).join("")}</div>` : ""}`;
@@ -6022,8 +6029,10 @@ async function renderProfileEdit() {
       <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
       <span class="flabel">Gift style <em>(up to 3)</em></span>
       <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
-      <span class="flabel">Favorite colors <em>(up to 3, they color your profile)</em></span>
+      <span class="flabel">Favorite colors <em>(pick any)</em></span>
       <div class="swatches" id="colorPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch" type="button" data-color="${k}" aria-pressed="${(prof.colors || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
+      <span class="flabel">Colors to skip <em>(the ones you'd never wear)</em></span>
+      <div class="swatches" id="colorNoPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch no" type="button" data-colorno="${k}" aria-pressed="${(prof.colorsNo || []).includes(k)}" aria-label="Skip ${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
       <span class="flabel">Jewelry metals <em>(pick any)</em></span>
       <div class="swatches" id="metalPick">${METALS.map(([k, l, c]) => `<button class="swatch" type="button" data-metal="${k}" aria-pressed="${(prof.metals || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${k === "gunmetal" ? "" : "--tick:#2A1E22"}"></button>`).join("")}</div>
       <label class="check"><span>I like mixed metals<small>Gold and silver together is fine</small></span><input type="checkbox" name="mixedMetals" ${prof.mixedMetals ? "checked" : ""}></label>
@@ -6147,13 +6156,20 @@ async function renderProfileEdit() {
   $("#brandAdd", v).onclick = () => { addBrand(); brandIn.focus(); };
   brandIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addBrand(); } });
   brandIn.addEventListener("input", (e) => { if (e.inputType === "insertReplacementText" || (!e.inputType && GIFT_LIST.some((g) => g.name === brandIn.value))) addBrand(); });
-  // Gift style and favorite colors: tap on and off, up to 3 each.
+  // Gift style: tap on and off, up to 3.
   const picked = (attr) => [...v.querySelectorAll(`[${attr}][aria-pressed="true"]`)].map((b) => b.getAttribute(attr));
-  for (const [attr, what] of [["data-style", "gift styles"], ["data-color", "colors"]]) {
+  v.querySelectorAll("[data-style]").forEach((b) => (b.onclick = () => {
+    const on = b.getAttribute("aria-pressed") !== "true";
+    if (on && picked("data-style").length >= 3) return toast("Pick up to 3 gift styles");
+    b.setAttribute("aria-pressed", String(on));
+    buzz();
+  }));
+  // Favorite colors and colors to skip: pick any. Picking one on one side takes it off the other.
+  for (const [attr, other] of [["data-color", "data-colorno"], ["data-colorno", "data-color"]]) {
     v.querySelectorAll(`[${attr}]`).forEach((b) => (b.onclick = () => {
       const on = b.getAttribute("aria-pressed") !== "true";
-      if (on && picked(attr).length >= 3) return toast(`Pick up to 3 ${what}`);
       b.setAttribute("aria-pressed", String(on));
+      if (on) v.querySelector(`[${other}="${b.getAttribute(attr)}"]`)?.setAttribute("aria-pressed", "false");
       buzz();
     }));
   }
@@ -6174,6 +6190,7 @@ async function renderProfileEdit() {
       brands,
       giftStyle: picked("data-style"),
       colors: picked("data-color"),
+      colorsNo: picked("data-colorno"),
       metals: picked("data-metal"),
       mixedMetals: !!f.mixedMetals,
       likes: lists.likes,
