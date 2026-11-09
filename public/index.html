@@ -491,6 +491,99 @@
   .accent[aria-checked="true"] { border-color: var(--brand); color: var(--ink); }
   .brand-add .input { flex: 1; min-width: 0; }
 
+  /* Profile: a card like a social profile (cover in your favorite colors, photo, name, bio), then
+     Loves and Nopes as tag chips and the practical details. Your own page is exactly what your people see. */
+  .pf-layout { display: grid; gap: 14px; }
+  .pf-layout > * { margin: 0; }
+  .pf-main { display: grid; gap: 14px; }
+  .pf { background: var(--card); border-radius: 22px; box-shadow: var(--shadow); overflow: hidden; }
+  .pf-cover { height: 96px; position: relative;
+    background: radial-gradient(rgba(255,255,255,.4) 1.4px, transparent 1.6px) 0 0 / 16px 16px,
+      linear-gradient(125deg, color-mix(in srgb, var(--c1) 70%, var(--card)), color-mix(in srgb, var(--c2) 70%, var(--card)) 55%, color-mix(in srgb, var(--c3) 70%, var(--card))); }
+  .pf-cover::after { content: ""; position: absolute; inset: auto 0 0; height: 40px; background: linear-gradient(transparent, color-mix(in srgb, var(--card) 35%, transparent)); }
+  .pf-body { padding: 0 20px 20px; text-align: center; }
+  .pf-body > .avatar { margin: -48px auto 10px; border: 4px solid var(--card); box-shadow: 0 6px 16px rgba(0,0,0,.12); width: 96px; height: 96px; font-size: 40px; }
+  .pf-name { margin: 0; font-family: var(--serif); font-weight: 600; font-size: 28px; line-height: 1.15; overflow-wrap: anywhere; }
+  .pf-bio { margin: 6px auto 0; max-width: 34ch; color: var(--muted); font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+  .pf-bio.add { color: var(--brand); }
+  .pf-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 12px; }
+  .pf-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; background: var(--panel); font-size: 14px; font-weight: 700; color: var(--ink); }
+  .pf-pill.gold { background: var(--gold-soft); color: var(--gold-ink); }
+  .pf-counts { display: grid; grid-template-columns: repeat(3, 1fr); margin: 16px -4px 16px; }
+  .pf-counts div { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .pf-counts div + div { border-left: 1px solid var(--line); }
+  .pf-counts b { font-family: var(--serif); font-weight: 600; font-size: 24px; line-height: 1.1; }
+  .pf-counts span { font-size: 13px; color: var(--muted); font-weight: 600; }
+
+  /* Loves and Nopes */
+  .hcard { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px 16px 18px; }
+  .hcard-h { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-family: var(--serif); font-weight: 600; font-size: 20px; }
+  .hcard-h .ico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; flex: none; }
+  .hcard-h.love .ico { background: var(--soft); color: var(--brand); }
+  .hcard-h.nope .ico { background: var(--panel); color: var(--muted); }
+  .hcard-h small { font-family: var(--sans); font-size: 14px; color: var(--faint); font-weight: 700; }
+  .hcard-h .linkbtn { margin-left: auto; font-family: var(--sans); }
+  .tags + .hcard-h { margin-top: 20px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 14px 0 6px; border-radius: 999px; font-size: 15px; font-weight: 700;
+    border: 1.5px solid transparent; animation: avPop .4s var(--spring) both; animation-delay: calc(var(--i, 0) * 30ms); max-width: 100%; }
+  .tag > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag i { font-style: normal; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; flex: none; background: var(--card); }
+  .tag i:empty::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .5; }
+  .tag.love { background: var(--soft); color: var(--soft-ink); }
+  .tag.nope { background: transparent; border: 1.5px dashed color-mix(in srgb, var(--muted) 45%, transparent); color: var(--muted); }
+  .tag.nope i { background: var(--panel); filter: grayscale(.6); }
+  .tag.both { background: var(--gold-soft); color: var(--gold-ink); box-shadow: 0 0 0 1.5px var(--gold) inset; }
+  .person-side > :is(.hcard, .careful) { margin-bottom: 14px; }
+  .tags-empty { margin: 0; color: var(--faint); font-size: 15px; }
+  .both-line { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 12px; border-radius: 14px; background: var(--gold-soft); color: var(--gold-ink); font-size: 15px; line-height: 1.35; }
+  .both-line b { font-weight: 800; }
+  .hcard-bio { margin: 0 0 14px; font-family: var(--serif); font-size: 18px; line-height: 1.35; font-style: italic; color: var(--ink); overflow-wrap: anywhere; }
+  .hcard-empty { border: 2px dashed var(--line); border-radius: 16px; padding: 16px; text-align: center; color: var(--muted); font-size: 15px; }
+  .hcard-empty .btn { margin-top: 10px; }
+
+  /* Details: sizes as little tiles, then brands, gift style, colors */
+  .sz { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .sz div { background: var(--panel); border-radius: 14px; padding: 9px 10px 8px; text-align: center; min-width: 0; }
+  .sz span { display: block; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .sz b { display: block; font-family: var(--serif); font-weight: 600; font-size: 18px; overflow-wrap: anywhere; }
+  .det { display: grid; gap: 12px; }
+  .det-l { display: block; font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .careful { display: flex; gap: 12px; align-items: flex-start; background: var(--warn-soft); color: var(--warn); border-radius: var(--r); padding: 14px 16px; }
+  .careful strong { display: block; color: var(--ink); font-size: 15px; margin-bottom: 2px; }
+  .careful p { margin: 0; color: var(--ink); white-space: pre-wrap; font-size: 15px; overflow-wrap: anywhere; }
+  .careful svg { flex: none; margin-top: 2px; }
+
+  /* Editing Loves and Nopes */
+  .tag-add { display: flex; gap: 8px; margin: 12px 0 14px; }
+  .tag-add .input { flex: 1; min-width: 0; }
+  .tag-cols { display: grid; gap: 14px; }
+  .tag-col { border-radius: 16px; padding: 12px; background: var(--bg); min-height: 64px; }
+  .tag-col .flabel { display: flex; align-items: center; gap: 6px; font-size: 15px; margin-bottom: 9px; }
+  .tag-col.on { box-shadow: 0 0 0 2px var(--brand) inset; }
+  .tags.edit .tag { padding-right: 2px; cursor: pointer; }
+  .tags.edit .tag button { border: 0; background: none; color: inherit; font-size: 20px; line-height: 1; min-width: 34px; min-height: 34px; padding: 0; cursor: pointer; }
+  .tag-ideas { margin-top: 16px; }
+  .tag-ideas-h { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+  .tag-ideas-h .linkbtn { margin-left: auto; }
+  .tag-ideas .tags .tag { background: var(--card); border: 1.5px solid var(--line); color: var(--ink); cursor: pointer; font: inherit; font-weight: 700; font-size: 14px; min-height: 36px; }
+  .tag-ideas .tags .tag:active { transform: scale(.94); }
+  .seg.lovenope button[data-v="likes"][aria-checked="true"] { background: var(--brand); color: var(--brand-ink); }
+  .counter { float: right; font-weight: 600; color: var(--faint); font-size: 13px; }
+  .pf-edit .set-card:first-child { margin-top: 0; }
+  .save-bar { position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); z-index: 5; display: flex; gap: 10px; margin-top: 16px; padding: 10px;
+    background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 18px; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+  .save-bar .btn { flex: 1; }
+  .save-bar .btn.primary { flex: 2; }
+  @media (min-width: 900px) {
+    body[data-view="profile"] #view:has(.pf-layout) { max-width: 1040px; }
+    .pf-layout { grid-template-columns: 340px minmax(0, 1fr); gap: 20px; align-items: start; }
+    .pf-layout > .pf { position: sticky; top: 24px; grid-row: 1 / span 4; }
+    .pf-main { display: grid; gap: 16px; }
+    .tag-cols { grid-template-columns: 1fr 1fr; }
+    .save-bar { bottom: 20px; }
+  }
+
   /* Gift cards: little cards in the brand's color, never "taken". */
   .gc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px 12px; margin-top: 12px; }
   .gc-item { display: flex; flex-direction: column; gap: 6px; border: 0; background: none; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
@@ -1432,6 +1525,7 @@ const state = { me: null, groups: [], households: {}, today: null, tab: "mine", 
 const hashFor = (tab) => (tab === "notes" ? "budget" : tab);
 function setTab(tab, person = null) {
   state.tab = tab;
+  state.profileEdit = false;
   state.person = person;
   state.view = null;
   const h = person ? `#person/${person}` : `#${hashFor(tab)}`;
@@ -3133,6 +3227,7 @@ async function renderPerson(id) {
 
   const v = $("#view");
   v.innerHTML = `<div class="person-layout"><div class="person-side">
+    ${hintsCard(list.member.profile)}
     ${knowCard(list.member.profile)}
     ${all.length ? `<div class="stats">
       <div class="stat"><b>${all.length}</b><span>${all.length === 1 ? "wish" : "wishes"}</span></div>
@@ -3999,40 +4094,148 @@ const FAV_COLORS = [["red", "Red", "#C62E2E"], ["pink", "Pink", "#F08AB0"], ["or
   ["brown", "Brown", "#8B5E3C"], ["black", "Black", "#1C1C1C"], ["white", "White", "#FFFFFF"], ["gray", "Gray", "#9A9A9A"], ["gold", "Gold", "#C9A227"], ["silver", "Silver", "#C4C8CC"]];
 const STYLE_LABEL = Object.fromEntries(GIFT_STYLES), COLOR_OF = Object.fromEntries(FAV_COLORS.map(([k, l, c]) => [k, { l, c }]));
 const colorDots = (keys) => `<span class="cdots">${keys.filter((k) => COLOR_OF[k]).map((k) => `<span class="cdot"><i style="--c:${COLOR_OF[k].c}"></i>${COLOR_OF[k].l}</span>`).join("")}</span>`;
-const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || p.loves || Object.values(p.sizes || {}).some(Boolean));
+// ---------- loves and nopes ----------
+// A little emoji for a love or nope, guessed from its words. No match shows a plain dot.
+const TAG_EMOJI = [
+  [/\bcats?\b|kitt(y|ies|en)/, "🐱"], [/\bdogs?\b|pupp(y|ies)|doggo/, "🐶"], [/pok[eé]mon|pikachu/, "⚡"], [/bunn(y|ies)|rabbit/, "🐰"], [/\bbirds?\b/, "🐦"],
+  [/\bfrogs?\b/, "🐸"], [/\bfox(es)?\b/, "🦊"], [/\bbears?\b/, "🐻"], [/\bduck/, "🦆"], [/horse/, "🐴"], [/dino/, "🦖"], [/\bwool|sheep/, "🐑"],
+  [/coffee|latte|espresso|cold brew|cappuccino/, "☕"], [/\bteas?\b|matcha|chai/, "🍵"], [/chocolate/, "🍫"], [/candy|gumm(y|ies)|sweets|licorice/, "🍬"],
+  [/\bwine\b/, "🍷"], [/\bbeer/, "🍺"], [/cocktail|margarita|martini/, "🍸"], [/cheese/, "🧀"], [/pizza/, "🍕"], [/sushi/, "🍣"], [/taco/, "🌮"],
+  [/spic|hot sauce|pepper/, "🌶️"], [/bak(e|ing)|cupcake|cookie|dessert/, "🧁"], [/cook|kitchen|recipe/, "🍳"], [/fruit|berr(y|ies)|strawberr/, "🍓"], [/mint\b/, "🌿"],
+  [/sock/, "🧦"], [/candle/, "🕯️"], [/plant|succulent/, "🪴"], [/flower|bouquet|\broses?\b|tulip/, "💐"], [/garden/, "🌻"], [/lavender/, "💜"],
+  [/house ?ware|home ?decor|\bdecor|neutral|throw pillow|furniture/, "🛋️"], [/blanket|cozy|cosy|comfy/, "🧶"], [/scarf|beanie|gloves|mittens/, "🧣"], [/hoodie|sweater|sweatshirt|jacket/, "🧥"],
+  [/shoe|sneaker|boots?\b/, "👟"], [/\bbags?\b|purse|tote/, "👜"], [/jewel|necklace|earring|bracelet|\brings?\b/, "💍"], [/perfume|fragrance|cologne|scent/, "🌸"],
+  [/skin ?care|lotion|serum/, "🧴"], [/\bbath|bubble/, "🛁"], [/makeup|lipstick|nail polish/, "💄"], [/glitter|sparkl|shiny/, "✨"],
+  [/\bbooks?\b|reading|novel|kindle/, "📚"], [/puzzle/, "🧩"], [/lego/, "🧱"], [/video game|gaming|nintendo|xbox|playstation|\bswitch\b|\bsteam\b/, "🎮"], [/board game|card game|\bgames?\b/, "🎲"], [/video game|gaming|nintendo|xbox|playstation|\bswitch\b|\bsteam\b/, "🎮"],
+  [/music|vinyl|\brecords?\b|concert|guitar/, "🎵"], [/\bart\b|paint|draw|sketch|craft/, "🎨"], [/movie|film|cinema/, "🎬"], [/photo|camera/, "📷"],
+  [/travel|trip|flight|vacation/, "✈️"], [/beach|ocean/, "🏖️"], [/camp/, "🏕️"], [/hik(e|ing)/, "🥾"], [/\brun(ning)?\b/, "🏃"], [/yoga/, "🧘"], [/gym|workout|fitness|weights/, "🏋️"],
+  [/golf/, "⛳"], [/fishing|\bfish\b/, "🎣"], [/football|baseball|basketball|hockey|soccer|\bsports?\b/, "🏅"], [/space|astronom|\bstars?\b/, "🚀"],
+  [/headphone|earbud|speaker/, "🎧"], [/\btech|gadget/, "🔌"], [/gift card/, "💳"], [/surprise/, "🎁"], [/clutter|knick|trinket|dust collector/, "📦"], [/\bpink\b/, "🩷"],
+];
+const tagEmoji = (t) => { const s = t.toLowerCase(); for (const [re, e] of TAG_EMOJI) if (re.test(s)) return e; return ""; };
+// Tap-to-add ideas while editing. A mix of things people love and things people would rather not get.
+const TAG_IDEAS = ["Cats", "Dogs", "Coffee", "Tea", "Chocolate", "Sour candy", "Candles", "Plants", "Cozy blankets", "Fuzzy socks", "Books", "Puzzles",
+  "Board games", "Video games", "Lego", "Baking", "Skincare", "Bath stuff", "Jewelry", "Perfume", "Neutral decor", "Gift cards", "Wine", "Hot sauce",
+  "Camping", "Golf", "Music", "Art supplies", "Movies", "Surprises", "Clutter", "Glitter", "Pink", "Gardening", "Travel", "Hoodies", "Yoga", "Sushi"];
+const HEART_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4h2c.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>';
+const NOPE_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>';
+const CAREFUL_I = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>';
+const SPARK_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
+const tagChip = (t, kind, k, extra = "") => `<span class="tag ${kind}${extra}" style="--i:${k}"><i aria-hidden="true">${tagEmoji(t)}</i><span>${esc(t)}</span></span>`;
+const tagList = (tags, kind, both = new Set()) => `<div class="tags">${tags.map((t, k) => tagChip(t, kind, k, both.has(t.toLowerCase()) ? " both" : "")).join("")}</div>`;
+const andList = (a) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`);
+const hasHints = (p) => !!p && !!(p.bio || p.likes?.length || p.dislikes?.length);
 const brandChips = (brands, edit) => `<span class="brand-chips${edit ? " edit" : ""}">${brands.map((b, k) => `<span class="brand-chip">${esc(b)}${edit
   ? `<button type="button" data-unbrand="${k}" aria-label="Remove ${esc(b)}">&times;</button>` : ""}</span>`).join("")}</span>`;
-function knowCard(p) {
-  if (!hasProfile(p)) return "";
+const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || Object.values(p.sizes || {}).some(Boolean));
+
+// Someone else's bio, loves and nopes, at the top of their page. Loves you share are gold.
+function hintsCard(p) {
+  if (!hasHints(p)) return "";
+  const mine = new Set((state.me?.profile?.likes || []).map((t) => t.toLowerCase()));
+  const shared = (p.likes || []).filter((t) => mine.has(t.toLowerCase()));
+  const both = new Set(shared.map((t) => t.toLowerCase()));
+  const named = shared.slice(0, 3).map((t) => `<b>${esc(t)}</b>`);
+  if (shared.length > 3) named.push(`${shared.length - 3} more`);
+  return `<section class="hcard">
+    ${p.bio ? `<p class="hcard-bio">“${esc(p.bio)}”</p>` : ""}
+    ${shared.length ? `<p class="both-line">${SPARK_I}<span>You both love ${andList(named)}</span></p>` : ""}
+    ${p.likes?.length ? `<h3 class="hcard-h love"><span class="ico">${HEART_I}</span>Loves</h3>${tagList(p.likes, "love", both)}` : ""}
+    ${p.dislikes?.length ? `<h3 class="hcard-h nope"><span class="ico">${NOPE_I}</span>Nopes</h3>${tagList(p.dislikes, "nope")}` : ""}
+  </section>`;
+}
+function birthdayPill(p) {
+  if (!p.birthday) return "";
+  const n = bdayIn(p.birthday);
+  const turning = p.birthYear ? new Date(Date.now() + n * 86400000).getFullYear() - p.birthYear : null;
+  const soon = n === 0 ? "today!" : n === 1 ? "tomorrow" : n <= 45 ? `in ${n} days` : "";
+  return `<span class="pf-pill${soon ? " gold" : ""}"><span aria-hidden="true">🎂</span>${esc(bdayText(p.birthday))}${turning ? `, turning ${turning}` : ""}${soon ? ` · ${soon}` : ""}</span>`;
+}
+// Sizes, brands, gift style and colors. Used on your profile and on other people's pages.
+function detailsHtml(p) {
+  const sizes = SIZE_LABELS.filter(([k]) => p.sizes?.[k]);
   const rows = [];
-  if (p.birthday) {
-    const n = bdayIn(p.birthday);
-    const soon = n === 0 ? "Today!" : n === 1 ? "Tomorrow" : n <= 45 ? `In ${n} days` : "";
-    // Age at the next birthday (only if they shared the year).
-    const turning = p.birthYear ? new Date(Date.now() + n * 86400000).getFullYear() - p.birthYear : null;
-    rows.push(["Birthday", `${esc(bdayText(p.birthday))}${turning ? `, turning ${turning}` : ""}${soon ? `<span class="soon">${soon}</span>` : ""}`]);
-  }
-  for (const [k, l] of SIZE_LABELS) if (p.sizes?.[k]) rows.push([l.replace(" / top", ""), esc(p.sizes[k])]);
-  if (p.giftStyle?.length) rows.push(["Gift style", brandChips(p.giftStyle.filter((k) => STYLE_LABEL[k]).map((k) => STYLE_LABEL[k])).replace(/(<span class="brand-chip">)(\S+) /g, '$1<span aria-hidden="true">$2</span>')]);
+  if (p.giftStyle?.length) rows.push(["Gift style", brandChips(p.giftStyle.filter((k) => STYLE_LABEL[k]).map((k) => STYLE_LABEL[k])).replace(/(<span class="brand-chip">)(\S+) /g, '$1<span aria-hidden="true">$2</span> ')]);
   if (p.brands?.length) rows.push(["Favorite brands", brandChips(p.brands)]);
   if (p.colors?.length) rows.push(["Favorite colors", colorDots(p.colors)]);
-  if (p.loves) rows.push(["Little loves", esc(p.loves)]);
-  if (p.avoid) rows.push(["Avoid", `<span class="no">${esc(p.avoid)}</span>`]);
-  return `<div class="know"><div class="know-h">Good to know</div><dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join("")}</dl></div>`;
+  return `${sizes.length ? `<div class="sz">${sizes.map(([k, l]) => `<div><span>${l.replace(" / top", "")}</span><b>${esc(p.sizes[k])}</b></div>`).join("")}</div>` : ""}
+    ${rows.length ? `<div class="det">${rows.map(([t, d]) => `<div class="det-row"><span class="det-l">${t}</span>${d}</div>`).join("")}</div>` : ""}`;
+}
+const carefulHtml = (p) => (p.avoid ? `<div class="careful">${CAREFUL_I}<div><strong>Allergies and hard nos</strong><p>${esc(p.avoid)}</p></div></div>` : "");
+// "Good to know" on someone's page: birthday, sizes and style, then allergies.
+function knowCard(p) {
+  if (!hasProfile(p)) return "";
+  const details = detailsHtml(p);
+  return `${p.birthday || details.trim() ? `<section class="hcard">
+      <h3 class="hcard-h"><span class="ico" style="background:var(--gold-soft);color:var(--gold-ink)">${SPARK_I}</span>Good to know</h3>
+      ${p.birthday ? `<div class="pf-meta" style="justify-content:flex-start;margin:0 0 14px">${birthdayPill(p)}</div>` : ""}${details}</section>` : ""}
+    ${carefulHtml(p)}`;
 }
 
 // ---------- profile ----------
-// Its own tab: your photo and everything your people see about you. The gear opens Settings.
+// Its own tab: your page, exactly as your people see it, and an Edit profile mode. The gear opens Settings.
 const GEAR = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
 async function renderProfile() {
+  if (state.profileEdit) return renderProfileEdit();
+  const p = state.me.profile || { sizes: {} };
+  const likes = p.likes || [], nopes = p.dislikes || [];
+  setHero(`<button class="hero-gear" type="button" id="gearBtn" aria-label="Settings">${GEAR}</button>${heroTitle("What your people see", "Profile")}`);
+  // The cover is painted in your favorite colors (wine and gold until you pick some).
+  const cols = (p.colors || []).map((k) => COLOR_OF[k]?.c).filter(Boolean);
+  const [c1, c2, c3] = cols.length ? [cols[0], cols[1] || cols[0], cols[2] || cols[1] || cols[0]] : ["#B23A5B", "#D9A94A", "#7A1B36"];
+  const details = detailsHtml(p);
+  const edit = (focus, label) => `<button class="linkbtn" type="button" data-edit="${focus}">${label}</button>`;
+  const v = $("#view");
+  v.innerHTML = `<div class="pf-layout">
+    <section class="pf">
+      <div class="pf-cover" style="--c1:${c1};--c2:${c2};--c3:${c3}"></div>
+      <div class="pf-body">
+        ${avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"')}
+        <h2 class="pf-name">${esc(state.me.name)}</h2>
+        ${p.bio ? `<p class="pf-bio">${esc(p.bio)}</p>` : `<p class="pf-bio"><button class="linkbtn" type="button" data-edit="about" style="padding:0">Add a line about you</button></p>`}
+        ${p.birthday ? `<div class="pf-meta">${birthdayPill(p)}</div>` : ""}
+        <div class="pf-counts">
+          <div><b>${likes.length}</b><span>${likes.length === 1 ? "love" : "loves"}</span></div>
+          <div><b>${nopes.length}</b><span>${nopes.length === 1 ? "nope" : "nopes"}</span></div>
+          <div><b>${state.groups.length}</b><span>${state.groups.length === 1 ? "circle" : "circles"}</span></div>
+        </div>
+        <button class="btn wide" type="button" data-edit="about">${PENCIL} Edit profile</button>
+      </div>
+    </section>
+    <div class="pf-main">
+      <section class="hcard">
+        <h3 class="hcard-h love"><span class="ico">${HEART_I}</span>Loves ${likes.length ? `<small>${likes.length}</small>` : ""}${likes.length ? edit("tags", "Edit") : ""}</h3>
+        ${likes.length ? tagList(likes, "love") : `<div class="hcard-empty">What makes you happy? Cats, coffee, cozy stuff, a show you're into.
+          <br><button class="btn small" type="button" data-edit="tags">${PLUS} Add loves</button></div>`}
+      </section>
+      <section class="hcard">
+        <h3 class="hcard-h nope"><span class="ico">${NOPE_I}</span>Nopes ${nopes.length ? `<small>${nopes.length}</small>` : ""}${nopes.length ? edit("tags-nope", "Edit") : ""}</h3>
+        ${nopes.length ? tagList(nopes, "nope") : `<div class="hcard-empty">Anything you'd rather not get? Tea, fuzzy socks, more mugs.
+          <br><button class="btn small" type="button" data-edit="tags-nope">${PLUS} Add nopes</button></div>`}
+      </section>
+      <section class="hcard">
+        <h3 class="hcard-h"><span class="ico" style="background:var(--gold-soft);color:var(--gold-ink)">${SPARK_I}</span>Good to know${details.trim() ? edit("style", "Edit") : ""}</h3>
+        ${details.trim() || `<div class="hcard-empty">Sizes, favorite brands and colors help your people shop for you.
+          <br><button class="btn small" type="button" data-edit="sizes">${PLUS} Add details</button></div>`}
+      </section>
+      ${carefulHtml(p)}
+    </div>
+  </div>`;
+  $("#gearBtn").onclick = () => setTab("settings");
+  v.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { state.profileEdit = b.dataset.edit; render(); }));
+}
+
+async function renderProfileEdit() {
   const prof = state.me.profile || { sizes: {} };
+  const focus = state.profileEdit;
   const [bm, bd] = prof.birthday ? prof.birthday.split("-").map(Number) : [0, 0];
   const SIZE_EG = { shirt: "Medium", pants: "32 x 30", shoe: "8.5", ring: "7" };
-  setHero(`<button class="hero-gear" type="button" id="gearBtn" aria-label="Settings">${GEAR}</button>${heroTitle("What your people see", "Profile")}`);
+  const done = (msg) => { state.profileEdit = false; if (msg) toast(msg); state.stale = true; window.scrollTo(0, 0); render(); };
+  setHero(`<button class="back" type="button" id="cancelTop">${BACK} Profile</button>${heroTitle("Little hints for your people", "Edit profile")}`);
   const v = $("#view");
-  v.innerHTML = `
-    <div class="set-card" style="margin-top:0">
-      <h4>Your photo</h4>
+  v.innerHTML = `<form class="pf-edit" id="profileForm" autocomplete="off">
+    <div class="set-card" id="ed-about">
+      <h4>About you</h4>
       <div class="photo-row">
         <span id="mePhoto">${avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"')}</span>
         <div class="btns">
@@ -4042,40 +4245,73 @@ async function renderProfile() {
         <input type="file" accept="image/*" id="photoFile" hidden>
       </div>
       <hr class="set-div">
-      <form id="profileForm" autocomplete="off">
-        <div class="err" hidden></div>
-        <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
-        <span class="flabel">Birthday</span>
-        <div class="bday">
-          <select class="input" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
-          <select class="input" name="bday" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, k) => `<option value="${k + 1}"${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select>
-          <input class="input" name="byear" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Birth year (optional)" value="${esc(prof.birthYear || "")}">
-        </div>
-        <span class="flabel">Sizes</span>
-        <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span style="font-size:14px;color:var(--muted);margin-bottom:4px">${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(prof.sizes?.[k] || "")}" placeholder="${SIZE_EG[k]}"></label>`).join("")}</div>
-        <span class="flabel" style="margin-top:4px">Favorite brands</span>
-        <div id="brandChips">${brandChips(prof.brands || [], true)}</div>
-        <div class="brand-add">
-          <input class="input" id="brandIn" maxlength="40" list="brandList" placeholder="Lululemon, Trader Joe's" autocomplete="off" enterkeyhint="done" aria-label="Add a favorite brand">
-          <button class="btn small" type="button" id="brandAdd">${PLUS} Add</button>
-        </div>
-        <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
-        <div class="fun-h">✨ Just for fun</div>
-        <span class="flabel">Gift style <em>(up to 3)</em></span>
-        <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
-        <span class="flabel">Favorite colors <em>(up to 3)</em></span>
-        <div class="swatches" id="colorPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch" type="button" data-color="${k}" aria-pressed="${(prof.colors || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
-        <label class="field"><span>Little things I love</span>
-          <input class="input" name="loves" maxlength="200" value="${esc(prof.loves || "")}" placeholder="Oat lattes, sour gummies, anything lavender"></label>
-        <label class="field" style="margin-top:4px"><span>Dislikes and allergies</span>
-          <textarea class="input" name="avoid" maxlength="300" placeholder="No scented candles, allergic to wool">${esc(prof.avoid || "")}</textarea></label>
-        <button class="btn primary wide" type="submit">Save profile</button>
-      </form>
+      <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
+      <label class="field"><span>A line about you <span class="counter" id="bioCount"></span></span>
+        <input class="input" name="bio" id="bioIn" maxlength="100" value="${esc(prof.bio || "")}" placeholder="Cat mom, coffee first, always cold"></label>
+      <span class="flabel">Birthday</span>
+      <div class="bday">
+        <select class="input" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
+        <select class="input" name="bday" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, k) => `<option value="${k + 1}"${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select>
+        <input class="input" name="byear" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Birth year (optional)" value="${esc(prof.birthYear || "")}">
+      </div>
     </div>
 
-`;
-  $("#gearBtn").onclick = () => setTab("settings");
-  const reload = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
+    <div class="set-card" id="ed-tags">
+      <h4>Loves and nopes</h4>
+      <p>Big or small, anything that helps someone pick a gift. Tap one to move it to the other side.</p>
+      ${seg("Add to", [["likes", `<span aria-hidden="true">♥</span> Loves`], ["dislikes", "Nopes"]], focus === "tags-nope" ? "dislikes" : "likes", "lovenope")}
+      <div class="tag-add">
+        <input class="input" id="tagIn" maxlength="40" enterkeyhint="done" autocomplete="off" aria-label="Add a love or nope">
+        <button class="btn small" type="button" id="tagAdd">${PLUS} Add</button>
+      </div>
+      <div class="tag-cols">
+        <div class="tag-col" data-col="likes"><span class="flabel"><span class="ico" style="color:var(--brand);display:inline-flex">${HEART_I}</span>Loves <em id="likeN"></em></span><div class="tags edit" id="likeTags"></div></div>
+        <div class="tag-col" data-col="dislikes"><span class="flabel"><span style="color:var(--muted);display:inline-flex">${NOPE_I}</span>Nopes <em id="nopeN"></em></span><div class="tags edit" id="nopeTags"></div></div>
+      </div>
+      <div class="tag-ideas">
+        <div class="tag-ideas-h"><span>Need ideas? Tap to add</span><button class="linkbtn" type="button" id="moreIdeas">More ideas</button></div>
+        <div class="tags" id="ideaTags"></div>
+      </div>
+    </div>
+
+    <div class="set-card" id="ed-sizes">
+      <h4>Sizes</h4>
+      <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span style="font-size:14px;color:var(--muted);margin-bottom:4px">${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(prof.sizes?.[k] || "")}" placeholder="${SIZE_EG[k]}"></label>`).join("")}</div>
+    </div>
+
+    <div class="set-card" id="ed-style">
+      <h4>Your style</h4>
+      <span class="flabel" style="margin-top:8px">Favorite brands</span>
+      <div id="brandChips">${brandChips(prof.brands || [], true)}</div>
+      <div class="brand-add">
+        <input class="input" id="brandIn" maxlength="40" list="brandList" placeholder="Lululemon, Trader Joe's" autocomplete="off" enterkeyhint="done" aria-label="Add a favorite brand">
+        <button class="btn small" type="button" id="brandAdd">${PLUS} Add</button>
+      </div>
+      <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
+      <span class="flabel">Gift style <em>(up to 3)</em></span>
+      <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
+      <span class="flabel">Favorite colors <em>(up to 3, they color your profile)</em></span>
+      <div class="swatches" id="colorPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch" type="button" data-color="${k}" aria-pressed="${(prof.colors || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
+    </div>
+
+    <div class="set-card" id="ed-careful">
+      <h4>Allergies and hard nos</h4>
+      <p>Shown with a heads up on your page, so nobody misses it.</p>
+      <textarea class="input" name="avoid" maxlength="300" aria-label="Allergies and hard nos" placeholder="Allergic to wool, no scented candles">${esc(prof.avoid || "")}</textarea>
+    </div>
+
+    <div class="err" hidden></div>
+    <div class="save-bar">
+      <button class="btn" type="button" id="cancelEdit">Cancel</button>
+      <button class="btn primary" type="submit">Save profile</button>
+    </div>
+  </form>`;
+  $("#cancelTop").onclick = () => done();
+  $("#cancelEdit", v).onclick = () => done();
+  const target = { about: "#ed-about", tags: "#ed-tags", "tags-nope": "#ed-tags", sizes: "#ed-sizes", style: "#ed-style" }[focus];
+  if (target && focus !== "about") requestAnimationFrame(() => $(target, v)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+
+  // Photo saves right away, like before.
   const file = $("#photoFile", v);
   $("#pickPhoto", v).onclick = () => file.click();
   file.onchange = async () => {
@@ -4083,13 +4319,80 @@ async function renderProfile() {
     if (!f) return;
     const btn = $("#pickPhoto", v);
     btn.disabled = true;
-    try { await api("profile", { photo: await squarePhoto(f) }); reload("Photo saved"); }
-    catch (e) { toast(e.message); btn.disabled = false; }
+    try { await api("profile", { photo: await squarePhoto(f) }); state.stale = true; toast("Photo saved"); $("#mePhoto", v).innerHTML = avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"'); }
+    catch (e) { toast(e.message); }
+    btn.disabled = false;
   };
   $("#removePhoto", v)?.addEventListener("click", async () => {
-    try { await api("profile", { photo: "" }); PHOTOS.delete(state.me.id); reload("Photo removed"); } catch (e) { toast(e.message); }
+    try { await api("profile", { photo: "" }); PHOTOS.delete(state.me.id); state.stale = true; toast("Photo removed"); $("#mePhoto", v).innerHTML = avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"'); }
+    catch (e) { toast(e.message); }
   });
-  // Favorite brands: typed or picked from the list, shown as chips. Saved with the rest of the profile.
+
+  // Bio counter.
+  const bioIn = $("#bioIn", v), bioCount = $("#bioCount", v);
+  const countBio = () => { const left = 100 - bioIn.value.length; bioCount.textContent = left <= 30 ? `${left} left` : ""; };
+  bioIn.oninput = countBio; countBio();
+
+  // Loves and nopes. Kept here until Save.
+  const lists = { likes: [...(prof.likes || [])], dislikes: [...(prof.dislikes || [])] };
+  let mode = focus === "tags-nope" ? "dislikes" : "likes", ideaAt = 0;
+  const tagIn = $("#tagIn", v);
+  const other = (m) => (m === "likes" ? "dislikes" : "likes");
+  const find = (m, t) => lists[m].findIndex((x) => x.toLowerCase() === t.toLowerCase());
+  const editChip = (t, m, k) => `<span class="tag ${m === "likes" ? "love" : "nope"}" style="--i:0" data-move="${m}:${k}" role="button" tabindex="0" aria-label="${esc(t)}, move to ${m === "likes" ? "Nopes" : "Loves"}">
+    <i aria-hidden="true">${tagEmoji(t)}</i><span>${esc(t)}</span><button type="button" data-drop="${m}:${k}" aria-label="Remove ${esc(t)}">&times;</button></span>`;
+  const paint = () => {
+    for (const [m, el, n] of [["likes", "#likeTags", "#likeN"], ["dislikes", "#nopeTags", "#nopeN"]]) {
+      $(el, v).innerHTML = lists[m].length ? lists[m].map((t, k) => editChip(t, m, k)).join("") : `<p class="tags-empty">${m === "likes" ? "Nothing yet" : "Nothing yet. Lucky them."}</p>`;
+      $(n, v).textContent = lists[m].length ? `(${lists[m].length})` : "";
+    }
+    v.querySelectorAll(".tag-col").forEach((c) => c.classList.toggle("on", c.dataset.col === mode));
+    tagIn.placeholder = mode === "likes" ? "Cats, coffee, Pokémon" : "Tea, fuzzy socks, clutter";
+    const used = new Set([...lists.likes, ...lists.dislikes].map((t) => t.toLowerCase()));
+    const ideas = TAG_IDEAS.filter((t) => !used.has(t.toLowerCase()));
+    const start = ideas.length ? (ideaAt * 12) % ideas.length : 0;
+    $("#ideaTags", v).innerHTML = [...ideas.slice(start), ...ideas.slice(0, start)].slice(0, 12)
+      .map((t, k) => `<button class="tag" type="button" style="--i:${k}" data-idea="${esc(t)}"><i aria-hidden="true">${tagEmoji(t)}</i><span>${esc(t)}</span></button>`).join("");
+    $("#moreIdeas", v).hidden = ideas.length <= 12;
+  };
+  const add = (raw, m = mode) => {
+    let added = 0;
+    for (const part of raw.split(/[,;\n]+/)) {
+      const t = part.replace(/\s+/g, " ").trim().slice(0, 40);
+      if (!t) continue;
+      if (find(m, t) >= 0) { toast(`${t} is already there`); continue; }
+      const o = find(other(m), t);
+      if (o >= 0) lists[other(m)].splice(o, 1);
+      if (lists[m].length >= 30) { toast("That's plenty. Keep it to 30."); break; }
+      lists[m].push(t); added++;
+    }
+    if (added) buzz();
+    paint();
+  };
+  wireSeg($(".seg.lovenope", v), (val) => { mode = val; paint(); tagIn.focus(); });
+  $("#tagAdd", v).onclick = () => { add(tagIn.value); tagIn.value = ""; tagIn.focus(); };
+  tagIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(tagIn.value); tagIn.value = ""; } });
+  $("#moreIdeas", v).onclick = () => { ideaAt++; paint(); };
+  const moveTo = (el) => {
+    const [m, k] = el.dataset.move.split(":");
+    const [t] = lists[m].splice(+k, 1);
+    lists[other(m)].push(t);
+    buzz(); paint();
+    toast(`Moved ${t} to ${m === "likes" ? "Nopes" : "Loves"}`);
+  };
+  v.querySelector("#ed-tags").addEventListener("click", (e) => {
+    const drop = e.target.closest("[data-drop]"), move = e.target.closest("[data-move]"), idea = e.target.closest("[data-idea]");
+    if (drop) { const [m, k] = drop.dataset.drop.split(":"); lists[m].splice(+k, 1); paint(); }
+    else if (move) moveTo(move);
+    else if (idea) add(idea.dataset.idea);
+  });
+  v.querySelector("#ed-tags").addEventListener("keydown", (e) => {
+    const move = e.target.closest?.("[data-move]");
+    if (move && e.target === move && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); moveTo(move); }
+  });
+  paint();
+
+  // Favorite brands: typed or picked from the list, shown as chips.
   const brands = [...(prof.brands || [])];
   const brandIn = $("#brandIn", v);
   const paintBrands = () => {
@@ -4108,9 +4411,8 @@ async function renderProfile() {
   paintBrands();
   $("#brandAdd", v).onclick = () => { addBrand(); brandIn.focus(); };
   brandIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addBrand(); } });
-  // Picking a suggestion from the list adds it right away.
   brandIn.addEventListener("input", (e) => { if (e.inputType === "insertReplacementText" || (!e.inputType && GIFT_LIST.some((g) => g.name === brandIn.value))) addBrand(); });
-  // Gift style and favorite colors: tap on and off, up to 3 each. Saved with the rest of the profile.
+  // Gift style and favorite colors: tap on and off, up to 3 each.
   const picked = (attr) => [...v.querySelectorAll(`[${attr}][aria-pressed="true"]`)].map((b) => b.getAttribute(attr));
   for (const [attr, what] of [["data-style", "gift styles"], ["data-color", "colors"]]) {
     v.querySelectorAll(`[${attr}]`).forEach((b) => (b.onclick = () => {
@@ -4123,9 +4425,11 @@ async function renderProfile() {
   wireForm($("#profileForm", v), async (f) => {
     if (!!f.bmonth !== !!f.bday) throw new Error("Pick both a month and a day for your birthday, or leave both empty.");
     if (brandIn.value.trim()) addBrand();
+    if (tagIn.value.trim()) { add(tagIn.value); tagIn.value = ""; }
     const pad = (n) => String(n).padStart(2, "0");
     await api("profile", {
       name: f.name,
+      bio: f.bio,
       birthday: f.bmonth ? `${pad(f.bmonth)}-${pad(f.bday)}` : "",
       birthYear: f.bmonth ? f.byear.trim() : "",
       sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, f[`size_${k}`]])),
@@ -4133,9 +4437,10 @@ async function renderProfile() {
       brands,
       giftStyle: picked("data-style"),
       colors: picked("data-color"),
-      loves: f.loves,
+      likes: lists.likes,
+      dislikes: lists.dislikes,
     });
-    reload("Profile saved");
+    done("Profile saved");
   });
 }
 
