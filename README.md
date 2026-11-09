@@ -61,6 +61,11 @@ public/og-invite.png  Link preview image for invite links
   - **Cache.** Results are cached for a day per cleaned link in Cloudflare's edge cache (no D1).
   - **In the app:** a newer Fill always wins over one still running, and it says "Still looking..." when the lookup is slow.
   - **Logs:** `wrangler tail` shows one `preview <site> ...` line per lookup, with how it was filled.
+- **Size and color:** wishes have Size and Color fields (`items.size`, `items.color`, migration 0015). They show under the link for clothing, shoes, and bags & jewelry (picked or guessed from the name), or whenever the link offered choices.
+  - **Where the choices come from**, best first: a Shopify store's public `/products/<handle>.js` (every option, plus the variant `?variant=` picks; it also rescues name, price and photo when the page itself is blocked), then JSON-LD (`ProductGroup.hasVariant`, or `size`/`color` on the Product), then the link's query (`?color=navy&size=M`). The Gemini lookup for blocked stores also reports choices.
+  - **The form:** a store's list becomes a dropdown with "Other..." to type. Otherwise it's a box with common suggestions. Your profile sizes show as one-tap chips: shirt and pants for clothing, shoe for shoes, ring for jewelry.
+  - **On cards:** "Size M · Navy" on your list and on others' lists.
+  - **Saving:** the Top pick toggle doesn't send size or color, so it leaves them alone.
 - **Live prices:** on someone's list, each wish or idea that's still available and has a link gets a line under its price. Examples: "↓ Now $29.99 at walmart.com" (cheaper than listed), "Now $49 at target.com", "✓ $45 right now at etsy.com", or "Out of stock at kohls.com right now". Details:
   - `POST /api/prices` takes up to 12 `item:`/`idea:` keys you can see.
   - Price and stock status come from the store page (JSON-LD `offers.availability`, `product:availability`, Amazon's markup). Gemini is used only for stores that block us, 4 at a time.
