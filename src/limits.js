@@ -38,6 +38,8 @@ export const LIMITS = {
   refreshPerMember: [[120, 3600]],
   imagePerMember: [[400, 3600]],
   estimatePerMember: [[150, 3600], [600, 86400]], // "~$40" price guesses
+  quickAddPerMember: [[30, 3600], [100, 86400]], // links added from the iPhone Share button (Shortcut)
+  addKeysPerMemberDay: [20, 86400], // new add keys made for that Shortcut
   // Hidden chat about a person.
   chatSendsPerMember: [[60, 3600], [300, 86400]],
   // Notifications: devices per person (the oldest is dropped past this), test pushes, and group gift alerts started.
