@@ -1984,7 +1984,7 @@ async function refreshDetails() {
 async function render() {
   const signedIn = !!getToken();
   $("#tabs").hidden = !signedIn;
-  if (!signedIn) return renderWelcome(invite ? "invite" : "code");
+  if (!signedIn) return renderWelcome(invite?.hi ? "claim" : invite ? "invite" : "code");
   $("#hero").classList.remove("tall");
 
   // Settings lives under Profile, so the Profile tab stays lit there.
@@ -2061,12 +2061,12 @@ document.addEventListener("keydown", (e) => {
 
 // ---------- welcome / join ----------
 // Invite links: /join/CODE?from=memberId (older links: /?code=CODE). The path stays until you've joined,
-// so a refresh keeps the invite.
+// so a refresh keeps the invite. Personal invites add &hi=TOKEN: that link signs one person in as themselves.
 function readInvite() {
   const m = location.pathname.match(/^\/join\/([A-Za-z0-9]+)/);
   const q = new URLSearchParams(location.search);
   const code = (m?.[1] || q.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return code ? { code, from: q.get("from") || "" } : null;
+  return code ? { code, from: q.get("from") || "", hi: (q.get("hi") || "").replace(/[^A-Za-z0-9]/g, "") } : null;
 }
 let invite = readInvite();
 
@@ -2114,6 +2114,29 @@ async function renderWelcome(step = "code", info = {}) {
   const v = $("#view");
   $("#hero").classList.toggle("tall", step === "invite" || step === "badInvite");
   const backBtn = `<button class="back" type="button" id="backBtn">${BACK} Back</button>`;
+
+  // A personal invite: someone set up this person's list already. One tap and it's theirs.
+  if (step === "claim") {
+    setHero(heroTitle("Hints", "You're invited"));
+    v.innerHTML = '<div class="loading">Opening your invite...</div>';
+    let res;
+    try { res = await api("claim/lookup", { token: invite.hi }); }
+    catch (e) { invite.hi = ""; toast(e.message); return renderWelcome("invite"); }
+    const circle = res.circles[0];
+    setHero(envelope() + heroTitle(res.by ? `${res.by} invited you` : "You're invited", `Hi ${res.name}!`));
+    v.innerHTML = `
+      <p class="lead" style="text-align:center">${res.by ? `${esc(res.by)} set up` : "Someone set up"} your wish list${circle ? ` in <strong>${esc(circle)}</strong>` : ""}.${res.wishes ? ` It already has ${plural(res.wishes, "wish", "wishes")} on it.` : ""} Tap below and it's yours.</p>
+      ${perks()}
+      <button class="add big shine slide" style="animation-delay:1.65s" type="button" id="claimBtn">I'm ${esc(res.name)}, let's go</button>
+      <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="notMe">Not ${esc(res.name)}?</button></p>`;
+    $("#claimBtn").onclick = async (e) => {
+      e.currentTarget.disabled = true;
+      try { finishJoin(await api("claim", { token: invite.hi }), { joined: circle || "" }); }
+      catch (err) { toast(err.message); invite.hi = ""; renderWelcome("invite"); }
+    };
+    $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
+    return;
+  }
 
   // Opened an invite link: the envelope, the family, one big Join button.
   if (step === "invite") {
@@ -2262,6 +2285,14 @@ function party(x = innerWidth / 2, y = innerHeight / 2.6, count = 34) {
 
 // ---------- invite link opened while signed in ----------
 async function offerJoin(inv) {
+  if (inv.hi) {
+    // Someone's personal invite opened on a phone that's already signed in (often your own, testing it).
+    let res;
+    try { res = await api("claim/lookup", { token: inv.hi }); } catch (e) { return toast(e.message); }
+    return openSheet(`<h3>This invite is for ${esc(res.name)}</h3>
+      <p>It signs ${esc(res.name)} in as themselves, and works once. Send it to ${esc(res.name)} to open on their own phone. You're signed in as ${esc(state.me.name)} here, so nothing changed.</p>
+      <div class="actions"><button class="btn primary" type="button" id="okHi">Got it</button></div>`, (el) => ($("#okHi", el).onclick = closeSheet));
+  }
   if (state.groups.some((g) => g.code === inv.code)) return; // already in it: just open the app
   let res;
   try { res = await api("lookup", { code: inv.code, from: inv.from }); }
@@ -3698,14 +3729,16 @@ async function renderFamily() {
 }
 
 // Circles > Manage > Households (admin only): group the circle's people into households, rename them,
-// and add or take people out. A new household made here is put in this circle.
+// and add or take people out. A new household made here is put in this circle. The admin can also set up
+// households of people who aren't on Hints yet (they show "Not on Hints yet" with an Invite button).
 function openHouseholds(gid) {
   const g = state.groups.find((x) => x.id === gid);
   if (!g || !isAdmin(g)) return closeSheet();
   const by = new Map(), loose = [];
   for (const m of g.members) m.householdId ? by.set(m.householdId, [...(by.get(m.householdId) || []), m]) : loose.push(m);
   const nm = (m) => `${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}`;
-  const row = (m, extra = "") => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${nm(m)}</strong>${extra}</div>`;
+  const row = (m, extra = "") => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${nm(m)}${notJoined(m)}</strong>${inviteBtn(m)}${extra}</div>`;
+  const waiting = g.members.filter((m) => m.managedBy && m.canManage);
   const back = async (msg) => {
     await refreshMe();
     toast(msg);
@@ -3716,16 +3749,60 @@ function openHouseholds(gid) {
   openSheet(`<button class="back" type="button" id="hhToManage" style="margin-bottom:6px">${BACK} Manage ${esc(g.name)}</button>
     <h3>Households in ${esc(g.name)}${tip("People who live or gift together, like Mom & Dad. As admin you can set these up for everyone in the circle.")}</h3>
     <div class="err" hidden></div>
+    ${waiting.length ? `<p class="subtle">${plural(waiting.length, "person isn't", "people aren't")} on Hints yet. Add wishes for them now, then tap Invite to send each one their own sign-in link.</p>` : ""}
     ${[...by].map(([id, ppl]) => `<div class="hh" style="margin-bottom:12px">
       <div class="hh-name">${tileAvatar(householdLabel(id), `h:${id}`)} ${esc(householdLabel(id))}<button class="btn quiet small" type="button" data-rename="${esc(id)}">Edit</button></div>
       <div style="background:var(--card);border-radius:14px;padding:4px 12px">${ppl.map((m) => row(m, `<button class="btn small quiet danger" type="button" data-out="${esc(m.id)}" data-hh="${esc(id)}">Remove</button>`)).join("")}</div>
       <button class="btn small wide" type="button" data-addto="${esc(id)}" style="margin-top:8px">${PLUS} Add someone</button></div>`).join("")}
     ${by.size ? "" : `<p class="subtle">No households yet.</p>`}
     ${loose.length ? `<div class="label" style="margin-top:18px">Not in a household</div>
-      <div>${loose.map((m) => row(m)).join("")}</div>
-      <button class="btn primary wide" type="button" id="newHh" style="margin-top:14px">${PLUS} New household</button>` : ""}`,
+      <div>${loose.map((m) => row(m)).join("")}</div>` : ""}
+    <button class="btn primary wide" type="button" id="setupHh" style="margin-top:14px">${PLUS} Add a household</button>
+    ${loose.length ? `<button class="btn wide" type="button" id="newHh" style="margin-top:8px">Group people already here</button>` : ""}`,
   (el) => {
     $("#hhToManage", el).onclick = () => openCircleManage(gid);
+    wireInviteBtns(el);
+    // New people who aren't on Hints yet. You look after their lists until they open their invite.
+    $("#setupHh", el).onclick = () => {
+      const nameRow = (i) => `<label class="field"><span>Person ${i}</span><input class="input" name="p" maxlength="40" placeholder="${i === 1 ? "Grandma" : i === 2 ? "Grandpa" : "Name"}"></label>`;
+      openSheet(`<h3>Add a household</h3>
+        <p class="subtle">Everyone you shop for in one home. They don't need to be on Hints yet: you can add wishes for them, then send each one an invite.</p>
+        <form id="setupForm" autocomplete="off"><div class="err" hidden></div>
+          <label class="field"><span>Household name <em style="font-weight:600;color:var(--muted)">(optional)</em></span><input class="input" name="name" maxlength="40" placeholder="Uses first names if empty"></label>
+          <div id="setupPeople">${nameRow(1)}${nameRow(2)}</div>
+          <button class="btn quiet small" type="button" id="morePpl">${PLUS} Another person</button>
+          <div class="actions" style="margin-top:16px"><button class="btn" type="button" id="hhBack">Back</button><button class="btn primary" type="submit">Add household</button></div>
+        </form>`, (el2) => {
+        const box = $("#setupPeople", el2);
+        setTimeout(() => box.querySelector("input")?.focus(), 300);
+        $("#hhBack", el2).onclick = () => openHouseholds(gid);
+        $("#morePpl", el2).onclick = () => {
+          const n = box.querySelectorAll("input").length;
+          if (n >= 12) return;
+          box.insertAdjacentHTML("beforeend", nameRow(n + 1));
+          box.querySelectorAll("input")[n].focus();
+        };
+        wireForm($("#setupForm", el2), async ({ name }) => {
+          const people = [...box.querySelectorAll("input")].map((x) => x.value.trim()).filter(Boolean);
+          if (!people.length) throw new Error("Add at least one person.");
+          await api("household/new", { groupId: gid, name, people });
+          await back(`Added ${people.length === 1 ? people[0] : plural(people.length, "person", "people")}`);
+        });
+      });
+    };
+    const addNew = (hhId) => openSheet(`<h3>Add to ${esc(householdLabel(hhId))}</h3>
+      <p class="subtle">Someone who isn't on Hints yet. You can add wishes for them, then send them an invite.</p>
+      <form id="newPerson" autocomplete="off"><div class="err" hidden></div>
+        <label class="field"><span>Their name</span><input class="input" name="name" maxlength="40" required></label>
+        <div class="actions"><button class="btn" type="button" id="hhBack">Back</button><button class="btn primary" type="submit">Add</button></div>
+      </form>`, (el2) => {
+      setTimeout(() => $("#newPerson", el2).elements.name.focus(), 300);
+      $("#hhBack", el2).onclick = () => openHouseholds(gid);
+      wireForm($("#newPerson", el2), async ({ name }) => {
+        await api("managed/add", { name, householdId: hhId });
+        await back(`Added ${name.trim()}`);
+      });
+    });
     el.querySelectorAll("[data-out]").forEach((b) => (b.onclick = async () => {
       const name = b.dataset.out === state.me.id ? "yourself" : personName(b.dataset.out);
       if (!window.confirm(`Take ${name} out of ${householdLabel(b.dataset.hh)}?`)) return;
@@ -3749,12 +3826,14 @@ function openHouseholds(gid) {
       });
     }));
     // Pick people: one for adding to a household, several for a new one.
-    const picker = (title, many, onDone) => openSheet(`<h3>${esc(title)}</h3>
+    const picker = (title, many, onDone, hhId) => openSheet(`<h3>${esc(title)}</h3>
       <div class="err" hidden></div>
+      ${hhId ? `<button class="btn primary wide" type="button" id="pickNew" style="margin-bottom:12px">${PLUS} Someone not on Hints yet</button><div class="label">Or someone already here</div>` : ""}
       ${many ? `<label class="field"><span>Household name <em style="font-weight:600;color:var(--muted)">(optional)</em></span><input class="input" id="hhNewName" maxlength="40" placeholder="Uses first names if empty"></label>` : ""}
       ${loose.map((m) => `<button class="pick-person" type="button" data-pick="${esc(m.id)}" aria-pressed="false">${avatar(m.name, m.id)}<span>${nm(m)}</span>${many ? `<span class="tick-box">${CHECK}</span>` : ""}</button>`).join("")}
       <div class="actions" style="margin-top:16px"><button class="btn" type="button" id="hhBack">Back</button>${many ? `<button class="btn primary" type="button" id="hhMake">Create</button>` : ""}</div>`, (el2) => {
       $("#hhBack", el2).onclick = () => openHouseholds(gid);
+      $("#pickNew", el2)?.addEventListener("click", () => addNew(hhId));
       el2.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = async () => {
         if (many) { b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")); buzz(); return; }
         b.disabled = true;
@@ -3768,12 +3847,12 @@ function openHouseholds(gid) {
       });
     });
     el.querySelectorAll("[data-addto]").forEach((b) => (b.onclick = () => {
-      if (!loose.length) return showErr(el, new Error(`Everyone in ${g.name} is already in a household.`));
       const id = b.dataset.addto;
+      if (!loose.length) return addNew(id);
       picker(`Add to ${householdLabel(id)}`, false, async ([memberId]) => {
         await api("household/add", { householdId: id, memberId });
         await back(`Added ${memberId === state.me.id ? "you" : personName(memberId)}`);
-      });
+      }, id);
     }));
     $("#newHh", el)?.addEventListener("click", () => picker("New household", true, async (memberIds, name) => {
       await api("household/create", { groupId: gid, memberIds, name });
@@ -3865,6 +3944,53 @@ function wireInviteCard(root, g) {
 
 function openInvite(g) {
   openSheet(`<h3>Invite to ${esc(g.name)}</h3>${inviteCard(g)}`, (el) => wireInviteCard(el, g));
+}
+
+// Personal invite for someone who isn't on Hints yet (you set up their list). Opening the link signs them in
+// as themselves, so there's no shared PIN and no picking a name. One link per person; a new one replaces the old.
+const notJoined = (m) => (m.managedBy && m.canManage ? `<br><small>${m.inviteSent ? "Invite sent" : "Not joined yet"}</small>` : "");
+const inviteBtn = (m) => (m.managedBy && m.canManage ? `<button class="btn small${m.inviteSent ? " quiet" : ""}" type="button" data-hi="${esc(m.id)}">${m.inviteSent ? "Resend" : "Invite"}</button>` : "");
+const wireInviteBtns = (el) => el.querySelectorAll("[data-hi]").forEach((b) => (b.onclick = () => sendPersonalInvite(b.dataset.hi)));
+function sendPersonalInvite(id) {
+  const m = everyone().find((x) => x.id === id);
+  const g = state.groups.find((x) => x.members.some((y) => y.id === id));
+  if (!m || !g) return toast("Person not found");
+  const name = m.name;
+  const mark = () => state.groups.forEach((x) => x.members.forEach((y) => { if (y.id === id) y.inviteSent = true; }));
+  const make = async (el) => {
+    const err = $(".err", el);
+    err.hidden = true;
+    let res;
+    try { res = await api("managed/invite", { memberId: id }); } catch (e) { err.textContent = e.message; err.hidden = false; return; }
+    mark();
+    state.stale = true;
+    const link = `${location.origin}/join/${encodeURIComponent(g.code)}?from=${encodeURIComponent(state.me.id)}&hi=${encodeURIComponent(res.token)}`;
+    const msg = `Hi ${m.fullName || name}! I set up your wish list on Hints 🎁 Tap this link and it signs you right in as you:`;
+    $("#hiBody", el).innerHTML = `
+      <div class="input" style="font-size:14px;overflow-wrap:anywhere;user-select:all">${esc(link)}</div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" type="button" id="hiCopy">${COPY} Copy</button>
+        ${navigator.share ? `<button class="btn primary" type="button" id="hiShare">Send to ${esc(name)}</button>` : ""}
+      </div>`;
+    $("#hiCopy", el).onclick = async () => {
+      try { await navigator.clipboard.writeText(`${msg}\n${link}`); buzz(); toast("Invite copied"); } catch { toast("Press and hold the link to copy it"); }
+    };
+    $("#hiShare", el)?.addEventListener("click", async () => {
+      try { await navigator.share({ title: "Hints", text: msg, url: link }); } catch (e) { if (e?.name !== "AbortError") $("#hiCopy", el).click(); }
+    });
+  };
+  openSheet(`<h3>Invite ${esc(name)}</h3>
+    <p class="subtle">This link is just for ${esc(name)}. It signs them in as themselves, with everything already on their list, and they can add a PIN after. Works once, for 30 days.</p>
+    <div class="err" hidden></div>
+    <div id="hiBody">${m.inviteSent ? `<p>You already sent ${esc(name)} a link. A new one turns the old one off.</p>
+      <div class="actions"><button class="btn" type="button" id="hiOff">Turn off link</button><button class="btn primary" type="button" id="hiNew">Make a new link</button></div>`
+      : '<div class="loading">Making their link...</div>'}</div>`, (el) => {
+    if (!m.inviteSent) return make(el);
+    $("#hiNew", el).onclick = () => make(el);
+    $("#hiOff", el).onclick = async () => {
+      try { await api("managed/uninvite", { memberId: id }); closeSheet(); toast(`${name}'s link is off`); await refreshMe(); render(); } catch (e) { toast(e.message); }
+    };
+  });
 }
 
 // "Remind them" on someone's empty list.
@@ -4238,6 +4364,7 @@ function manageCard(list, name) {
       <button class="btn small" type="button" id="mgCards">Gift cards</button>
     </div>
     <div class="manage-more">
+      <button class="linkbtn" type="button" id="mgInvite">Send ${esc(name)} their invite</button>
       <button class="linkbtn" type="button" id="mgRelease">Let ${esc(name)} sign in</button>
       <button class="linkbtn" type="button" id="mgRemove">Remove ${esc(name)}</button>
     </div>
@@ -4253,6 +4380,7 @@ function wireManageCard(v, list, name, id) {
     const item = list.items.find((x) => x.id === b.dataset.editWish);
     if (item) editItem(item, { as: id });
   }));
+  $("#mgInvite", v).onclick = () => sendPersonalInvite(id);
   $("#mgRelease", v).onclick = async () => {
     if (!window.confirm(`Let ${name} sign in? They'll pick their name on the sign-in screen with your circle's code. From then on it's their own list: they won't see what's been bought, and you won't be able to edit it.`)) return;
     try { await api("managed/release", { memberId: id }); toast(`${name} can sign in now`); state.stale = true; render(); } catch (e) { toast(e.message); }
@@ -5983,19 +6111,20 @@ function openCircleManage(gid) {
     <h4>People${tip("Taking someone out stops them seeing this circle's lists, and this circle seeing theirs. They can come back with the invite code. Clear PIN lets someone who forgot theirs sign in again.")}</h4>
     <div style="margin-top:6px">${others.map((m) => {
       const viaHh = m.householdId && state.households[m.householdId]?.circles.includes(g.id);
-      return `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${viaHh ? `<br><small>In with ${esc(householdLabel(m.householdId))}</small>` : ""}</strong>
-        ${m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
+      return `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${viaHh ? `<br><small>In with ${esc(householdLabel(m.householdId))}</small>` : ""}${notJoined(m)}</strong>
+        ${inviteBtn(m)}${m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
         ${viaHh ? "" : `<button class="btn small quiet danger" type="button" data-kick="${esc(m.id)}">Remove</button>`}</div>`;
     }).join("") || `<p class="subtle">Just you so far.</p>`}</div>
     ${others.some((m) => m.householdId && state.households[m.householdId]?.circles.includes(g.id)) ? `<p class="subtle" style="margin-top:6px">People who came in with their household come out through Manage households.</p>` : ""}
     <hr class="set-div">
     <h4>Admin${tip("The admin manages the circle's name, photo and households. There's one at a time.")}</h4>
     <p class="subtle" style="margin-top:4px">You're the admin. Hand it to someone else and you'll be a regular member.</p>
-    ${others.length ? `<form id="adminForm" autocomplete="off"><div class="err" hidden></div>
+    ${others.some((m) => !m.managedBy) ? `<form id="adminForm" autocomplete="off"><div class="err" hidden></div>
       <label class="field"><span>New admin</span><select class="input" name="memberId" required>
-        <option value="">Pick someone</option>${others.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")}</select></label>
+        <option value="">Pick someone</option>${others.filter((m) => !m.managedBy).map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")}</select></label>
       <button class="btn wide" type="submit">Make admin</button></form>`
-      : `<p class="subtle">Invite someone first, then you can hand it over.</p>`}`, (el) => {
+      : `<p class="subtle">Once someone else has joined, you can hand it to them.</p>`}`, (el) => {
+    wireInviteBtns(el);
     wirePhotoRow(el, async (photo) => { await api("family/edit", { groupId: gid, photo }); await reload(photo ? "Circle photo saved" : "Circle photo removed"); });
     wireForm($("#circleForm", el), async ({ name }) => { await api("family/edit", { groupId: gid, name }); await reload("Circle renamed"); });
     $("#cmHh", el).onclick = () => openHouseholds(gid);
