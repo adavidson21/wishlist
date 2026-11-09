@@ -3594,14 +3594,20 @@ function mineFilter() {
     state.mineF = {
       q: "", cat: "all", price: "all", top: false,
       sort: MINE_SORTS.some(([k]) => k === saved.sort) ? saved.sort : "new",
-      layout: MINE_LAYOUTS.some(([k]) => k === saved.layout) ? saved.layout : "list",
+      layout: MINE_LAYOUTS.some(([k]) => k === saved[layoutPref()]) ? saved[layoutPref()] : onPhone() ? "grid" : "list",
     };
   }
   return state.mineF;
 }
+// Phones and tablets start on Gallery, computers on List. Each remembers its own choice; phones use a new key
+// so everyone's phone starts on Gallery once, whatever it was set to before.
+const onPhone = () => !matchMedia("(min-width: 1024px)").matches;
+const layoutPref = () => (onPhone() ? "layoutPhone" : "layout");
 function saveMinePrefs() {
   const f = mineFilter();
-  try { localStorage.setItem(MINE_PREFS_KEY, JSON.stringify({ sort: f.sort, layout: f.layout })); } catch {}
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(MINE_PREFS_KEY) || "{}"); } catch {}
+  try { localStorage.setItem(MINE_PREFS_KEY, JSON.stringify({ ...saved, sort: f.sort, [layoutPref()]: f.layout })); } catch {}
 }
 // Explainers ("Only you can see these") show the first few times, then the dashed look and lock icon carry it.
 const HINT_SEEN_KEY = "wishlist-hints-seen";
