@@ -424,14 +424,36 @@ async function leaveHousehold(env, memberId) {
   }
 }
 
-// A household you can organize: someone in it shares a circle with you. Returns its id or throws 404.
+// A household you can organize: your own, or one with someone in a circle you're the admin of.
+// Returns its id, or throws 404 (can't see it) / 403 (can see it, not yours to change).
 async function manageableHousehold(env, meId, householdId) {
+  const hh = String(householdId);
+  if ((await householdOf(env, meId)) === hh) return hh;
+  const { results } = await env.DB.prepare(
+    `SELECT DISTINCT a.group_id FROM members m JOIN group_members a ON a.member_id = m.id JOIN group_members b ON b.group_id = a.group_id
+      WHERE m.household_id = ? AND b.member_id = ?`,
+  ).bind(hh, meId).all();
+  if (!results.length) fail(404, "Household not found.");
+  for (const r of results) if ((await adminOf(env, r.group_id)) === meId) return hh;
+  fail(403, "Only the circle's admin can change someone else's household.");
+}
+
+// Each circle has one admin (groups.created_by): renames it, sets its photo, manages its households and can
+// hand admin to someone else. If the admin is no longer in the circle (left, or dropped with a household),
+// it passes to whoever has been in it longest. Returns the admin's member id, or null for an empty circle.
+async function adminOf(env, groupId) {
   const row = await env.DB.prepare(
-    `SELECT 1 FROM members m JOIN group_members a ON a.member_id = m.id JOIN group_members b ON b.group_id = a.group_id
-      WHERE m.household_id = ? AND b.member_id = ? LIMIT 1`,
-  ).bind(String(householdId), meId).first();
-  if (!row) fail(404, "Household not found.");
-  return String(householdId);
+    `SELECT g.created_by AS admin, EXISTS (SELECT 1 FROM group_members WHERE group_id = g.id AND member_id = g.created_by) AS inIt
+       FROM groups g WHERE g.id = ?`,
+  ).bind(groupId).first();
+  if (!row) return null;
+  if (row.admin && row.inIt) return row.admin;
+  const next = await env.DB.prepare(
+    "SELECT member_id FROM group_members WHERE group_id = ? ORDER BY direct DESC, joined_at, member_id LIMIT 1",
+  ).bind(groupId).first();
+  const id = next?.member_id || null;
+  if (id) await env.DB.prepare("UPDATE groups SET created_by = ? WHERE id = ?").bind(id, groupId).run();
+  return id;
 }
 
 async function newUniqueJoinCode(env) {
@@ -1260,6 +1282,7 @@ const handlers = {
         }
       }
     }
+    for (const g of groups) g.created_by = await adminOf(env, g.id);
     return {
       me: {
         id: me.id, name: me.name, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || null,
@@ -1271,7 +1294,7 @@ const handlers = {
         id: g.id,
         name: g.name,
         code: g.join_code,
-        createdBy: g.created_by || null,
+        createdBy: g.created_by || null, // the circle's admin
         photo: g.photo_at || null,
         members: people.filter((p) => p.group_id === g.id).map(person).sort(byName),
       })),
@@ -1933,7 +1956,7 @@ const handlers = {
     return { group: { id, name, code } };
   },
 
-  // Rename a circle, or set or remove its photo. Only the person who started the circle.
+  // Rename a circle, or set or remove its photo. Only the circle's admin.
   // photo: a small JPEG data URL (the app squares it first), "" removes it, absent leaves it alone.
   async "POST family/edit"(req, env) {
     const me = await auth(req, env);
@@ -1942,7 +1965,7 @@ const handlers = {
       "SELECT g.id, g.created_by FROM groups g JOIN group_members gm ON gm.group_id = g.id WHERE g.id = ? AND gm.member_id = ?",
     ).bind(String(b.groupId || ""), me.id).first();
     if (!g) fail(404, "Circle not found.");
-    if (g.created_by !== me.id) fail(403, "Only the person who started this circle can change it.");
+    if ((await adminOf(env, g.id)) !== me.id) fail(403, "Only the circle's admin can change it.");
     const rows = [];
     if (b.name !== undefined) rows.push(env.DB.prepare("UPDATE groups SET name = ? WHERE id = ?").bind(text(b.name, LIMITS.group, "Circle name", true), g.id));
     if (b.photo !== undefined) {
@@ -1950,6 +1973,19 @@ const handlers = {
       rows.push(env.DB.prepare("UPDATE groups SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, g.id));
     }
     if (rows.length) await env.DB.batch(rows);
+    return { ok: true };
+  },
+
+  // Hand a circle's admin to someone else in it. Only the current admin.
+  async "POST family/admin"(req, env) {
+    const me = await auth(req, env);
+    const { groupId, memberId } = await body(req);
+    if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can pick a new admin.");
+    if (!memberId || memberId === me.id) fail(400, "Pick someone else.");
+    const them = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, String(memberId)).first();
+    if (!them) fail(404, "They aren't in this circle.");
+    await env.DB.prepare("UPDATE groups SET created_by = ? WHERE id = ?").bind(String(memberId), groupId).run();
     return { ok: true };
   },
 
@@ -1968,12 +2004,13 @@ const handlers = {
       env.DB.prepare("DELETE FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, me.id),
       env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(groupId, me.id),
     ]);
+    await adminOf(env, groupId);
     return { ok: true };
   },
 
   // ---------- households ----------
-  // Anyone in a circle can organize the households in it (honor system, like the rest of sign-in).
-  // Every action takes an optional householdId; without one it's your own household.
+  // You can always organize your own household. A circle's admin can also organize any household with
+  // someone in that circle. Every action takes an optional householdId; without one it's your own household.
 
   // Make a household out of people in one of your circles, and put it in that circle.
   async "POST household/create"(req, env) {
@@ -1981,6 +2018,7 @@ const handlers = {
     const b = await body(req);
     const groupId = b.groupId;
     if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can make households here.");
     const ids = [...new Set((Array.isArray(b.memberIds) ? b.memberIds : []).map(String))];
     if (!ids.length) fail(400, "Pick who's in the household.");
     if (ids.length > 30) fail(400, "That's a lot of people for one household.");

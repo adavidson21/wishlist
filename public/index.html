@@ -190,7 +190,7 @@
   .fam strong { display: block; color: var(--ink); font-size: 17px; overflow-wrap: anywhere; }
   .fam small { color: var(--muted); font-size: 14px; }
   .fam .code-sm { font-weight: 800; letter-spacing: .1em; color: var(--ink); }
-  .fam-label { justify-content: space-between; }
+  .fam-label > .btns, .fam-label > .btn { margin-left: auto; }
   .star-btn { position: relative; min-height: 44px; border: 0; border-radius: 999px; padding: 0 13px; background: var(--panel); color: var(--muted);
     font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
   .star-btn svg { transform: rotate(-6deg); }
@@ -3215,7 +3215,7 @@ async function renderFamily() {
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
   const sections = state.groups.map((fam, n) => {
     const ppl = fam.members.filter((m) => m.id !== state.me.id);
-    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns"><button class="btn quiet small" type="button" data-hhs="${esc(fam.id)}">Households</button><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>
+    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns">${isAdmin(fam) ? `<button class="btn quiet small" type="button" data-manage="${esc(fam.id)}">Manage</button>` : ""}<button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>
       <div class="stack" style="margin-top:12px">${ppl.length ? peopleHtml(ppl, personBtn) : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
   }).join("");
   v.innerHTML = multi() ? `${sections}
@@ -3223,7 +3223,7 @@ async function renderFamily() {
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
     </div>` : `
-    ${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${g ? `<button class="btn quiet small" type="button" data-hhs="${esc(g.id)}">Households</button>` : ""}</div><div class="stack" style="margin-top:12px">
+    ${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${isAdmin(g) ? `<button class="btn quiet small" type="button" data-manage="${esc(g.id)}">Manage</button>` : ""}</div><div class="stack" style="margin-top:12px">
       ${peopleHtml(people, personBtn)}</div>` : `
       <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Their lists show up here once they join.</p></div>`}
     <div class="label">You</div>
@@ -3237,7 +3237,7 @@ async function renderFamily() {
   $("#meRow").onclick = () => setTab("mine");
   if (g && !multi()) wireInviteCard(v, g);
   v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((x) => x.id === b.dataset.share))));
-  v.querySelectorAll("[data-hhs]").forEach((b) => (b.onclick = () => openHouseholds(b.dataset.hhs)));
+  v.querySelectorAll("[data-manage]").forEach((b) => (b.onclick = () => openCircleManage(b.dataset.manage)));
   wireGiftBox(v, () => {
     const card = $("[data-ticket]", v);
     if (!card) return openInvite(g);
@@ -3246,11 +3246,11 @@ async function renderFamily() {
   });
 }
 
-// "Households" on a circle: anyone in the circle can group its people into households, rename them,
+// Circles > Manage > Households (admin only): group the circle's people into households, rename them,
 // and add or take people out. A new household made here is put in this circle.
 function openHouseholds(gid) {
   const g = state.groups.find((x) => x.id === gid);
-  if (!g) return closeSheet();
+  if (!g || !isAdmin(g)) return closeSheet();
   const by = new Map(), loose = [];
   for (const m of g.members) m.householdId ? by.set(m.householdId, [...(by.get(m.householdId) || []), m]) : loose.push(m);
   const nm = (m) => `${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}`;
@@ -3262,7 +3262,8 @@ function openHouseholds(gid) {
     openHouseholds(gid);
   };
   const showErr = (el, e) => { const err = $(".err", el); err.textContent = e.message; err.hidden = false; };
-  openSheet(`<h3>Households in ${esc(g.name)}${tip(`People who live or gift together, like Mom & Dad. Anyone in ${g.name} can set these up.`)}</h3>
+  openSheet(`<button class="back" type="button" id="hhToManage" style="margin-bottom:6px">${BACK} Manage ${esc(g.name)}</button>
+    <h3>Households in ${esc(g.name)}${tip("People who live or gift together, like Mom & Dad. As admin you can set these up for everyone in the circle.")}</h3>
     <div class="err" hidden></div>
     ${[...by].map(([id, ppl]) => `<div class="hh" style="margin-bottom:12px">
       <div class="hh-name">${tileAvatar(householdLabel(id), `h:${id}`)} ${esc(householdLabel(id))}<button class="btn quiet small" type="button" data-rename="${esc(id)}">Edit</button></div>
@@ -3273,6 +3274,7 @@ function openHouseholds(gid) {
       <div>${loose.map((m) => row(m)).join("")}</div>
       <button class="btn primary wide" type="button" id="newHh" style="margin-top:14px">${PLUS} New household</button>` : ""}`,
   (el) => {
+    $("#hhToManage", el).onclick = () => openCircleManage(gid);
     el.querySelectorAll("[data-out]").forEach((b) => (b.onclick = async () => {
       const name = b.dataset.out === state.me.id ? "yourself" : personName(b.dataset.out);
       if (!window.confirm(`Take ${name} out of ${householdLabel(b.dataset.hh)}?`)) return;
@@ -4864,8 +4866,7 @@ async function renderSettings() {
     <div class="set-card">
       ${state.groups.map((g) => `<div class="fam">
           ${tileAvatar(g.name, `g:${g.id}`)}
-          <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}${g.createdBy && g.createdBy !== state.me.id && g.members.some((m) => m.id === g.createdBy) ? ` · Started by ${esc(personName(g.createdBy))}` : ""}</small></span>
-          ${g.createdBy === state.me.id ? `<button class="btn small quiet" type="button" data-edit-circle="${esc(g.id)}">Edit</button>` : ""}
+          <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}${isAdmin(g) ? " · You're the admin" : g.createdBy ? ` · Admin: ${esc(personName(g.createdBy))}` : ""}</small></span>
           <button class="btn small" type="button" data-share="${esc(g.id)}">Invite</button>
           ${multi() ? `<button class="btn small quiet danger" type="button" data-leave="${esc(g.id)}">Leave</button>` : ""}
         </div>`).join("")}
@@ -4949,7 +4950,8 @@ async function renderSettings() {
     v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
     v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
       const name = groupName(b.dataset.leave);
-      if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.`)) return;
+      const admin = isAdmin(state.groups.find((g) => g.id === b.dataset.leave)) ? " You're its admin, so that passes to whoever has been in it longest. To pick who, use Manage on the Circles tab first." : "";
+      if (!window.confirm(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.${admin}`)) return;
       try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { toast(e.message); }
     }));
     wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
@@ -4963,24 +4965,45 @@ async function renderSettings() {
         const { group: g } = await api("family/start", { groupName: n });
         reload(`Started ${g.name}. Code: ${g.code}`);
       }));
-    v.querySelectorAll("[data-edit-circle]").forEach((b) => (b.onclick = () => openCircleEdit(b.dataset.editCircle, reload)));
   }
   if (sec === "household") wireHousehold(v, reload);
 }
 
-// Edit a circle: its photo and name. Only the person who started it sees the Edit button (the API checks too).
-function openCircleEdit(gid, reload) {
+// Manage a circle (Circles tab, admin only; the API checks too): photo, name, its households, and who's admin.
+const isAdmin = (g) => !!g && g.createdBy === state.me.id;
+function openCircleManage(gid) {
   const g = state.groups.find((x) => x.id === gid);
-  if (!g) return;
-  openSheet(`<h3>Edit circle</h3>
+  if (!g || !isAdmin(g)) return closeSheet();
+  const reload = async (msg) => { closeSheet(); toast(msg); await refreshMe(); render(); };
+  const others = g.members.filter((m) => m.id !== state.me.id);
+  openSheet(`<h3>Manage ${esc(g.name)}</h3>
     ${photoRowHtml(g.name, `g:${g.id}`)}
     <hr class="set-div">
     <form id="circleForm" autocomplete="off"><div class="err" hidden></div>
       <label class="field"><span>Circle name</span><input class="input" name="name" maxlength="60" value="${esc(g.name)}" required></label>
-      <button class="btn primary wide" type="submit">Save name</button>
-    </form>`, (el) => {
-    wirePhotoRow(el, async (photo) => { await api("family/edit", { groupId: gid, photo }); reload(photo ? "Circle photo saved" : "Circle photo removed"); });
-    wireForm($("#circleForm", el), async ({ name }) => { await api("family/edit", { groupId: gid, name }); reload("Circle renamed"); });
+      <button class="btn wide" type="submit">Save name</button>
+    </form>
+    <hr class="set-div">
+    <h4>Households${tip("People who live or gift together, like Mom & Dad. Everyone can manage their own; you can manage any of them here.")}</h4>
+    <button class="btn wide" type="button" id="cmHh" style="margin-top:8px">Manage households</button>
+    <hr class="set-div">
+    <h4>Admin${tip("The admin manages the circle's name, photo and households. There's one at a time.")}</h4>
+    <p class="subtle" style="margin-top:4px">You're the admin. Hand it to someone else and you'll be a regular member.</p>
+    ${others.length ? `<form id="adminForm" autocomplete="off"><div class="err" hidden></div>
+      <label class="field"><span>New admin</span><select class="input" name="memberId" required>
+        <option value="">Pick someone</option>${others.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")}</select></label>
+      <button class="btn wide" type="submit">Make admin</button></form>`
+      : `<p class="subtle">Invite someone first, then you can hand it over.</p>`}`, (el) => {
+    wirePhotoRow(el, async (photo) => { await api("family/edit", { groupId: gid, photo }); await reload(photo ? "Circle photo saved" : "Circle photo removed"); });
+    wireForm($("#circleForm", el), async ({ name }) => { await api("family/edit", { groupId: gid, name }); await reload("Circle renamed"); });
+    $("#cmHh", el).onclick = () => openHouseholds(gid);
+    const af = $("#adminForm", el);
+    if (af) wireForm(af, async ({ memberId }) => {
+      const who = personName(memberId);
+      if (!window.confirm(`Make ${who} the admin of ${g.name}? You won't be able to manage it anymore unless they hand it back.`)) return;
+      await api("family/admin", { groupId: gid, memberId });
+      await reload(`${who} is now the admin`);
+    });
   });
 }
 
