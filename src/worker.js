@@ -39,7 +39,7 @@ async function invitePage(env, url, code) {
   const title = info ? `Join ${info.group.name} on Hints` : "You're invited to Hints";
   const description = info
     ? `${info.inviter ? `${info.inviter} invited you` : "You're invited"} to share wish lists with ${info.group.name}. Add what you'd love, see what everyone's hoping for, and keep gifts a surprise.`
-    : "Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.";
+    : "Wish lists for your circle: share what you'd like, mark what you're getting, keep gifts a surprise.";
   const setContent = (value) => ({ element: (el) => el.setAttribute("content", value) });
   const out = new HTMLRewriter()
     .on("title", { element: (el) => el.setInnerContent(title) })
