@@ -193,6 +193,10 @@ const IMAGE_SET = `image_url = CASE WHEN ?1 IS NOT NULL THEN ?1 WHEN url IS ?2 T
   image_checked_at = CASE WHEN ?1 IS NOT NULL THEN ?3 WHEN url IS ?2 THEN image_checked_at ELSE NULL END,
   price_checked_at = CASE WHEN url IS ?2 THEN price_checked_at ELSE NULL END`;
 
+// Save: the price syncs with the store only when it came from the link (the app sends priceAuto) and there's
+// a link and a price to sync. Typing a price by hand turns syncing off.
+const priceAuto = (b, fields) => (b.priceAuto && fields[1] && fields[2] != null ? 1 : 0);
+
 function cents(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(String(value).replace(/[$,\s]/g, ""));
@@ -507,6 +511,7 @@ const itemOut = (r) => ({
   image_url: r.image_url || null,
   image_checked: !!r.image_checked_at,
   price_checked: !!r.price_checked_at,
+  price_auto: !!r.price_auto,
 });
 
 // Expects the idea row joined with its claim (buyer_id, buyer_name, paid_cents) and author_name.
@@ -524,6 +529,7 @@ const ideaOut = (r, meId) => ({
   image_url: r.image_url || null,
   image_checked: !!r.image_checked_at,
   price_checked: !!r.price_checked_at,
+  price_auto: !!r.price_auto,
   updated_at: r.updated_at,
   claim: r.buyer_id
     ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === meId, price_cents: r.paid_cents, occasion: r.claim_season }
@@ -910,7 +916,7 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
   const url = new URL(clean);
   if (ai) {
     const hit = await cachedPreview(clean);
-    if (hit) return { ...hit, clean, cached: true };
+    if (hit && hit.price != null) return { ...hit, clean, cached: true };
   }
   const { html, finalUrl, status } = await readPage(url);
 
@@ -949,9 +955,9 @@ async function previewLink(env, rawUrl, { ai = false } = {}) {
   if (!imageUrl && opts.shop?.image && title) imageUrl = imageLink(opts.shop.image);
   let out = { url: finalUrl.toString(), title: title || guess, price, image: imageUrl, site, found: !!title, guessed: !title && !!guess,
     sizes: opts.sizes, colors: opts.colors, size: opts.size, color: opts.color };
-  // The page gave us no name or no photo (blocked, a bot check, or an empty shell): look it up. The page's own
+  // The page gave us no name, photo or price (blocked, a bot check, or an empty shell): look it up. The page's own
   // details win; the lookup only fills what's missing.
-  if (ai && (!title || !imageUrl)) {
+  if (ai && (!title || !imageUrl || out.price == null)) {
     const found = await lookupLink(env, clean).catch(() => null);
     if (found && (title || matchesLink(found.title, url))) {
       out = { ...out, title: title || found.title, price: price ?? found.price, image: imageUrl || found.image, found: true, guessed: false, via: "search",
@@ -1374,6 +1380,7 @@ const handlers = {
       rows.push(...sizeColorRows(env, b.id, b));
       // category absent (e.g. the Top pick toggle) leaves it as is.
       if (b.category !== undefined) rows.push(env.DB.prepare("UPDATE items SET category = ? WHERE id = ?").bind(category(b.category), b.id));
+      rows.push(env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), b.id));
       if (rows.length) await env.DB.batch(rows);
       return { id: b.id };
     }
@@ -1382,6 +1389,7 @@ const handlers = {
       env.DB.prepare(
         "INSERT INTO items (id, owner_id, title, url, price_cents, notes, priority, created_at, updated_at, image_url, image_checked_at, category, draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
       ).bind(id, me.id, ...fields, t, t, image, image ? t : null, category(b.category)),
+      env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), id),
       ...(await hideRows(id)()),
       ...sizeColorRows(env, id, b),
     ]);
@@ -1570,6 +1578,7 @@ const handlers = {
         .bind(id, me.id, b.subjectId, ...fields, t, t, image, image ? t : null)
         .run();
     }
+    await env.DB.prepare("UPDATE private_ideas SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), id).run();
     // "I bought this" on your own idea is the same as marking it purchased.
     if (b.bought !== undefined) await setIdeaClaim(env, me, id, !!b.bought, b.paid, b.occasion);
     return { id };
@@ -1670,6 +1679,7 @@ const handlers = {
     // Only fills a price that is still empty, so an owner's own price always wins.
     await env.DB.prepare(
       `UPDATE ${table} SET image_url = ?1, image_checked_at = ?2, price_checked_at = ?2,
+         price_auto = CASE WHEN price_cents IS NULL AND ?3 IS NOT NULL THEN 1 ELSE price_auto END,
          price_cents = CASE WHEN price_cents IS NULL THEN ?3 ELSE price_cents END
         WHERE id = ?4 AND url IS ?5`,
     ).bind(image, now(), price, row.id, row.url).run();
@@ -1688,20 +1698,28 @@ const handlers = {
       let row = null;
       if (kind === "item") {
         row = await env.DB.prepare(
-          `SELECT i.id, i.url FROM items i LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
+          `SELECT i.id, i.url, i.price_cents, i.price_auto FROM items i LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
             WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
         ).bind(me.id, id, me.id, me.id).first();
       } else if (kind === "idea") {
         const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
         if (idea && (await canSeeIdea(env, me.id, idea))) row = idea;
       }
-      if (row?.url) rows.push([key, row.url]);
+      if (row?.url) rows.push([key, row.url, row]);
     }
     const prices = {};
     for (let i = 0; i < rows.length; i += 4) {
-      await Promise.all(rows.slice(i, i + 4).map(async ([key, u]) => {
+      await Promise.all(rows.slice(i, i + 4).map(async ([key, u, row]) => {
         const p = await livePrice(env, u).catch(() => null);
         if (p && (p.price != null || p.inStock !== null)) prices[key] = { price: p.price, inStock: p.inStock, site: p.site, checkedAt: p.checkedAt };
+        // A price that came from the link follows the store. Hand-typed prices are never touched.
+        const cur = p?.price != null ? Math.round(p.price * 100) : null;
+        if (cur != null && row.price_auto && cur !== row.price_cents) {
+          const table = key.startsWith("item:") ? "items" : "private_ideas";
+          await env.DB.prepare(`UPDATE ${table} SET price_cents = ? WHERE id = ? AND url IS ? AND price_auto = 1`)
+            .bind(cur, row.id, u).run().catch(() => {});
+          prices[key].synced = cur;
+        }
       }));
     }
     return { prices };

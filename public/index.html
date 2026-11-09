@@ -401,6 +401,7 @@
   .check input:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
   .err { background: var(--err-bg); color: var(--err); border-radius: 12px; padding: 12px 14px; font-size: 15px; margin-bottom: 16px; font-weight: 600; }
   .hint { color: var(--muted); font-size: 14px; margin: -8px 0 16px; }
+  .price-sync { display: block; margin-top: 6px; font-size: 13px; color: var(--muted); }
   /* Help button: a small round "?" that reveals one line of guidance under its heading. */
   .tip { display: inline-grid; place-items: center; position: relative; width: 20px; height: 20px; padding: 0; margin-left: 6px; flex: none; vertical-align: 2px;
     border: 1.5px solid var(--faint); border-radius: 50%; background: none; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
@@ -2601,7 +2602,7 @@ async function toggleTopPick(item, btn) {
   btn.querySelectorAll(".spark").forEach((s) => s.remove());
   if (next) btn.insertAdjacentHTML("beforeend", SPARKS);
   try {
-    await api("item/save", { id: item.id, title: item.title, url: item.url, price: priceIn(item.price_cents), notes: item.notes, priority: next });
+    await api("item/save", { id: item.id, title: item.title, url: item.url, price: priceIn(item.price_cents), priceAuto: item.price_auto, notes: item.notes, priority: next });
   } catch (e) {
     item.priority = next ? null : "must";
     btn.setAttribute("aria-pressed", String(!next));
@@ -2630,7 +2631,7 @@ const toCents = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g
 function wireWhoChips(root) {
   root.querySelectorAll('[name="forWho"]').forEach((r) => r.addEventListener("change", () => {
     const form = root.querySelector("form"), f = form.elements;
-    addThing(r.value, { carry: { title: f.title.value, url: f.url.value, price: f.price?.value, notes: (f.notes || f.note)?.value, image: form.dataset.image, imageFor: form.dataset.imageFor } });
+    addThing(r.value, { carry: { title: f.title.value, url: f.url.value, price: f.price?.value, priceAuto: autoPrice(form), notes: (f.notes || f.note)?.value, image: form.dataset.image, imageFor: form.dataset.imageFor } });
   }));
 }
 function restoreImage(form, carry) {
@@ -2721,7 +2722,7 @@ function wireSizeColor(form, item) {
 function editItem(item, opts = {}) {
   const isNew = !item?.id;
   const c = opts.carry;
-  item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), notes: c.notes } : {};
+  item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, notes: c.notes } : {};
   const draft = isNew || !!item.draft;
   const hasDetails = item.price_cents != null || !!item.notes || !!item.category;
   const pubNow = isNew && readPubNow();
@@ -2729,7 +2730,7 @@ function editItem(item, opts = {}) {
     <h3>${isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser ? whoChips(state.me.id) : ""}
     ${draft && !isNew ? MAYBE_NOTE : ""}
-    <form id="itemForm" autocomplete="off">
+    <form id="itemForm" autocomplete="off"${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}>
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "Warm slippers, size 8"))}" required></label>
@@ -2740,7 +2741,7 @@ function editItem(item, opts = {}) {
       <details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
         <div>
-          <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="25"></label>
+          <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="Fills in from the link"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>
           <label class="field"><span>Category</span>
             <select class="input" name="category"><option value="">Pick for me${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
               ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
@@ -2781,7 +2782,7 @@ function editItem(item, opts = {}) {
       });
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, notes: d.notes, category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
         if (multi() && !draft) payload.hiddenFrom = hiddenFromForm(form);
         const { id } = await api("item/save", payload);
         const published = isNew && d.pubNow;
@@ -2893,7 +2894,7 @@ function wirePhoto(form) {
         const { url, price } = form.elements;
         form.elements.title.value = x.title;
         if (!url.value.trim() || url.value === filled.url) url.value = filled.url = x.url || "";
-        if (price && (!price.value.trim() || price.value === filled.price)) price.value = filled.price = x.price ? String(x.price) : "";
+        if (price && (!price.value.trim() || price.value === filled.price)) { price.value = filled.price = x.price ? String(x.price) : ""; setAutoPrice(form, price.value); }
         picks.querySelectorAll(".pick").forEach((p) => p.classList.toggle("on", p === b));
         const note = x.link === "product"
           ? `<strong>Added it.</strong> The link goes to ${esc(x.store)}${x.price ? ", and the price is filled in" : ""}. Paste a different store link to change it.`
@@ -2938,9 +2939,25 @@ function shareHint(t) {
 // The photo autofill found, if the link box still holds that link.
 const imageFor = (form) => (form.dataset.image && form.dataset.imageFor === form.elements.url.value.trim() ? form.dataset.image : undefined);
 
+// A price filled in from the link stays in sync with the store (the server updates it on live checks) until
+// you type over it. form.dataset.priceAuto holds the price the link gave us.
+const autoPrice = (form) => { const v = form.elements.price?.value.trim(); return !!v && form.dataset.priceAuto === v; };
+function setAutoPrice(form, v) {
+  if (v) form.dataset.priceAuto = v; else delete form.dataset.priceAuto;
+  form.paintPriceSync?.();
+}
+function wirePriceSync(form) {
+  const price = form.elements.price, note = form.querySelector(".price-sync");
+  if (!price || !note) return;
+  form.paintPriceSync = () => { note.hidden = !autoPrice(form); };
+  price.addEventListener("input", form.paintPriceSync);
+  form.paintPriceSync();
+}
+
 // Pasting a link (or tapping Fill) looks up the product and fills the empty name and price fields.
 function wireAutofill(form) {
   wirePhoto(form);
+  wirePriceSync(form);
   const url = form.elements.url, btn = form.querySelector("[data-fill]"), msg = form.querySelector(".fillmsg");
   const title = form.elements.title, price = form.elements.price;
   const say = (t, ok, img) => {
@@ -2980,7 +2997,8 @@ function wireAutofill(form) {
       if (r.sizes?.length || r.colors?.length || r.size || r.color) form.dispatchEvent(Object.assign(new CustomEvent("linkoptions", { detail: r }), { force }));
       let filled = [];
       if (r.title && (force || !title.value.trim())) { title.value = r.title; filled.push("name"); }
-      if (r.price != null && (force || !price.value.trim())) { price.value = String(r.price); filled.push("price"); }
+      // A price still showing what the link gave last time counts as empty, so it follows the new link.
+      if (r.price != null && (force || !price.value.trim() || autoPrice(form))) { price.value = String(r.price); setAutoPrice(form, price.value); filled.push("price"); }
       if (filled.includes("price")) { const d = form.querySelector("details.more"); if (d) d.open = true; }
       if (r.image) filled.push("photo");
       const list = filled.length > 1 ? `${filled.slice(0, -1).join(", ")} and ${filled.at(-1)}` : filled[0];
@@ -3915,14 +3933,14 @@ function editIdea(idea, subjectId, opts = {}) {
   const isNew = !idea;
   const purchase = isNew && opts.purchase;
   const c = opts.carry;
-  idea ||= { subject_id: subjectId, ...(c ? { title: c.title, url: c.url, price_cents: toCents(c.price), note: c.notes } : {}) };
+  idea ||= { subject_id: subjectId, ...(c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, note: c.notes } : {}) };
   const chips = isNew && opts.chooser && !purchase ? whoChips(subjectId) : "";
   const people = others();
   const boughtByOther = idea.claim && !idea.claim.mine;
   openSheet(`
     <h3>${purchase ? "Add a purchase" : isNew ? "Gift idea" : "Edit idea"}</h3>
     ${chips}
-    <form id="ideaForm" autocomplete="off">
+    <form id="ideaForm" autocomplete="off"${idea.price_auto ? ` data-price-auto="${esc(priceIn(idea.price_cents))}"` : ""}>
       <div class="err" hidden></div>
       ${chips ? (subjectId ? `<p class="what">${LOCK} ${esc(personName(subjectId))} never sees this</p>` : "") : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
           <option value="">Choose someone</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`
@@ -3932,7 +3950,7 @@ function editIdea(idea, subjectId, opts = {}) {
       <div class="nope-warn" id="nopeWarn" role="status" hidden></div>
       ${isNew ? "" : linkField(idea.url)}
       ${photoField()}
-      <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}"></label>
+      <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}" placeholder="Fills in from the link"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>
       <label class="field"><span>Note</span><textarea class="input" name="note" maxlength="1000">${esc(idea.note)}</textarea></label>
       <label class="check"><span>Let others see this idea<small id="shareHint"></small></span><input type="checkbox" name="shared" ${idea.shared ? "checked" : ""}></label>
       ${boughtByOther ? `<p class="hint">${esc(idea.claim.buyerName)} is getting this.</p>` : `
@@ -3997,7 +4015,7 @@ function editIdea(idea, subjectId, opts = {}) {
         // Filled in by a link without typing: show the heads up first, save on the next tap.
         const { hits, was } = checkNopes();
         if (hits.length && !was) return $("#nopeWarn", el).scrollIntoView({ block: "center", behavior: "smooth" });
-        const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, note: d.note, shared: d.shared, image: imageFor(form) };
+        const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), note: d.note, shared: d.shared, image: imageFor(form) };
         if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; if (d.bought) payload.occasion = occasion(); }
         if (!payload.subjectId) throw new Error("Choose who it's for.");
         await api("idea/save", payload);
