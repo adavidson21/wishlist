@@ -1,4 +1,4 @@
-// Wishlist API: shared wish lists, "purchased" marks hidden from the list owner, and private gift ideas.
+// Hints API: shared wish lists, "purchased" marks hidden from the list owner, and private gift ideas.
 // Three layers: people, optional households (a few people who live or gift together), and circles (the
 // `groups` table; the app used to call them families). A circle can include whole households and single people.
 // Binding (wrangler.jsonc): DB (D1 database "wishlist"). Schema: migrations/0001_wishlist.sql.
@@ -2105,7 +2105,7 @@ const handlers = {
 };
 
 async function handle(request, env, key) {
-  if (!env.DB) return json({ error: "Wishlist database isn't set up yet (missing DB binding)." }, 500);
+  if (!env.DB) return json({ error: "Hints database isn't set up yet (missing DB binding)." }, 500);
   try {
     const out = await handlers[key](request, env, new URL(request.url));
     return out instanceof Response ? out : json(out);

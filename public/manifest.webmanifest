@@ -1,6 +1,6 @@
 {
-  "name": "Wishlist",
-  "short_name": "Wishlist",
+  "name": "Hints",
+  "short_name": "Hints",
   "description": "Family wish lists with private gift notes.",
   "start_url": "/",
   "scope": "/",

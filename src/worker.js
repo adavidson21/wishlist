@@ -17,7 +17,7 @@ export default {
 };
 
 // The same single page as "/", with the title and Open Graph tags swapped so a pasted invite link
-// shows "Join The Davidsons on Wishlist" in iMessage, WhatsApp, Facebook and so on.
+// shows "Join The Davidsons on Hints" in iMessage, WhatsApp, Facebook and so on.
 // The page itself reads the code from the path.
 async function invitePage(env, url, code) {
   // No conditional headers, so this is always a full 200 page and never a 304 to rewrite.
@@ -28,7 +28,7 @@ async function invitePage(env, url, code) {
   } catch (err) {
     console.error("invite preview", err);
   }
-  const title = info ? `Join ${info.group.name} on Wishlist` : "You're invited to Wishlist";
+  const title = info ? `Join ${info.group.name} on Hints` : "You're invited to Hints";
   const description = info
     ? `${info.inviter ? `${info.inviter} invited you` : "You're invited"} to share wish lists with ${info.group.name}. Add what you'd love, see what everyone's hoping for, and keep gifts a surprise.`
     : "Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.";

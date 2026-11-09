@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Wishlist</title>
+<title>Hints</title>
 <meta name="description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep private gift notes.">
 <!-- Link previews. src/worker.js swaps the title and description for invite links (/join/CODE). -->
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Wishlist">
-<meta property="og:title" content="Wishlist">
+<meta property="og:site_name" content="Hints">
+<meta property="og:title" content="Hints">
 <meta property="og:description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.">
 <meta property="og:url" content="https://wishlist.alexisdavidson.org/">
 <meta property="og:image" content="https://wishlist.alexisdavidson.org/og-invite.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="You're invited to Wishlist: a gift box on a burgundy card">
+<meta property="og:image:alt" content="You're invited to Hints: a gift box on a burgundy card">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Wishlist">
+<meta name="twitter:title" content="Hints">
 <meta name="twitter:description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#4A0E22" media="(prefers-color-scheme: light)">
@@ -29,7 +29,7 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Wishlist">
+<meta name="apple-mobile-web-app-title" content="Hints">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="/theme.js"></script>
 <script>try { var ts = localStorage.getItem("wishlist-text"); if (ts) document.documentElement.dataset.text = ts;
@@ -1078,7 +1078,7 @@
 </main>
 
 <nav class="tabs" id="tabs" aria-label="Main" hidden>
-  <a class="nav-brand" href="/" aria-label="Wishlist home"><img src="/icons/icon.svg" alt="" width="40" height="40"><span>Wishlist</span></a>
+  <a class="nav-brand" href="/" aria-label="Hints home"><img src="/icons/icon.svg" alt="" width="40" height="40"><span>Hints</span></a>
   <div class="inner">
     <span class="tab-ind" id="tabInd" aria-hidden="true"></span>
     <button class="tab" type="button" data-tab="mine">
@@ -1697,7 +1697,7 @@ async function renderWelcome(step = "code", info = {}) {
 
   // Opened an invite link: the envelope, the family, one big Join button.
   if (step === "invite") {
-    setHero(heroTitle("Wishlist", "You're invited"));
+    setHero(heroTitle("Hints", "You're invited"));
     v.innerHTML = '<div class="loading">Opening your invite...</div>';
     let res;
     try { res = await api("lookup", { code: invite.code, from: invite.from }); }
@@ -1719,7 +1719,7 @@ async function renderWelcome(step = "code", info = {}) {
   if (step === "badInvite" || step === "code") {
     const bad = step === "badInvite";
     setHero(bad ? envelope(true) + heroTitle("Hmm", "That invite didn't work")
-      : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Wish lists for your people", "Welcome to Wishlist")}`);
+      : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Wish lists for your people", "Welcome to Hints")}`);
     v.innerHTML = `
       <p class="lead">${bad ? "The link may be old or cut off. Ask whoever sent it for the invite code and type it here."
         : "Make your own wish list, see what everyone else would love, and quietly mark what you're getting them."}</p>
@@ -1784,7 +1784,7 @@ async function renderWelcome(step = "code", info = {}) {
       <form class="card slide" id="newForm" autocomplete="off">
         <div class="err" hidden></div>
         <div class="name-preview" id="namePrev">${avatar("?", "new", true)}</div>
-        ${starting ? "" : `<p class="hint" style="margin-top:0">Already on Wishlist?${tip("Sign in as yourself, then join this circle from Settings. That way you keep one list.")}</p>`}
+        ${starting ? "" : `<p class="hint" style="margin-top:0">Already on Hints?${tip("Sign in as yourself, then join this circle from Settings. That way you keep one list.")}</p>`}
         ${starting ? `<label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>` : ""}
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
         <button class="btn primary wide" type="submit">${starting ? "Create circle" : `Join ${esc(info.group.name)}`}</button>
@@ -1881,10 +1881,10 @@ addEventListener("appinstalled", () => {
   installPrompt = null;
   saveInstall({ ...readInstall(), done: true });
   $("#installCard")?.remove();
-  toast("Wishlist is on your home screen");
+  toast("Hints is on your home screen");
 });
 
-// ---------- install: nudge people to put Wishlist on their home screen ----------
+// ---------- install: nudge people to put Hints on their home screen ----------
 // A card at the top of My list, only when installing is actually possible from where you are:
 // - "prompt": Chrome, Edge and Samsung Internet hand us their own install prompt (it never fires once installed).
 // - "ios": Safari on iPhone and iPad has no prompt, so we show the taps. "ios-other": Chrome, Edge, Firefox on iOS.
@@ -1925,7 +1925,7 @@ function paintInstallCard() {
     : "Put it on your home screen so it opens in one tap. It takes a few seconds.";
   slot.innerHTML = `<div class="install-card slide" id="installCard">
     <div class="install-top"><img class="install-icon" src="/icons/icon-192.png" alt="">
-      <div><strong>Get the Wishlist app</strong><span>${esc(sub)}</span></div></div>
+      <div><strong>Get the Hints app</strong><span>${esc(sub)}</span></div></div>
     <div class="install-actions">
       <button class="btn quiet small" type="button" id="installLater">Not now</button>
       <button class="btn primary small" type="button" id="installGo">${way === "prompt" ? "Install" : "Show me how"}</button>
@@ -1960,8 +1960,8 @@ function installHowTo(way) {
   const code = group()?.code;
   const ua = navigator.userAgent;
   const step = (html) => `<li><b></b><span>${html}</span></li>`;
-  const signIn = apple && code ? step(`Open Wishlist from your home screen and sign in once: invite code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`) : "";
-  let title = "Add Wishlist to your home screen", intro = "", steps = [];
+  const signIn = apple && code ? step(`Open Hints from your home screen and sign in once: invite code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`) : "";
+  let title = "Add Hints to your home screen", intro = "", steps = [];
   if (way === "ios") {
     intro = "Safari doesn't have an install button, but it's just a few taps:";
     steps = [
@@ -1982,11 +1982,11 @@ function installHowTo(way) {
   } else if (way === "inapp") {
     const browser = apple ? "Safari" : "Chrome";
     title = `Open this in ${browser} first`;
-    intro = `You're viewing Wishlist inside another app, which can't add it to your home screen. ${browser} can.`;
+    intro = `You're viewing Hints inside another app, which can't add it to your home screen. ${browser} can.`;
     steps = [
       step(`Tap ${DOTS} or ${KEBAB} in a corner of this screen.`),
       step(`Choose <strong>Open in ${browser}</strong> (or <strong>Open in browser</strong>).`),
-      step(`Sign in there${code ? ` (invite code <strong class="code-inline">${esc(code)}</strong>)` : ""}, then tap <strong>Get the Wishlist app</strong> on My list.`),
+      step(`Sign in there${code ? ` (invite code <strong class="code-inline">${esc(code)}</strong>)` : ""}, then tap <strong>Get the Hints app</strong> on My list.`),
     ];
   } else {
     intro = "Use your browser's menu:";
@@ -2010,7 +2010,7 @@ function installHowTo(way) {
         closeSheet();
         $("#installCard")?.remove();
         party();
-        toast("Nice! Open Wishlist from your home screen.");
+        toast("Nice! Open Hints from your home screen.");
       });
       $("#installCopy", el)?.addEventListener("click", async () => {
         try { await navigator.clipboard.writeText(location.origin + "/"); toast("Link copied"); } catch { toast(location.origin); }
@@ -2060,14 +2060,14 @@ function openTour() {
   const steps = (list) => `<ol class="steps-mini">${list.map((t, i) => `<li class="slide" style="animation-delay:${0.3 + i * 0.1}s"><b>${i + 1}</b>${t}</li>`).join("")}</ol>`;
   const slides = [
     { id: "hi", scene: ringScene(), title: w.started ? `${fam} is ready!` : fam ? `Welcome to ${fam}!` : `Welcome, ${state.me.name}!`,
-      text: w.started ? "Here's how Wishlist works. It takes about 20 seconds." : fam ? `So glad you're here, ${state.me.name}. Here's how it works.` : "Here's a quick look at how Wishlist works." },
+      text: w.started ? "Here's how Hints works. It takes about 20 seconds." : fam ? `So glad you're here, ${state.me.name}. Here's how it works.` : "Here's a quick look at how Hints works." },
     { id: "add", scene: addScene(), title: "Add what you'd love", text: "Paste a link from any store or app (TikTok Shop, Amazon, anywhere), or just type a name. New wishes stay private in Just me until you tap Publish." },
     { id: "surprise", scene: surpriseScene(), title: "Gifts stay a surprise", text: "When someone marks a gift on your list, you never see it. No spoilers, ever." },
     { id: "private", scene: privateScene(), title: "Your notes are just for you", text: "Jot down gift ideas and set a budget for each person in Budget. Nobody else can see them." },
     !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
       text: "Your notes are already hidden from everyone. A 4-digit PIN just stops someone else from signing in as you on another phone.",
       extra: '<div class="tour-pin"><input class="input pin-in" id="tourPin" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" aria-label="4-digit PIN" placeholder="····"></div>' },
-    !standalone && { id: "install", scene: installScene(), title: "Keep it on your home screen", text: "Open Wishlist in one tap, like any other app.",
+    !standalone && { id: "install", scene: installScene(), title: "Keep it on your home screen", text: "Open Hints in one tap, like any other app.",
       extra: iOS ? steps([`Tap Share ${SHARE_IOS} in Safari (on newer iPhones, it's in the ${DOTS} menu)`, `Choose <strong>Add to Home Screen</strong> ${ADD_HOME}`])
         : installPrompt ? '<button class="btn primary" type="button" id="installBtn" style="margin-top:18px">Add to home screen</button>'
         : steps(["Open your browser's menu (the three dots)", "Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>"]) },
@@ -2966,7 +2966,7 @@ function budgetMini(p) {
 // ---------- invites ----------
 // The link opens a landing page for that family, and `from` lets it say who sent it.
 const inviteLink = (g) => `${location.origin}/join/${encodeURIComponent(g.code)}?from=${encodeURIComponent(state.me.id)}`;
-const inviteText = (g) => `${state.me.name} invited you to ${g.name} on Wishlist 🎁 Add what you'd love this year, see what everyone's hoping for, and keep gifts a surprise.`;
+const inviteText = (g) => `${state.me.name} invited you to ${g.name} on Hints 🎁 Add what you'd love this year, see what everyone's hoping for, and keep gifts a surprise.`;
 const COPY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const SEND = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>';
 const QR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>';
@@ -3020,7 +3020,7 @@ function wireInviteCard(root, g) {
     copyBtn._t = setTimeout(() => { copyBtn.innerHTML = `${COPY} Copy invite`; copyBtn.classList.remove("copied"); }, 2400);
   };
   $("[data-send]", card)?.addEventListener("click", async () => {
-    try { await navigator.share({ title: `Join ${g.name} on Wishlist`, text: inviteText(g), url: link }); }
+    try { await navigator.share({ title: `Join ${g.name} on Hints`, text: inviteText(g), url: link }); }
     catch (e) { if (e?.name !== "AbortError") copyBtn.click(); }
   });
   const qrBtn = $("[data-qr]", card), qrBox = $(".qr", card);
@@ -3040,9 +3040,9 @@ function openInvite(g) {
 // "Remind them" on someone's empty list.
 async function shareInvite(g, nudgeName) {
   const link = inviteLink(g);
-  const text = `Hi ${nudgeName}! Add a few things to your Wishlist so we know what to get you 🎁`;
+  const text = `Hi ${nudgeName}! Add a few things to your list on Hints so we know what to get you 🎁`;
   try {
-    if (navigator.share) return await navigator.share({ title: "Wishlist", text, url: link });
+    if (navigator.share) return await navigator.share({ title: "Hints", text, url: link });
     await navigator.clipboard.writeText(`${text}\n${link}`);
     toast("Reminder copied");
   } catch (e) {
@@ -3960,7 +3960,7 @@ async function exportExcel(t, view) {
           { header: "Note", width: 40 }, { header: "Link", width: 40 }],
         rows: rows.flatMap(({ p }) => p.ideas.map((i) => [p.name, i.title, dollars(i.price_cents), i.shared ? "Yes" : "No", i.note, i.url])) },
     ]);
-    const filename = view === "birthday" ? `Wishlist birthdays ${state.today ? String(state.today).slice(0, 4) : ""}.xlsx`.replace(" .", ".") : `Wishlist budget Christmas ${xmasYear(t)}.xlsx`;
+    const filename = view === "birthday" ? `Hints birthdays ${state.today ? String(state.today).slice(0, 4) : ""}.xlsx`.replace(" .", ".") : `Hints budget Christmas ${xmasYear(t)}.xlsx`;
     const file = new File([blob], filename, { type: blob.type });
     // Phones: the share sheet lets you save to Files or send it. Computers: a normal download.
     if (navigator.canShare?.({ files: [file] }) && matchMedia("(pointer: coarse)").matches) {
