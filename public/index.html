@@ -2304,7 +2304,8 @@ function wireAutofill(form) {
       if (filled.includes("price")) { const d = form.querySelector("details.more"); if (d) d.open = true; }
       if (r.image) filled.push("photo");
       const list = filled.length > 1 ? `${filled.slice(0, -1).join(", ")} and ${filled.at(-1)}` : filled[0];
-      say(filled.length ? `Filled in the ${list} from ${r.site}. Check it looks right.`
+      say(r.guessed && filled.length ? `${r.site} wouldn't let us read that page, so the name is a guess from the link. Fix it up, or snap a photo instead.`
+        : filled.length ? `Filled in the ${list} from ${r.site}. Check it looks right.`
         : r.title || r.price != null ? "Already filled in. Tap Fill to replace with the link's details."
         : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0, r.image);
     } catch (e) { say(e.message); }
