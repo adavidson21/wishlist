@@ -5236,6 +5236,12 @@ const GIFT_STYLES = [["surprise", "🎁 Surprise me"], ["experiences", "🎟️ 
 const FAV_COLORS = [["red", "Red", "#C62E2E"], ["pink", "Pink", "#F08AB0"], ["orange", "Orange", "#EE8A2E"], ["yellow", "Yellow", "#F2C94C"],
   ["green", "Green", "#4E9A5A"], ["teal", "Teal", "#2A9D8F"], ["blue", "Blue", "#4A8FD8"], ["navy", "Navy", "#1F3263"], ["purple", "Purple", "#8A5CC2"],
   ["brown", "Brown", "#8B5E3C"], ["black", "Black", "#1C1C1C"], ["white", "White", "#FFFFFF"], ["gray", "Gray", "#9A9A9A"], ["gold", "Gold", "#C9A227"], ["silver", "Silver", "#C4C8CC"]];
+// Jewelry metals. Keys must match METALS in src/wishlist.js. The color is a little metallic gradient.
+const METALS = [["gold", "Gold", "linear-gradient(135deg,#F6E27A,#C9A227 55%,#9C7A12)"], ["silver", "Silver", "linear-gradient(135deg,#F4F6F8,#BFC4C9 55%,#8E949A)"],
+  ["rosegold", "Rose gold", "linear-gradient(135deg,#F7D3C4,#D99A85 55%,#B0705C)"], ["gunmetal", "Gunmetal", "linear-gradient(135deg,#7A7F86,#4A4F55 55%,#2B2E33)"]];
+const METAL_OF = Object.fromEntries(METALS.map(([k, l, c]) => [k, { l, c }]));
+const metalDots = (keys, mixed) => `<span class="cdots">${keys.filter((k) => METAL_OF[k]).map((k) => `<span class="cdot"><i style="--c:${METAL_OF[k].c}"></i>${METAL_OF[k].l}</span>`).join("")}${
+  mixed ? `<span class="cdot"><i style="--c:conic-gradient(#C9A227 0 33%,#BFC4C9 0 66%,#D99A85 0)"></i>${keys.length ? "Mixing is fine" : "Mixed metals are fine"}</span>` : ""}</span>`;
 const STYLE_LABEL = Object.fromEntries(GIFT_STYLES), COLOR_OF = Object.fromEntries(FAV_COLORS.map(([k, l, c]) => [k, { l, c }]));
 const colorDots = (keys) => `<span class="cdots">${keys.filter((k) => COLOR_OF[k]).map((k) => `<span class="cdot"><i style="--c:${COLOR_OF[k].c}"></i>${COLOR_OF[k].l}</span>`).join("")}</span>`;
 // ---------- loves and nopes ----------
@@ -5271,7 +5277,7 @@ const andList = (a) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")
 const hasHints = (p) => !!p && !!(p.bio || p.likes?.length || p.dislikes?.length);
 const brandChips = (brands, edit) => `<span class="brand-chips${edit ? " edit" : ""}">${brands.map((b, k) => `<span class="brand-chip">${esc(b)}${edit
   ? `<button type="button" data-unbrand="${k}" aria-label="Remove ${esc(b)}">&times;</button>` : ""}</span>`).join("")}</span>`;
-const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || Object.values(p.sizes || {}).some(Boolean));
+const hasProfile = (p) => !!p && !!(p.birthday || p.avoid || p.brands?.length || p.giftStyle?.length || p.colors?.length || p.metals?.length || p.mixedMetals || Object.values(p.sizes || {}).some(Boolean));
 
 // Someone else's bio, loves and nopes, at the top of their page. Loves you share are gold.
 function hintsCard(p) {
@@ -5302,6 +5308,7 @@ function detailsHtml(p) {
   if (p.giftStyle?.length) rows.push(["Gift style", brandChips(p.giftStyle.filter((k) => STYLE_LABEL[k]).map((k) => STYLE_LABEL[k])).replace(/(<span class="brand-chip">)(\S+) /g, '$1<span aria-hidden="true">$2</span> ')]);
   if (p.brands?.length) rows.push(["Favorite brands", brandChips(p.brands)]);
   if (p.colors?.length) rows.push(["Favorite colors", colorDots(p.colors)]);
+  if (p.metals?.length || p.mixedMetals) rows.push(["Jewelry metals", metalDots(p.metals || [], p.mixedMetals)]);
   return `${sizes.length ? `<div class="sz">${sizes.map(([k, l]) => `<div><span>${l.replace(" / top", "")}</span><b>${esc(p.sizes[k])}</b></div>`).join("")}</div>` : ""}
     ${rows.length ? `<div class="det">${rows.map(([t, d]) => `<div class="det-row"><span class="det-l">${t}</span>${d}</div>`).join("")}</div>` : ""}`;
 }
@@ -5436,6 +5443,9 @@ async function renderProfileEdit() {
       <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
       <span class="flabel">Favorite colors <em>(up to 3, they color your profile)</em></span>
       <div class="swatches" id="colorPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch" type="button" data-color="${k}" aria-pressed="${(prof.colors || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
+      <span class="flabel">Jewelry metals <em>(pick any)</em></span>
+      <div class="swatches" id="metalPick">${METALS.map(([k, l, c]) => `<button class="swatch" type="button" data-metal="${k}" aria-pressed="${(prof.metals || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${k === "gunmetal" ? "" : "--tick:#2A1E22"}"></button>`).join("")}</div>
+      <label class="check"><span>I like mixed metals<small>Gold and silver together is fine</small></span><input type="checkbox" name="mixedMetals" ${prof.mixedMetals ? "checked" : ""}></label>
     </div>
 
     <div class="set-card" id="ed-careful">
@@ -5566,6 +5576,7 @@ async function renderProfileEdit() {
       buzz();
     }));
   }
+  v.querySelectorAll("[data-metal]").forEach((b) => (b.onclick = () => { b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")); buzz(); }));
   wireForm($("#profileForm", v), async (f) => {
     if (!!f.bmonth !== !!f.bday) throw new Error("Pick both a month and a day for your birthday, or leave both empty.");
     if (brandIn.value.trim()) addBrand();
@@ -5581,6 +5592,8 @@ async function renderProfileEdit() {
       brands,
       giftStyle: picked("data-style"),
       colors: picked("data-color"),
+      metals: picked("data-metal"),
+      mixedMetals: !!f.mixedMetals,
       likes: lists.likes,
       dislikes: lists.dislikes,
     });

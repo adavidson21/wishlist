@@ -314,6 +314,8 @@ const SIZE_KEYS = ["shirt", "pants", "shoe", "ring"];
 // Keys only; labels and colors live in public/index.html. Never rename a key (they're stored).
 const GIFT_STYLES = ["surprise", "experiences", "practical", "homemade", "consumable", "books", "together", "giftcards"];
 const FAV_COLORS = ["red", "pink", "orange", "yellow", "green", "teal", "blue", "navy", "purple", "brown", "black", "white", "gray", "gold", "silver"];
+// Jewelry metals (migration 0028). Same rule: keys only, never rename one.
+const METALS = ["gold", "silver", "rosegold", "gunmetal"];
 function keysOut(v, allowed) {
   try {
     const a = JSON.parse(v || "[]");
@@ -338,6 +340,8 @@ function profileOut(row) {
     brands: brandsOut(row?.brands),
     giftStyle: keysOut(row?.gift_style, GIFT_STYLES),
     colors: keysOut(row?.colors, FAV_COLORS),
+    metals: (() => { try { const a = JSON.parse(row?.metals || "[]"); return Array.isArray(a) ? METALS.filter((k) => a.includes(k)) : []; } catch { return []; } })(),
+    mixedMetals: !!row?.mixed_metals,
     loves: row?.loves || "",
     bio: row?.bio || "",
     // Before 0017, loves was one line of text. Until it's saved again, show it as tags.
@@ -3149,6 +3153,13 @@ const handlers = {
     }
     if (b.colors !== undefined) {
       await env.DB.prepare("UPDATE members SET colors = ? WHERE id = ?").bind(keysIn(b.colors, FAV_COLORS), who).run();
+    }
+    if (b.metals !== undefined) {
+      const metals = METALS.filter((k) => (Array.isArray(b.metals) ? b.metals.map(String) : []).includes(k));
+      await env.DB.prepare("UPDATE members SET metals = ? WHERE id = ?").bind(metals.length ? JSON.stringify(metals) : null, who).run();
+    }
+    if (b.mixedMetals !== undefined) {
+      await env.DB.prepare("UPDATE members SET mixed_metals = ? WHERE id = ?").bind(b.mixedMetals ? 1 : 0, who).run();
     }
     if (b.likes !== undefined || b.dislikes !== undefined) {
       const likes = b.likes !== undefined ? tagsIn(b.likes, "Loves") : undefined;
