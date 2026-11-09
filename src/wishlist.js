@@ -1641,6 +1641,42 @@ async function isImage(u) {
     return false;
   }
 }
+// True when Gemini's url_context tool really loaded this link (same host), not just a Google search about it.
+function openedPage(meta, url) {
+  const list = [].concat(meta?.urlMetadata || meta?.url_metadata || []);
+  let host;
+  try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { return false; }
+  return list.some((m) => {
+    const status = String(m?.urlRetrievalStatus || m?.url_retrieval_status || "");
+    let h = "";
+    try { h = new URL(m?.retrievedUrl || m?.retrieved_url || "").hostname.replace(/^www\./, ""); } catch {}
+    return /SUCCESS/i.test(status) && (h === host || h.endsWith("." + host) || host.endsWith("." + h));
+  });
+}
+
+// Shopify stores answer /products/<handle>.js with exact prices (in cents) and stock per variant.
+// Much more reliable than the page, and works on stores whose pages we can't read.
+async function shopifyProduct(url) {
+  const m = url.pathname.match(/^(.*\/products\/[^/.]+)\/?$/);
+  if (!m) return null;
+  try {
+    const res = await safeFetch(new URL(`${m[1]}.js`, url.origin), {
+      signal: AbortSignal.timeout(4000), headers: { "user-agent": BROWSER_UA, accept: "application/json" } });
+    if (!res?.ok || !/json|javascript/i.test(res.headers.get("content-type") || "")) { res?.body?.cancel().catch(() => {}); return null; }
+    const p = JSON.parse(await readCapped(res, 500_000));
+    if (!p || !Array.isArray(p.variants)) return null;
+    const want = url.searchParams.get("variant");
+    const v = (want && p.variants.find((x) => String(x.id) === want)) || (p.variants.length === 1 ? p.variants[0] : null);
+    // No variant picked and the variants cost different amounts: we can't tell which price they meant.
+    const prices = new Set(p.variants.map((x) => x.price));
+    const cents = Number(v ? v.price : prices.size === 1 ? p.price : NaN);
+    return {
+      price: Number.isFinite(cents) && cents > 0 ? Math.round(cents) / 100 : null,
+      inStock: typeof (v ? v.available : p.available) === "boolean" ? (v ? v.available : p.available) : null,
+    };
+  } catch { return null; }
+}
+
 // hints: words that came with the link (share text, the link's own words). Only used to help find the product.
 async function lookupLink(env, url, hints = []) {
   if (!env.GEMINI_API_KEY) return null;
@@ -1655,9 +1691,10 @@ async function lookupLink(env, url, hints = []) {
   if (r.error && r.status === 400) r = await callGemini(env, LINK_PROMPT, parts, LINK_SCHEMA, 25000, undefined, [{ google_search: {} }]);
   const d = r.data;
   if (!d?.found || !d.title?.trim()) return null;
+  const opened = openedPage(r.urlContext, url);
   let image = imageLink(d.image?.trim() || "");
   if (image && !(await isImage(image))) image = null;
-  return { title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null,
+  return { opened, title: decode(d.title).slice(0, LIMITS.title), price: toPrice(d.price), image, inStock: typeof d.in_stock === "boolean" ? d.in_stock : null,
     sizes: uniq(Array.isArray(d.sizes) ? d.sizes : []), colors: uniq(Array.isArray(d.colors) ? d.colors : []), size: tidyOption(d.size), color: tidyOption(d.color), brand: tidyBrand(d.brand) };
 }
 // A brand name worth showing: trimmed, not a placeholder, short enough for the label.
@@ -1671,8 +1708,8 @@ function tidyBrand(v) {
 // nothing stored in D1). Reads the store page; Gemini only for stores that block us. Misses are cached for
 // 6 hours so a blocked store isn't looked up on every visit.
 const LIVE_TTL = 12 * 3600, LIVE_MISS_TTL = 6 * 3600;
-// v2: drops cached answers from before search prices stopped counting.
-const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v2/${encodeURIComponent(u)}`);
+// v3: drops cached answers from before Shopify feeds and the "did Gemini open it" check.
+const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v3/${encodeURIComponent(u)}`);
 async function livePrice(env, rawUrl, { ai = true } = {}) {
   let clean;
   try { clean = cleanLink(await resolveShortLink(new URL(link(rawUrl)))); } catch { return null; }
@@ -1680,8 +1717,10 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
   try { const hit = await caches.default.match(liveKey(clean)); if (hit) return await hit.json(); } catch {}
   const url = new URL(clean);
   const site = url.hostname.replace(/^www\./, "");
-  const { html } = await readPage(url, 5000);
   let price = null, inStock = null, via = "page";
+  const shop = await shopifyProduct(url);
+  if (shop && (shop.price != null || shop.inStock !== null)) { price = shop.price; inStock = shop.inStock; via = "shopify"; }
+  const { html } = via === "shopify" ? { html: "" } : await readPage(url, 5000);
   if (html && !BOT_PAGE.test(decode(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]) || "")) {
     const ld = jsonLdProduct(html);
     price = ld.price
@@ -1694,9 +1733,12 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
   }
   if (price == null && inStock === null && ai) {
     const found = await lookupLink(env, clean).catch(() => null);
-    // Only stock status from search. Gemini's price for a page it couldn't open has been wrong (a $129 Coach bag
-    // came back as $275), and a wrong live price would also overwrite a synced one, so search prices don't count.
-    if (found && matchesLink(found.title, url)) { inStock = found.inStock; via = "search"; }
+    // Gemini's price only counts when it really opened the page. From Google Search alone it has been wrong
+    // (a $129 Coach bag came back as $275), so then only its stock status is used.
+    if (found && matchesLink(found.title, url)) {
+      inStock = found.inStock;
+      if (found.opened) { price = found.price; via = "ai-page"; } else via = "search";
+    }
   }
   const out = { price, inStock, site, via, checkedAt: now() };
   const hit = price != null || inStock !== null;
@@ -3483,7 +3525,11 @@ const handlers = {
         if (p && (p.price != null || p.inStock !== null)) prices[key] = { price: p.price, inStock: p.inStock, site: p.site, checkedAt: p.checkedAt };
         // A price that came from the link follows the store. Hand-typed prices are never touched.
         const cur = p?.price != null ? Math.round(p.price * 100) : null;
-        if (cur != null && row.price_auto && cur !== row.price_cents) {
+        // A jump of more than half either way is more likely a misread than a real change: say "check the price"
+        // instead of "Now $X", and don't save it.
+        const odd = cur != null && row.price_cents > 0 && (cur > row.price_cents * 1.5 || cur < row.price_cents * 0.5);
+        if (odd) prices[key].odd = true;
+        if (cur != null && !odd && row.price_auto && cur !== row.price_cents) {
           const table = key.startsWith("item:") ? "items" : "private_ideas";
           await env.DB.prepare(`UPDATE ${table} SET price_cents = ? WHERE id = ? AND url IS ? AND price_auto = 1`)
             .bind(cur, row.id, u).run().catch(() => {});
