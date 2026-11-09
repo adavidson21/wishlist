@@ -27,10 +27,12 @@ import "../public/giftcards.js";
 const BASE = "/api/";
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
 const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
-const LIMITS = { household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { stash: 80, household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
+// Progress stages for a gift you bought (NULL = ordered / on the way). Must match STAGES in public/index.html.
+const PURCHASE_STAGES = new Set(["home", "wrapped", "given"]);
 // Gift card brands: key -> name.
 const GIFT_CARD_NAMES = new Map(globalThis.GIFT_CARDS.map((g) => [g.key, g.name]));
 
@@ -642,7 +644,7 @@ async function readPage(url, timeoutMs = 6000) {
   return { html, finalUrl, status };
 }
 
-const BOT_PAGE = /robot check|robot or human|are you a (robot|human)|captcha|access denied|just a moment|attention required|pardon our interruption|verify you are human|page not found|^amazon\.com$/i;
+const BOT_PAGE = /robot check|robot or human|security check|security verification|are you a (robot|human)|captcha|access denied|just a moment|attention required|pardon our interruption|verify you are human|page not found|^amazon\.com$/i;
 
 // Tracking junk that changes nothing about the product. Variant, size, color and sku parameters stay.
 const TRACKING = /^(utm_\w+|gclid|gclsrc|gbraid|wbraid|dclid|fbclid|msclkid|mc_[ce]id|igshid|si|ref|ref_|refRID|_encoding|psc|pd_rd_\w+|pf_rd_\w+|content-id|crid|sprefix|qid|sr|keywords|dib|dib_tag|tag|linkCode|linkId|ascsubtag|th|smid|spLa|campaign|cmpid|cid|clickid|irclickid|irgwc|affid|afsrc|ranMID|ranEAID|ranSiteID|sharedid|share_id|epik|_branch_\w+|ga_\w+|clkid|athbdg|athcpid|athpgid|athznid|athieid|athena|adgrpid|hv\w+|lnk|intsrc|cm_\w+|srsltid|nci|cjevent|sscid|aff_\w+|source|src|from)$/i;
@@ -1440,6 +1442,34 @@ const handlers = {
     return { ok: true };
   },
 
+  // How a gift you bought is coming along: status (null = ordered / on the way, "home", "wrapped",
+  // "given") and stash (where it's hidden). Only for your own purchases; nobody else ever sees these.
+  // kind "item" / "idea": id is the item or idea. kind "giftcard": id is the brand, subjectId who it's for.
+  // occasion: the purchase's occasion code (YYYYMMDD).
+  async "POST purchase/progress"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const status = b.status == null || b.status === "" ? null : String(b.status);
+    if (status !== null && !PURCHASE_STAGES.has(status)) fail(400, "Pick how it's going.");
+    const stash = text(b.stash, LIMITS.stash, "Where it's hidden");
+    const season = Number(b.occasion);
+    if (!Number.isInteger(season) || season < today()) fail(400, "That occasion has passed.");
+    const id = String(b.id || "");
+    let res;
+    if (b.kind === "item") {
+      res = await env.DB.prepare("UPDATE claims SET status = ?, stash = ? WHERE item_id = ? AND season = ? AND buyer_id = ?")
+        .bind(status, stash, id, season, me.id).run();
+    } else if (b.kind === "idea") {
+      res = await env.DB.prepare("UPDATE idea_claims SET status = ?, stash = ? WHERE idea_id = ? AND season = ? AND buyer_id = ?")
+        .bind(status, stash, id, season, me.id).run();
+    } else if (b.kind === "giftcard") {
+      res = await env.DB.prepare("UPDATE gift_card_gifts SET status = ?, stash = ? WHERE member_id = ? AND brand = ? AND season = ? AND buyer_id = ?")
+        .bind(status, stash, String(b.subjectId || ""), id, season, me.id).run();
+    } else fail(400, "Pick a purchase.");
+    if (!res.meta?.changes) fail(404, "Purchase not found.");
+    return { ok: true };
+  },
+
   // Set (amount) or clear (empty amount) your budget for one person for one occasion
   // (occasion: YYYYMMDD of their Christmas or birthday; absent = the soonest).
   async "POST budget"(req, env) {
@@ -1581,18 +1611,18 @@ const handlers = {
       ).bind(me.id, me.id).all(),
       env.DB.prepare("SELECT subject_id, season, amount_cents FROM budgets WHERE author_id = ? AND season >= ?").bind(me.id, t).all(),
       env.DB.prepare(
-        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season
+        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash
            FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
       ).bind(me.id, t).all(),
       env.DB.prepare(
-        `SELECT p.subject_id, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season,
+        `SELECT p.subject_id, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash,
                 p.author_id, a.name AS author_name
            FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id JOIN members a ON a.id = p.author_id
           WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
       ).bind(me.id, t).all(),
       env.DB.prepare(`${IDEA_SELECT} WHERE p.author_id = ? AND c.buyer_id IS NULL ORDER BY p.updated_at DESC`).bind(t, me.id).all(),
       env.DB.prepare(
-        "SELECT member_id AS subject_id, brand, season, amount_cents, created_at FROM gift_card_gifts WHERE buyer_id = ? AND season >= ? ORDER BY created_at",
+        "SELECT member_id AS subject_id, brand, season, amount_cents, created_at, status, stash FROM gift_card_gifts WHERE buyer_id = ? AND season >= ? ORDER BY created_at",
       ).bind(me.id, t).all(),
     ]);
     const nicks = await nicknamesFor(env, me.id);
@@ -1607,6 +1637,8 @@ const handlers = {
       paid_cents: r.paid_cents,
       spent_cents: r.paid_cents ?? r.list_cents ?? 0,
       date: r.created_at,
+      status: r.status || null,
+      stash: r.stash || null,
       from: kind === "item" ? "Their list" : r.author_id === me.id ? "My idea" : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
     });
     const cardBuy = (r) => ({
@@ -1621,6 +1653,8 @@ const handlers = {
       paid_cents: r.amount_cents,
       spent_cents: r.amount_cents ?? 0,
       date: r.created_at,
+      status: r.status || null,
+      stash: r.stash || null,
       from: "Gift card",
     });
     const purchases = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea")), ...cardGifts.results.map(cardBuy)]
