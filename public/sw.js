@@ -1,6 +1,6 @@
 // Network first so updates show up right away; cached copy only if offline.
 // API calls are never cached here (the page keeps its own last-loaded copy for offline viewing).
-const CACHE = "wishlist-v28";
+const CACHE = "wishlist-v29";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/xlsx.js", "/giftcards.js", "/qr.js", "/fonts/fonts.css", "/fonts/figtree-latin-wght-normal.woff2", "/fonts/bricolage-grotesque-latin-standard-normal.woff2", "/theme.js"];
 
 self.addEventListener("install", (e) => {
@@ -26,17 +26,22 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
-// Notifications (sent by src/push.js): { title, body, url, tag }. Tapping one opens that screen in the app.
+// Notifications (sent by src/push.js): { title, body, url, tag, badge? }. Tapping one opens that screen in the app.
+// badge: how many new wishes, shown on the home screen icon where the phone supports it.
+// The small status bar icon (badge.png) is a white H on transparent, since Android draws it as a silhouette.
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Hints", {
+  const count = typeof d.badge === "number" && "setAppBadge" in self.navigator
+    ? (d.badge > 0 ? self.navigator.setAppBadge(d.badge) : self.navigator.clearAppBadge()).catch(() => {})
+    : null;
+  e.waitUntil(Promise.all([count, self.registration.showNotification(d.title || "Hints", {
     body: d.body || "",
     tag: d.tag || undefined,
     icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
+    badge: "/icons/badge.png",
     data: { url: d.url || "/" },
-  }));
+  })]));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
