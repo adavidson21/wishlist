@@ -2389,8 +2389,11 @@ const handlers = {
   // occasion: which of the owner's occasions it's for (YYYYMMDD; absent = keep it, or the soonest).
   // Returns started: true when this started a new group gift.
   async "POST claim"(req, env, url, ctx) {
+    const b0 = await body(req);
+    // An app still open from before the invite endpoint moved to invite/claim (it has no itemId).
+    if (b0.token && !b0.itemId) return handlers["POST invite/claim"](new Request(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(b0) }), env);
     const me = await auth(req, env);
-    const { itemId, on, price, occasion, qty, chipIn } = await body(req);
+    const { itemId, on, price, occasion, qty, chipIn } = b0;
     const paid = cents(price);
     const item = await env.DB.prepare(`SELECT i.id, i.owner_id, i.title, i.removed_at, i.quantity, ${ITEM_VISIBLE} AS visible FROM items i WHERE i.id = ?`)
       .bind(me.id, itemId)
@@ -3379,7 +3382,7 @@ const handlers = {
 
   // Use a personal invite link: the list becomes theirs, they're signed in on this device, and they get the
   // welcome tour (which offers a PIN). The link stops working. { token }
-  async "POST claim"(req, env) {
+  async "POST invite/claim"(req, env) {
     const b = await body(req);
     await rateLimit(env, `join:ip:${ipOf(req)}`, ABUSE.joinPerIp, "Too many sign-in tries. Wait a bit and try again.");
     const them = await claimFor(env, b.token);
