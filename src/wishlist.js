@@ -40,6 +40,13 @@ function photoValue(v) {
   if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
   return photo;
 }
+// A profile cover (wider, so a bit bigger than a photo), or null to remove it.
+const MAX_COVER = 250_000;
+function coverValue(v) {
+  const cover = v ? String(v) : null;
+  if (cover && (cover.length > MAX_COVER || !PHOTO_RE.test(cover))) fail(400, "That cover photo didn't work. Try another one.");
+  return cover;
+}
 const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, lastName: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, petName: 40, petNotes: 200, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
@@ -356,6 +363,8 @@ function profileOut(row) {
     brands: brandsOut(row?.brands),
     giftStyle: keysOut(row?.gift_style, GIFT_STYLES, GIFT_STYLE_MAX),
     colors: keysOut(row?.colors, FAV_COLORS, FAV_COLORS.length),
+    // Cover photo's version (migration 0039), or null for the favorite-colors cover. Served by GET photo?c=<member id>.
+    cover: row?.cover_at || null,
     // Colors they'd rather not get (migration 0030). Never also a favorite.
     colorsNo: keysOut(row?.colors_no, FAV_COLORS, FAV_COLORS.length).filter((k) => !keysOut(row?.colors, FAV_COLORS, FAV_COLORS.length).includes(k)),
     metals: (() => { try { const a = JSON.parse(row?.metals || "[]"); return Array.isArray(a) ? METALS.filter((k) => a.includes(k)) : []; } catch { return []; } })(),
@@ -4040,6 +4049,7 @@ const handlers = {
 
   // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
+  // cover: a wide JPEG data URL for the profile card's cover (the app crops it to 3:1), "" removes it, absent leaves it alone.
   // birthday: "MM-DD" or "" to clear (no year; ages are never kept). sizes: { shirt, pants, shoe, ring }. avoid: free text.
   // brands: favorite brand names (free text). giftStyle: up to 5 keys ("surprise" and "list" not together). colors, colorsNo: any color keys (favorites and
   // colors to skip; one color can't be both, favorites win). loves: short free text (old).
@@ -4159,6 +4169,10 @@ const handlers = {
       const photo = photoValue(b.photo);
       await env.DB.prepare("UPDATE members SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, who).run();
     }
+    if (b.cover !== undefined) {
+      const cover = coverValue(b.cover);
+      await env.DB.prepare("UPDATE members SET cover = ?, cover_at = ? WHERE id = ?").bind(cover, cover ? now() : null, who).run();
+    }
     return { ok: true };
   },
 
@@ -4205,11 +4219,12 @@ const handlers = {
 
   // A profile photo. No sign-in needed (an <img> can't send the token); ids are random and photos aren't private.
   // The app adds the photo's version (?v=photo_at), so a changed photo is a new URL and this one can be cached for good.
-  // ?m= a person, ?g= a circle, ?h= a household, ?p= a pet.
+  // ?m= a person, ?g= a circle, ?h= a household, ?p= a pet, ?c= a person's profile cover.
   async "GET photo"(req, env, url) {
     const q = url.searchParams;
-    const [table, id] = q.has("g") ? ["groups", q.get("g")] : q.has("h") ? ["households", q.get("h")] : q.has("p") ? ["pets", q.get("p")] : ["members", q.get("m")];
-    const row = await env.DB.prepare(`SELECT photo FROM ${table} WHERE id = ?`).bind(id || "").first();
+    const [table, id, col] = q.has("g") ? ["groups", q.get("g"), "photo"] : q.has("h") ? ["households", q.get("h"), "photo"] : q.has("p") ? ["pets", q.get("p"), "photo"]
+      : q.has("c") ? ["members", q.get("c"), "cover"] : ["members", q.get("m"), "photo"];
+    const row = await env.DB.prepare(`SELECT ${col} AS photo FROM ${table} WHERE id = ?`).bind(id || "").first();
     const m = row?.photo && PHOTO_RE.exec(row.photo);
     if (!m) return new Response("Not found", { status: 404 });
     const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));

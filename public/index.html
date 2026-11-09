@@ -799,6 +799,11 @@
   .pf-cover::before, .pf-cover::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
   .pf-cover::before { width: 190px; height: 190px; right: -36px; top: -92px; background: color-mix(in srgb, var(--c2) 78%, var(--card)); }
   .pf-cover::after { width: 120px; height: 120px; left: 6%; bottom: -78px; background: color-mix(in srgb, var(--c3) 78%, var(--card)); }
+  /* Your own cover photo (3:1, cropped like the profile photo) replaces the color circles. */
+  .pf-cover.has-img { height: auto; aspect-ratio: 3 / 1; background: var(--panel); }
+  .pf-cover.has-img::before, .pf-cover.has-img::after { display: none; }
+  .pf-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover-prev { border-radius: 14px; overflow: hidden; margin: 8px 0 10px; }
   .pf-body { padding: 0 20px 20px; text-align: center; }
   .pf-body > .avatar { margin: -48px auto 10px; border: 4px solid var(--card); box-shadow: 0 6px 16px rgba(0,0,0,.12); width: 96px; height: 96px; font-size: 40px; }
   .pf-name { margin: 0; font-family: var(--display); font-weight: 600; font-size: 28px; line-height: 1.15; overflow-wrap: anywhere; }
@@ -997,6 +1002,7 @@
   .crop-mask { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 200vmax rgba(18, 10, 13, .72); outline: 2px solid rgba(255, 248, 242, .9);
     pointer-events: none; }
   .crop-mask.tile { border-radius: 30%; }
+  .crop-mask.wide { border-radius: 14px; }
   .crop-bottom { padding: 12px 20px calc(env(safe-area-inset-bottom, 0px) + 18px); display: grid; gap: 14px; max-width: 480px; width: 100%; margin: 0 auto; }
   .crop-zoom { display: flex; align-items: center; gap: 12px; color: #E8C3CD; font-size: 20px; }
   .crop-zoom input { flex: 1; accent-color: var(--gold); min-height: 32px; }
@@ -4085,36 +4091,38 @@ function shrinkPhoto(file, maxSide = 1024, quality = 0.8) {
 
 // Profile photo: opens the cropper so the person can move and zoom the photo in the frame, then saves a small
 // square JPEG (about 10 to 20 KB). Resolves null if they cancel. tile: true for circles and households (rounded square).
-function squarePhoto(file, { tile = false, side = 256 } = {}) {
+// aspect: width / height of the frame (3 for a profile cover); side is then the output width.
+function squarePhoto(file, { tile = false, side = 256, aspect = 1 } = {}) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => cropPhoto(img, { tile, side }).then((r) => { URL.revokeObjectURL(url); resolve(r); });
+    img.onload = () => cropPhoto(img, { tile, side, aspect }).then((r) => { URL.revokeObjectURL(url); resolve(r); });
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't open that photo. Try another one.")); };
     img.src = url;
   });
 }
 
 // Full screen "Move and zoom" step. Drag to move, pinch, scroll or the slider to zoom. The photo always fills the frame.
-function cropPhoto(img, { tile, side }) {
+function cropPhoto(img, { tile, side, aspect = 1 }) {
   const dlg = $("#crop");
   dlg.innerHTML = `<div class="crop-top"><button class="linkbtn" type="button" data-cancel>Cancel</button>
       <h2 id="cropTitle">Move and zoom</h2><span class="linkbtn" aria-hidden="true" style="visibility:hidden">Cancel</span></div>
-    <div class="crop-stage" tabindex="0" aria-label="Photo. Drag or use arrow keys to move, plus and minus to zoom."><div class="crop-frame"><img alt="" src="${img.src}"><div class="crop-mask${tile ? " tile" : ""}"></div></div></div>
+    <div class="crop-stage" tabindex="0" aria-label="Photo. Drag or use arrow keys to move, plus and minus to zoom."><div class="crop-frame"><img alt="" src="${img.src}"><div class="crop-mask${aspect !== 1 ? " wide" : tile ? " tile" : ""}"></div></div></div>
     <div class="crop-bottom"><label class="crop-zoom"><span aria-hidden="true">&minus;</span><input type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom"><span aria-hidden="true">+</span></label>
       <button class="btn primary wide" type="button" data-use>Use photo</button></div>`;
   const stage = dlg.querySelector(".crop-stage"), frame = dlg.querySelector(".crop-frame"), pic = frame.querySelector("img");
   const slider = dlg.querySelector("input[type=range]");
   const W = img.naturalWidth, H = img.naturalHeight;
-  let F = 0, base = 1, z = 1, x = 0, y = 0;
+  // FW x FH: the frame on screen (FH = FW / aspect).
+  let FW = 0, FH = 0, base = 1, z = 1, x = 0, y = 0;
   const scale = () => base * z;
   const clamp = () => {
-    x = Math.min(0, Math.max(F - W * scale(), x));
-    y = Math.min(0, Math.max(F - H * scale(), y));
+    x = Math.min(0, Math.max(FW - W * scale(), x));
+    y = Math.min(0, Math.max(FH - H * scale(), y));
   };
   const draw = () => { clamp(); pic.style.transform = `translate(${x}px, ${y}px) scale(${scale()})`; slider.value = z; };
   // Zoom to z2 keeping the point (px, py) in the frame still.
-  const zoomTo = (z2, px = F / 2, py = F / 2) => {
+  const zoomTo = (z2, px = FW / 2, py = FH / 2) => {
     z2 = Math.min(4, Math.max(1, z2));
     const k = z2 / z;
     x = px - (px - x) * k; y = py - (py - y) * k; z = z2; draw();
@@ -4122,12 +4130,12 @@ function cropPhoto(img, { tile, side }) {
   // Frame size follows the screen; keep the same part of the photo centered when it changes (rotation, resize).
   const layout = () => {
     const r = stage.getBoundingClientRect();
-    const F2 = Math.max(120, Math.min(r.width - 40, r.height - 40, 420));
-    const cx = F ? (F / 2 - x) / scale() : W / 2, cy = F ? (F / 2 - y) / scale() : H / 2;
-    F = F2; base = F / Math.min(W, H);
-    frame.style.width = frame.style.height = F + "px";
+    const W2 = Math.max(120, Math.min(r.width - 40, (r.height - 40) * aspect, aspect === 1 ? 420 : 720));
+    const cx = FW ? (FW / 2 - x) / scale() : W / 2, cy = FW ? (FH / 2 - y) / scale() : H / 2;
+    FW = W2; FH = W2 / aspect; base = Math.max(FW / W, FH / H);
+    frame.style.width = FW + "px"; frame.style.height = FH + "px";
     pic.style.width = W + "px"; pic.style.height = H + "px";
-    x = F / 2 - cx * scale(); y = F / 2 - cy * scale(); draw();
+    x = FW / 2 - cx * scale(); y = FH / 2 - cy * scale(); draw();
   };
   const local = (e) => { const r = frame.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
 
@@ -4175,12 +4183,12 @@ function cropPhoto(img, { tile, side }) {
     const finish = (r) => { result = r; dlg.close(); };
     dlg.querySelector("[data-cancel]").onclick = () => finish(null);
     dlg.querySelectorAll("[data-use]").forEach((b) => (b.onclick = () => {
-      const s = F / scale(), out = Math.round(Math.min(side, s));
+      const sw = FW / scale(), sh = FH / scale(), out = Math.round(Math.min(side, sw));
       const c = document.createElement("canvas");
-      c.width = c.height = out;
+      c.width = out; c.height = Math.round(out / aspect);
       const g = c.getContext("2d");
       g.imageSmoothingQuality = "high";
-      g.drawImage(img, -x / scale(), -y / scale(), s, s, 0, 0, out, out);
+      g.drawImage(img, -x / scale(), -y / scale(), sw, sh, 0, 0, c.width, c.height);
       finish(c.toDataURL("image/jpeg", 0.82));
     }));
     dlg.addEventListener("close", () => { ro.disconnect(); dlg.innerHTML = ""; resolve(result); }, { once: true });
@@ -7171,6 +7179,15 @@ function knowCard(p) {
 }
 
 // ---------- profile ----------
+// The profile card's cover: their own cover photo, or circles in their favorite colors (wine and gold until they pick some).
+// src: a just-cropped photo to show before the server's version comes back.
+function coverHtml(p, src) {
+  const url = src || (p?.cover && state.me ? `${API}photo?c=${encodeURIComponent(state.me.id)}&v=${encodeURIComponent(p.cover)}` : "");
+  if (url) return `<div class="pf-cover has-img"><img src="${esc(url)}" alt="" onerror="this.remove()"></div>`;
+  const cols = (p?.colors || []).map((k) => COLOR_OF[k]?.c).filter(Boolean);
+  const [c1, c2, c3] = cols.length ? [cols[0], cols[1] || cols[0], cols[2] || cols[1] || cols[0]] : ["#B23A5B", "#D9A94A", "#7A1B36"];
+  return `<div class="pf-cover" style="--c1:${c1};--c2:${c2};--c3:${c3}"></div>`;
+}
 // Its own tab: your page, exactly as your people see it, and an Edit profile mode. The gear opens Settings.
 const GEAR = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
 async function renderProfile() {
@@ -7178,15 +7195,12 @@ async function renderProfile() {
   const p = state.me.profile || { sizes: {} };
   const likes = p.likes || [], nopes = p.dislikes || [];
   setHero(`<button class="hero-gear" type="button" id="gearBtn" aria-label="Settings">${GEAR}</button>${heroTitle("What your people see", "Profile")}`);
-  // The cover is painted in your favorite colors (wine and gold until you pick some).
-  const cols = (p.colors || []).map((k) => COLOR_OF[k]?.c).filter(Boolean);
-  const [c1, c2, c3] = cols.length ? [cols[0], cols[1] || cols[0], cols[2] || cols[1] || cols[0]] : ["#B23A5B", "#D9A94A", "#7A1B36"];
   const details = detailsHtml(p);
   const edit = (focus, label) => `<button class="linkbtn" type="button" data-edit="${focus}">${label}</button>`;
   const v = $("#view");
   v.innerHTML = `<div class="pf-layout">
     <section class="pf">
-      <div class="pf-cover" style="--c1:${c1};--c2:${c2};--c3:${c3}"></div>
+      ${coverHtml(p)}
       <div class="pf-body">
         ${avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"')}
         <h2 class="pf-name">${esc(state.me.name)}</h2>
@@ -7248,6 +7262,14 @@ async function renderProfileEdit() {
         </div>
         <input type="file" accept="image/*" id="photoFile" hidden>
       </div>
+      <hr class="set-div">
+      <span class="flabel">Cover photo</span>
+      <div class="cover-prev" id="meCover">${coverHtml(prof)}</div>
+      <div class="photo-row"><div class="btns">
+        <button class="btn small" type="button" id="pickCover">${CAMERA} ${prof.cover ? "Change cover" : "Add a cover"}</button>
+        <button class="btn small quiet danger" type="button" id="removeCover"${prof.cover ? "" : " hidden"}>Remove</button>
+      </div>
+      <input type="file" accept="image/*" id="coverFile" hidden></div>
       <hr class="set-div">
       ${nameFields("Your", state.me.name, state.me.lastName || "")}
       <label class="field"><span>A line about you <span class="counter" id="bioCount"></span></span>
@@ -7340,6 +7362,34 @@ async function renderProfileEdit() {
     try { await api("profile", { photo: "" }); PHOTOS.delete(state.me.id); state.stale = true; toast("Photo removed"); $("#mePhoto", v).innerHTML = avatar(state.me.name, state.me.id).replace('class="avatar"', 'class="avatar huge"'); }
     catch (e) { oops(e.message); }
   });
+
+  // Cover photo saves right away too, cropped wide (3:1). Removing it brings back the favorite-colors cover.
+  const coverFile = $("#coverFile", v), pickCover = $("#pickCover", v), removeCover = $("#removeCover", v);
+  const showCover = (src) => {
+    $("#meCover", v).innerHTML = coverHtml(state.me.profile, src);
+    pickCover.innerHTML = `${CAMERA} ${state.me.profile?.cover ? "Change cover" : "Add a cover"}`;
+    removeCover.hidden = !state.me.profile?.cover;
+  };
+  pickCover.onclick = () => coverFile.click();
+  coverFile.onchange = async () => {
+    const f = coverFile.files[0];
+    coverFile.value = "";
+    if (!f) return;
+    pickCover.disabled = true;
+    try {
+      const cover = await squarePhoto(f, { side: 960, aspect: 3 });
+      if (cover) {
+        await api("profile", { cover });
+        state.me.profile = { ...state.me.profile, cover: String(Date.now()) }; state.stale = true;
+        toast("Cover saved"); showCover(cover);
+      }
+    } catch (e) { oops(e.message); }
+    pickCover.disabled = false;
+  };
+  removeCover.onclick = async () => {
+    try { await api("profile", { cover: "" }); state.me.profile = { ...state.me.profile, cover: null }; state.stale = true; toast("Cover removed"); showCover(); }
+    catch (e) { oops(e.message); }
+  };
 
   // Bio counter.
   const bioIn = $("#bioIn", v), bioCount = $("#bioCount", v);
