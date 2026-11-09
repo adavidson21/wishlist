@@ -28,6 +28,7 @@ It's free, there are no ads, and nothing is for sale.
 A few more things you can do:
 
 - ⭐ **Mark top picks** so people know what you want most.
+- 🔗 **Link wishes that go together**, like a coloring book and pencils: both or neither, or "only with that one".
 - 📝 **Keep private gift ideas** for someone. Only you can see them.
 - 💬 **Chat about someone's gifts** ("Is she still a size M?"). Everyone in the circle can read it except that person.
 - 🎂 **Get a heads up** before birthdays and Christmas, and when someone adds new wishes.
