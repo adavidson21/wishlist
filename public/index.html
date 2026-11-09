@@ -3773,12 +3773,10 @@ function renderPeopleTab(t, v) {
     <div class="stack b-actions" style="margin-top:18px">
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
-      ${shownRows.length ? `<button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>` : ""}
     </div></div>`;
   wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderPeopleTab(t, v); });
   $("#addPurchase").addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
   $("#addIdea").addEventListener("click", () => addThing(null));
-  $("#exportBtn")?.addEventListener("click", () => exportExcel(t, view));
   v.querySelectorAll(".stack > [data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
   v.querySelectorAll("[data-need]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.need)));
   v.querySelectorAll(".pcard").forEach((c) => wireTrackerCard(c, t, view));
@@ -4849,6 +4847,14 @@ async function renderSettings() {
       <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
     </div>
 
+    <div class="label">Download your budget${tip("An Excel file with your budgets, purchases and gift ideas. Only you can see these.")}</div>
+    <div class="set-card">
+      <div class="actions" style="margin-top:0">
+        <button class="btn" type="button" data-export="christmas">${DOWN} Christmas</button>
+        <button class="btn" type="button" data-export="birthday">${DOWN} Birthdays</button>
+      </div>
+    </div>
+
     <div class="set-card" style="margin-top:26px">
       <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
     </div>
@@ -4923,6 +4929,12 @@ async function renderSettings() {
     };
 
     $("#replayTour", v).onclick = () => { state.welcome = null; openTour(); };
+    v.querySelectorAll("[data-export]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await exportExcel(await load("tracker"), b.dataset.export); }
+      catch (e) { toast(e.message); }
+      finally { b.disabled = false; }
+    }));
     $("#installSettings", v)?.addEventListener("click", () => startInstall());
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
     $("#removePin", v)?.addEventListener("click", async () => {
