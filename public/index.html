@@ -371,6 +371,11 @@
   .stat span { font-size: 13px; color: var(--muted); font-weight: 600; }
   .stat.ok { background: var(--ok-soft); box-shadow: none; } .stat.ok b { color: var(--ok); }
   .stat.gold { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--gold) 70%, transparent), var(--shadow); }
+  button.stat { border: 0; font: inherit; text-align: left; cursor: pointer; color: inherit; -webkit-tap-highlight-color: transparent; transition: transform .12s, box-shadow .12s; }
+  button.stat:active:not(:disabled) { transform: scale(.97); }
+  button.stat:disabled { cursor: default; }
+  button.stat[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--brand), var(--shadow); }
+  button.stat.ok[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ok); }
   .toolbar { margin-bottom: 16px; }
   .toolbar .chips { margin: 0 -18px 10px; padding: 2px 18px; }
   .toolbar-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -4545,7 +4550,7 @@ async function shareInvite(g, nudgeName) {
 // Filters and sort for someone's list. Reset when you open a different person.
 const PRICE_BUCKETS = [["u25", "Under $25", 0, 2500], ["25-50", "$25 to $50", 2500, 5000], ["50-100", "$50 to $100", 5000, 10000], ["100", "$100+", 10000, Infinity]];
 const SORTS = [["top", "Top picks first"], ["low", "Lowest price"], ["high", "Highest price"], ["new", "Newest"]];
-const freshView = () => ({ cat: "all", price: "all", sort: "top", open: false });
+const freshView = () => ({ cat: "all", price: "all", sort: "top", open: false, mine: false, top: false });
 const inBucket = (c, k) => { const b = PRICE_BUCKETS.find((x) => x[0] === k); return c != null && c >= b[2] && c < b[3]; };
 
 async function renderPerson(id) {
@@ -4593,8 +4598,10 @@ async function renderPerson(id) {
     .filter((i) => view.cat === "all" || catOf(i) === view.cat)
     .filter((i) => view.price === "all" || inBucket(i.price_cents, view.price))
     .filter((i) => !view.open || (!i.claim && !i.removed))
+    .filter((i) => !view.mine || i.claim?.mine)
+    .filter((i) => !view.top || (i.priority === "must" && !i.removed))
     .slice().sort(sorter);
-  const filtering = view.cat !== "all" || view.price !== "all" || view.open;
+  const filtering = view.cat !== "all" || view.price !== "all" || view.open || view.mine || view.top;
 
   // Budget for their next occasion (Christmas or their birthday, whichever comes first).
   let meter = "";
@@ -4612,6 +4619,9 @@ async function renderPerson(id) {
       <div class="who-name"><h1>${esc(name)}'s list</h1>${list.member.fullName && list.member.fullName !== name ? `<span class="realname">${esc(list.member.fullName)}</span>` : ""}${dupeTag(everyone().find((m) => m.id === id)) ? `<span class="realname">${esc(dupeTag(everyone().find((m) => m.id === id)))}</span>` : ""}</div>
       <button class="hero-edit" type="button" id="editBtn" aria-label="Edit nickname and budget for ${esc(name)}">${PENCIL}<span>Edit</span></button></div>${meter}`);
 
+  // Summary cards double as quick filters: tap one to show just those wishes, tap again (or "wishes") for all.
+  const statBtn = (k, n, label, cls = "") =>
+    `<button class="stat${cls ? ` ${cls}` : ""}" type="button" data-stat="${k}"${k === "all" ? "" : ` aria-pressed="${!!view[k]}"`}${!n && k !== "all" ? " disabled" : ""}><b>${n}</b><span>${label}</span></button>`;
   const chip = (group, k, label, count, icon = "") =>
     `<button class="chip" type="button" data-${group}="${k}" aria-pressed="${view[group] === k}">${icon}${esc(label)}${count != null ? `<span class="chip-n">${count}</span>` : ""}</button>`;
   const toolbar = all.length < 2 ? "" : `
@@ -4635,11 +4645,11 @@ async function renderPerson(id) {
     ${chatBar(id, name)}
     ${hintsCard(list.member.profile)}
     ${knowCard(list.member.profile)}
-    ${all.length ? `<div class="stats">
-      <div class="stat"><b>${all.length}</b><span>${all.length === 1 ? "wish" : "wishes"}</span></div>
-      <div class="stat"><b>${open.length}</b><span>still available</span></div>
-      ${gettingN ? `<div class="stat ok"><b>${gettingN}</b><span>you're getting</span></div>`
-        : `<div class="stat${topN ? " gold" : ""}"><b>${topN}</b><span>${topN === 1 ? "top pick" : "top picks"}</span></div>`}
+    ${all.length ? `<div class="stats" role="group" aria-label="Show">
+      ${statBtn("all", all.length, all.length === 1 ? "wish" : "wishes")}
+      ${statBtn("open", open.length, "still available")}
+      ${gettingN ? statBtn("mine", gettingN, "you're getting", "ok")
+        : statBtn("top", topN, topN === 1 ? "top pick" : "top picks", topN ? "gold" : "")}
     </div>` : ""}
     ${toolbar}</div><div class="person-main">
     ${all.length ? `<div class="stack">${items.length ? items.map((i, n) => personRow(i, "item", n)).join("")
@@ -4679,7 +4689,13 @@ async function renderPerson(id) {
   v.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { view.cat = b.dataset.cat; redo(); }));
   v.querySelectorAll("[data-price]").forEach((b) => (b.onclick = () => { view.price = b.dataset.price; redo(); }));
   $("#sortSel")?.addEventListener("change", (e) => { view.sort = e.target.value; redo(); });
-  $("#openOnly")?.addEventListener("change", (e) => { view.open = e.target.checked; redo(); });
+  $("#openOnly")?.addEventListener("change", (e) => { view.open = e.target.checked; if (view.open) view.mine = view.top = false; redo(); });
+  v.querySelectorAll("[data-stat]").forEach((b) => (b.onclick = () => {
+    const k = b.dataset.stat, was = k !== "all" && view[k];
+    view.open = view.mine = view.top = false;
+    if (k !== "all" && !was) view[k] = true;
+    redo();
+  }));
   for (const b of v.querySelectorAll("#clearFilters, #clearFilters2")) b.onclick = () => { Object.assign(view, freshView(), { sort: view.sort }); redo(); };
   // Keep the chosen chip in view when the row scrolls sideways.
   v.querySelectorAll('.chip[aria-pressed="true"]').forEach((c) => c.scrollIntoView({ block: "nearest", inline: "nearest" }));
