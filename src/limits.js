@@ -37,6 +37,7 @@ export const LIMITS = {
   pricesPerMember: [[120, 3600]],
   refreshPerMember: [[120, 3600]],
   imagePerMember: [[400, 3600]],
+  estimatePerMember: [[150, 3600], [600, 86400]], // "~$40" price guesses
   // Hidden chat about a person.
   chatSendsPerMember: [[60, 3600], [300, 86400]],
   // Notifications: devices per person (the oldest is dropped past this), test pushes, and group gift alerts started.

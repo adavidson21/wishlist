@@ -245,7 +245,8 @@ function imageLink(value) {
 // image while the link is unchanged, and clear it when the link changes so it's looked up again.
 const IMAGE_SET = `image_url = CASE WHEN ?1 IS NOT NULL THEN ?1 WHEN url IS ?2 THEN image_url ELSE NULL END,
   image_checked_at = CASE WHEN ?1 IS NOT NULL THEN ?3 WHEN url IS ?2 THEN image_checked_at ELSE NULL END,
-  price_checked_at = CASE WHEN url IS ?2 THEN price_checked_at ELSE NULL END`;
+  price_checked_at = CASE WHEN url IS ?2 THEN price_checked_at ELSE NULL END,
+  price_est_cents = CASE WHEN url IS ?2 AND title IS ?4 THEN price_est_cents ELSE NULL END`;
 
 // Save: the price syncs with the store only when it came from the link (the app sends priceAuto) and there's
 // a link and a price to sync. Typing a price by hand turns syncing off.
@@ -824,6 +825,8 @@ const itemOut = (r) => ({
   image_checked: !!r.image_checked_at,
   price_checked: !!r.price_checked_at,
   price_auto: !!r.price_auto,
+  price_est: r.price_est_cents > 0 ? r.price_est_cents : null, // rough guess when there's no price ("~$40")
+  est_checked: r.price_est_cents != null,
 });
 
 // Expects the idea row joined with its claim (buyer_id, buyer_name, paid_cents) and author_name.
@@ -842,6 +845,8 @@ const ideaOut = (r, meId) => ({
   image_checked: !!r.image_checked_at,
   price_checked: !!r.price_checked_at,
   price_auto: !!r.price_auto,
+  price_est: r.price_est_cents > 0 ? r.price_est_cents : null,
+  est_checked: r.price_est_cents != null,
   updated_at: r.updated_at,
   claim: r.buyer_id
     ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === meId, price_cents: r.paid_cents, occasion: r.claim_season }
@@ -1576,6 +1581,23 @@ async function refreshRow(env, table, row) {
   if (table === "items") args.push(ok ? p.brand || null : null, ok ? p.size || null : null, ok ? p.color || null : null);
   await stmt.bind(...args).run();
   return !!ok;
+}
+
+// ---------- price guess: "~$40" when the store price can't be read ----------
+const ESTIMATE_PROMPT = `You estimate prices for a gift wish list when the store's price couldn't be read.
+The input is JSON: name, brand, store (the website it's from, may be empty), size and color (may be empty).
+Return price: what this exact product typically costs new in US dollars, as a number. Use what you know about the
+brand and product line. Return null if you can't make a reasonable guess (too vague, or you don't know the product).`;
+const ESTIMATE_SCHEMA = { type: "object", properties: { price: { type: "number", nullable: true } }, required: ["price"] };
+async function estimatePrice(env, row) {
+  if (!env.GEMINI_API_KEY || !row.title) return null;
+  let store = "";
+  try { store = row.url ? new URL(row.url).hostname.replace(/^www\./, "") : ""; } catch {}
+  const input = { name: row.title, brand: row.brand || "", store, size: row.size || "", color: row.color || "" };
+  const r = await callGemini(env, ESTIMATE_PROMPT, [{ text: JSON.stringify(input) }], ESTIMATE_SCHEMA, 12000);
+  if (r.error) return undefined; // try again another time (rate limit, daily cap)
+  const p = toPrice(r.data?.price);
+  return p != null && p > 0 && p < 100000 ? Math.round(p * 100) : null;
 }
 
 // ---------- handlers ----------
@@ -2653,6 +2675,34 @@ const handlers = {
     ).bind(me.id, DETAILS_V).first("n");
     const remaining = (await count("items", "owner_id")) + (await count("private_ideas", "author_id"));
     return { checked: batch.length, updated: done.filter(Boolean).length, remaining };
+  },
+
+  // Price guess for a wish or idea with no price. Anyone who can see it may ask; guessed once and shared.
+  async "POST estimate"(req, env) {
+    const me = await auth(req, env);
+    const { kind, id } = await body(req);
+    if (!(await underLimit(env, `estimate:${me.id}`, ABUSE.estimatePerMember))) return { price_est: null };
+    let row;
+    if (kind === "item") {
+      row = await env.DB.prepare(
+        `SELECT i.id, i.title, i.url, i.brand, i.size, i.color, i.price_cents, i.price_est_cents FROM items i
+           LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
+          WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+      ).bind(me.id, id, me.id, me.id).first();
+    } else if (kind === "idea") {
+      const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
+      if (idea && (await canSeeIdea(env, me.id, idea))) row = idea;
+    }
+    if (!row) fail(404, "Not found.");
+    if (row.price_cents != null) return { price_est: null };
+    if (row.price_est_cents != null) return { price_est: row.price_est_cents > 0 ? row.price_est_cents : null };
+    const est = await estimatePrice(env, row).catch(() => undefined);
+    if (est === undefined) return { price_est: null };
+    const table = kind === "item" ? "items" : "private_ideas";
+    await env.DB.prepare(`UPDATE ${table} SET price_est_cents = ? WHERE id = ? AND title IS ? AND url IS ? AND price_est_cents IS NULL`)
+      .bind(est ?? -1, row.id, row.title, row.url).run();
+    console.log(`estimate ${kind} -> ${est != null ? `$${est / 100}` : "none"}`);
+    return { price_est: est };
   },
 
   // Product photo for an item or idea saved before photos existed (or whose link changed). Anyone who
