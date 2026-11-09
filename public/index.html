@@ -696,7 +696,7 @@
   /* Fades the edge that has more chips past it (--fl/--fr set from script). */
   .circle-filter { --fl: 0px; --fr: 0px; -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fl), #000 calc(100% - var(--fr)), transparent 100%);
     mask-image: linear-gradient(to right, transparent 0, #000 var(--fl), #000 calc(100% - var(--fr)), transparent 100%); }
-  /* Circles tab: catch-up tiles, filter row and search under the heading, household subheadings. */
+  /* Circles tab: catch-up tiles, filter row and search under the heading, household cards. */
   .c-controls { display: grid; gap: 10px; margin-top: 14px; }
   .c-top { margin-top: 24px; } .c-top.first, .catchup[hidden] + .c-top { margin-top: 0; }
   .c-search { max-width: 520px; }
@@ -713,13 +713,23 @@
   .sublabel { display: flex; align-items: center; gap: 8px; margin: 22px 0 10px; font-size: 14px; font-weight: 700; color: var(--muted); }
   .sublabel .avatar { width: 22px; height: 22px; font-size: 10px; }
   .sublabel .linkbtn { margin-left: auto; min-height: 28px; }
-  .hh-sub { width: 100%; border: 0; background: none; padding: 4px 0; font-family: inherit; text-align: left; cursor: pointer; }
-  .hh-sub > span { flex: none; }
-  .hh-sub small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  .hh-sub .chev { margin-left: auto; width: 16px; height: 16px; flex: none; }
-  .hh-sub:hover { color: var(--ink); }
-  :is(.csection > .cgroup:first-child, .fam-label + .cgroup) > .sublabel { margin-top: 16px; }
-  :is(.csection > .cgroup:first-child, .fam-label + .cgroup) > .stack:first-child { margin-top: 14px; }
+  /* Circle > household cards (their people inside) and solo people's cards, side by side in one list. */
+  .c-size { margin: 2px 0 0 51px; color: var(--muted); font-size: 14px; font-weight: 600; }
+  .c-units { margin-top: 14px; }
+  .hh-card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .hh-head { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 10px 14px; border: 0;
+    background: color-mix(in srgb, var(--gold) 12%, var(--card)); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+  .hh-head .avatar { width: 30px; height: 30px; font-size: 13px; }
+  .hh-head .hh-txt { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+  .hh-head strong { flex: none; font-size: 16px; }
+  .hh-head small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 14px; font-weight: 600; }
+  .hh-head .chev { width: 16px; height: 16px; }
+  .hh-head:hover .chev { transform: translateX(3px); }
+  .hh-head:focus-visible { outline: 3px solid var(--brand); outline-offset: -3px; }
+  .member.in-hh { border-radius: 0; box-shadow: none; background: none; border-top: 1px solid var(--line); }
+  .member.in-hh:focus-visible { outline-offset: -3px; }
+  .c-units + .cgroup > .sublabel { margin-top: 26px; }
+  .fam-label + .c-size + .cgroup > .sublabel, .fam-label + .cgroup > .sublabel { margin-top: 16px; }
   .member.is-off { opacity: .62; }
   .c-add { margin-top: 24px; }
   .circle-filter::-webkit-scrollbar { display: none; }
@@ -4913,9 +4923,9 @@ async function renderFamily() {
     </button>`).join("")}</div>` : "";
 
   // One card per person: name and badges, then wishes and what you're getting, Kid and birthday chips, budget bar.
-  // Their household is the subheading above them, so the card doesn't repeat it.
+  // Inside a household card the card's header names the household, so the row doesn't repeat it.
   let i = 0;
-  const personBtn = (m, hhId) => {
+  const personBtn = (m, hhId, inHh) => {
     const skipped = off(m);
     const p = plan.get(m.id);
     const getting = p && !skipped ? p.occasions.reduce((n, o) => n + o.purchases.length, 0) : 0;
@@ -4925,13 +4935,15 @@ async function renderFamily() {
     const age = m.kid ? `<span class="pchip kid-chip">Kid</span>` : "";
     const dupe = hhId && dupeTag(m) === householdLabel(hhId) ? "" : dupeHtml(m);
     const q = [m.name, m.fullName, m.lastName].filter(Boolean).join(" ").toLowerCase();
-    return `<button class="member slide${skipped ? " is-off" : ""}" style="animation-delay:${Math.min(i++, 12) * 0.05}s" type="button" data-id="${esc(m.id)}" data-q="${esc(q)}">
+    const cls = `member${inHh ? " in-hh" : " slide"}${skipped ? " is-off" : ""}`;
+    const delay = inHh ? "" : ` style="animation-delay:${Math.min(i++, 12) * 0.05}s"`;
+    return `<button class="${cls}"${delay} type="button" data-id="${esc(m.id)}" data-q="${esc(q)}">
       ${avatar(m.name, m.id)}
       <span class="who"><strong>${esc(m.name)}${dupe}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}</small>${age}${soon}</span>${skipped ? "" : budgetMini(p)}</span>${CHEV}
     </button>`;
   };
-  // People grouped under small household subheadings: yours first, then the rest by name, then anyone not in a
-  // household, then anyone you turned off in Budget. No subheadings at all when nobody is in a household.
+  // Each household is one card holding its people; someone not in a household gets their own card right alongside,
+  // sorted together by name (yours first), so nobody reads as left over. Anyone you turned off in Budget goes last.
   const sub = (label, extra = "") => `<div class="sublabel">${label}${extra}</div>`;
   const groupsHtml = (list) => {
     const vis = list.filter(shows);
@@ -4939,18 +4951,26 @@ async function renderFamily() {
     const on = vis.filter((m) => !off(m)), skipped = vis.filter(off);
     const by = new Map(), loose = [];
     for (const m of on) m.householdId ? by.set(m.householdId, [...(by.get(m.householdId) || []), m]) : loose.push(m);
-    const ids = [...by.keys()].sort((a, b) => (b === mineHh) - (a === mineHh) || householdLabel(a).localeCompare(householdLabel(b)));
-    const heads = by.size > 0 || skipped.length > 0;
-    // The subheading opens the household's page and shows its pets ("🐕 Biscuit").
-    const out = ids.map((id) => `<div class="cgroup"><button class="sublabel hh-sub" type="button" data-open-hh="${esc(id)}">${tileAvatar(householdLabel(id), `h:${id}`, "xs")}<span>${esc(hhName(id))}</span>${petsOf(`h:${id}`).length ? `<small>${petNames(petsOf(`h:${id}`))}</small>` : ""}${CHEV}</button>
-      <div class="stack">${by.get(id).map((m) => personBtn(m, id)).join("")}</div></div>`);
-    if (loose.length) out.push(`<div class="cgroup">${heads ? sub(`<span>${by.size ? "Not in a household" : "People"}</span>`) : ""}
-      <div class="stack">${loose.map((m) => personBtn(m)).join("")}</div></div>`);
+    // The household's header opens its page and shows its pets ("🐕 Biscuit").
+    const hhCard = (id) => `<div class="hh-card cgroup slide" style="animation-delay:${Math.min(i++, 12) * 0.05}s">
+      <button class="hh-head" type="button" data-open-hh="${esc(id)}">${tileAvatar(householdLabel(id), `h:${id}`)}<span class="hh-txt"><strong>${esc(hhName(id))}</strong>${petsOf(`h:${id}`).length ? `<small>${petNames(petsOf(`h:${id}`))}</small>` : ""}</span>${CHEV}</button>
+      ${by.get(id).map((m) => personBtn(m, id, true)).join("")}</div>`;
+    const units = [
+      ...[...by.keys()].map((id) => ({ key: householdLabel(id), mine: id === mineHh, html: () => hhCard(id) })),
+      ...loose.map((m) => ({ key: m.name, mine: false, html: () => personBtn(m) })),
+    ].sort((a, b) => b.mine - a.mine || a.key.localeCompare(b.key));
+    const out = units.length ? [`<div class="stack c-units">${units.map((u) => u.html()).join("")}</div>`] : [];
     if (skipped.length) out.push(`<div class="cgroup">${sub("<span>Not on your gift list</span>", `<button class="linkbtn" type="button" data-who-change>Change</button>`)}
       <div class="stack">${skipped.map((m) => personBtn(m)).join("")}</div></div>`);
     return out.join("");
   };
-  const head = (fam, first) => `<div class="label fam-label"${first ? ' style="margin-top:0"' : ""}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns">${isAdmin(fam) ? `<button class="btn quiet small" type="button" data-manage="${esc(fam.id)}">Manage</button>` : ""}<button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>`;
+  // Under the circle's name: how many people and households, so it's clear the circle holds both.
+  const sizeLine = (fam) => {
+    const ppl = fam.members.filter((m) => m.id !== state.me.id);
+    const hh = new Set(fam.members.map((m) => m.householdId).filter(Boolean)).size;
+    return ppl.length ? `<p class="c-size">${plural(fam.members.length, "person", "people")}${hh ? ` · ${plural(hh, "household", "households")}` : ""}</p>` : "";
+  };
+  const head = (fam, first) => `<div class="label fam-label"${first ? ' style="margin-top:0"' : ""}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns">${isAdmin(fam) ? `<button class="btn quiet small" type="button" data-manage="${esc(fam.id)}">Manage</button>` : ""}<button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>${sizeLine(fam)}`;
   const addRow = `<button class="add soft c-add" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>`;
   // Ask to join: people waiting on you (circles you run).
   const reqs = state.groups.filter(isAdmin).flatMap((fam) => (fam.requests || []).map((r) => ({ ...r, g: fam })));
