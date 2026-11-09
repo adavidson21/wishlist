@@ -10,7 +10,9 @@
 //   - An item's owner never gets its claims (purchased marks), including how many were bought and group gifts.
 //   - Ideas are private to their author unless shared as a suggestion. A shared suggestion is visible to
 //     everyone in the family except the person it's for. The person it's for never gets it in any response.
-//   - Budgets and the spending tracker are only returned to their author.
+//   - Budgets and the spending tracker are only returned to their author, except that a household shares
+//     its budgets and purchases for people outside it (household_budgets, sharesBudget). Budgets and
+//     purchases for people inside your own household stay yours alone.
 //   - You only see lists of people who share a group (circle) with you. Households are synced into
 //     group_members (direct = 0), so that one table still answers "do these two share a circle?".
 //   - Nicknames ("Grandma" for "Jane Doe") are private to whoever set them. Every name in a response is
@@ -534,6 +536,21 @@ function householdLabel(name, people) {
 async function householdOf(env, memberId) {
   const row = await env.DB.prepare("SELECT household_id FROM members WHERE id = ?").bind(memberId).first();
   return row?.household_id || null;
+}
+
+// ---------- shared budgets (migration 0029) ----------
+// A household gives together: when you're in a household and the person you're shopping for isn't in it, your
+// whole household shares one budget for them and sees everything any of you bought for them. At Christmas the
+// budget covers their whole household (if they have one); birthdays stay per person. Inside your own household,
+// or when you have no household, budgets and purchases stay personal.
+const isXmasCode = (code) => code % 10000 === 1225;
+const sharesBudget = (myHh, subject) => !!myHh && subject.household_id !== myHh;
+const budgetTarget = (subject, code) => (isXmasCode(code) && subject.household_id ? `h:${subject.household_id}` : `m:${subject.id}`);
+// You plus everyone in your household (the people whose purchases count toward shared budgets).
+async function givers(env, me, myHh) {
+  if (!myHh) return [{ id: me.id, name: me.name }];
+  const { results } = await env.DB.prepare("SELECT id, name FROM members WHERE household_id = ?").bind(myHh).all();
+  return results.some((r) => r.id === me.id) ? results : [{ id: me.id, name: me.name }, ...results];
 }
 
 // Signing in picks a name within a circle, so two people with the same name can't share one.
@@ -1631,11 +1648,14 @@ async function onceOnly(env, key) {
 const daysBetween = (a, b) => Math.round((Date.UTC(Math.floor(b / 10000), Math.floor(b / 100) % 100 - 1, b % 100) - Date.UTC(Math.floor(a / 10000), Math.floor(a / 100) % 100 - 1, a % 100)) / 86400000);
 const weekdayOf = (code) => new Date(Date.UTC(Math.floor(code / 10000), Math.floor(code / 100) % 100 - 1, code % 100)).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
 // Has `buyerId` got anything for `subjectId` for this occasion yet (a wish, an idea, or a gift card)?
+// Whether you (or, for someone outside your household, anyone in your household) got them something.
 async function hasGiftFor(env, buyerId, subjectId, code) {
+  const buyers = `(SELECT ?1 UNION SELECT b.id FROM members b JOIN members me ON me.id = ?1 JOIN members s ON s.id = ?2
+     WHERE me.household_id IS NOT NULL AND b.household_id = me.household_id AND (s.household_id IS NULL OR s.household_id != me.household_id))`;
   const row = await env.DB.prepare(
-    `SELECT 1 FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id = ?1 AND i.owner_id = ?2 AND c.season = ?3
-     UNION ALL SELECT 1 FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id WHERE c.buyer_id = ?1 AND p.subject_id = ?2 AND c.season = ?3
-     UNION ALL SELECT 1 FROM gift_card_gifts WHERE buyer_id = ?1 AND member_id = ?2 AND season = ?3 LIMIT 1`,
+    `SELECT 1 FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id IN ${buyers} AND i.owner_id = ?2 AND c.season = ?3
+     UNION ALL SELECT 1 FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id WHERE c.buyer_id IN ${buyers} AND p.subject_id = ?2 AND c.season = ?3
+     UNION ALL SELECT 1 FROM gift_card_gifts WHERE buyer_id IN ${buyers} AND member_id = ?2 AND season = ?3 LIMIT 1`,
   ).bind(buyerId, subjectId, code).first();
   return !!row;
 }
@@ -2491,29 +2511,59 @@ const handlers = {
     const season = Number(b.occasion);
     if (!Number.isInteger(season) || season < today()) fail(400, "That occasion has passed.");
     const id = String(b.id || "");
+    // Someone in your household can move along a gift they bought for a person outside it (shared budget).
+    const buyer = b.buyerId ? String(b.buyerId) : me.id;
+    if (buyer !== me.id) {
+      const subjectSql = b.kind === "item" ? "SELECT owner_id AS s FROM items WHERE id = ?"
+        : b.kind === "idea" ? "SELECT subject_id AS s FROM private_ideas WHERE id = ?" : "SELECT ? AS s";
+      const subjectId = (await env.DB.prepare(subjectSql).bind(b.kind === "giftcard" ? String(b.subjectId || "") : id).first())?.s;
+      const [myHh, them, subject] = await Promise.all([
+        householdOf(env, me.id),
+        householdOf(env, buyer),
+        env.DB.prepare("SELECT id, household_id FROM members WHERE id = ?").bind(String(subjectId || "")).first(),
+      ]);
+      if (!myHh || them !== myHh || !subject || !sharesBudget(myHh, subject)) fail(404, "Purchase not found.");
+    }
     let res;
     if (b.kind === "item") {
       res = await env.DB.prepare("UPDATE claims SET status = ?, stash = ? WHERE item_id = ? AND season = ? AND buyer_id = ?")
-        .bind(status, stash, id, season, me.id).run();
+        .bind(status, stash, id, season, buyer).run();
     } else if (b.kind === "idea") {
       res = await env.DB.prepare("UPDATE idea_claims SET status = ?, stash = ? WHERE idea_id = ? AND season = ? AND buyer_id = ?")
-        .bind(status, stash, id, season, me.id).run();
+        .bind(status, stash, id, season, buyer).run();
     } else if (b.kind === "giftcard") {
       res = await env.DB.prepare("UPDATE gift_card_gifts SET status = ?, stash = ? WHERE member_id = ? AND brand = ? AND season = ? AND buyer_id = ?")
-        .bind(status, stash, String(b.subjectId || ""), id, season, me.id).run();
+        .bind(status, stash, String(b.subjectId || ""), id, season, buyer).run();
     } else fail(400, "Pick a purchase.");
     if (!res.meta?.changes) fail(404, "Purchase not found.");
     return { ok: true };
   },
 
   // Set (amount) or clear (empty amount) your budget for one person for one occasion
-  // (occasion: YYYYMMDD of their Christmas or birthday; absent = the soonest).
+  // (occasion: YYYYMMDD of their Christmas or birthday; absent = the soonest). For someone outside your
+  // household this is your household's shared budget (their whole household's at Christmas).
   async "POST budget"(req, env) {
     const me = await auth(req, env);
     const { subjectId, amount, occasion } = await body(req);
     if (!subjectId || subjectId === me.id || !(await sharesGroup(env, me.id, subjectId))) fail(400, "Pick who this budget is for.");
     const s = await pickOccasion(env, subjectId, occasion);
     const value = cents(amount);
+    const [myHh, subject] = await Promise.all([
+      householdOf(env, me.id),
+      env.DB.prepare("SELECT id, household_id FROM members WHERE id = ?").bind(String(subjectId)).first(),
+    ]);
+    if (sharesBudget(myHh, subject)) {
+      const target = budgetTarget(subject, s);
+      if (value === null) {
+        await env.DB.prepare("DELETE FROM household_budgets WHERE household_id = ? AND target = ? AND season = ?").bind(myHh, target, s).run();
+      } else {
+        await env.DB.prepare(
+          `INSERT INTO household_budgets (household_id, target, season, amount_cents, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (household_id, target, season) DO UPDATE SET amount_cents = excluded.amount_cents, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+        ).bind(myHh, target, s, value, me.id, now()).run();
+      }
+      return { ok: true };
+    }
     if (value === null) {
       await env.DB.prepare("DELETE FROM budgets WHERE author_id = ? AND subject_id = ? AND season = ?").bind(me.id, subjectId, s).run();
     } else {
@@ -2683,35 +2733,49 @@ const handlers = {
     return { suggestions };
   },
 
-  // Your private planner: per person, their upcoming occasions (Christmas, and their birthday if they
-  // added one), each with your budget and what you bought for it (list items and ideas) with what you
-  // paid, plus your open ideas. Only ever about other people, only ever for you.
+  // Your planner: per person, their upcoming occasions (Christmas, and their birthday if they added one), each
+  // with your budget and what was bought for it (list items, ideas, gift cards) with what was paid, plus your
+  // open ideas. Only ever about other people. For people outside your household the budget and purchases are
+  // your household's (see sharesBudget); at Christmas the budget covers their whole household, so their
+  // Christmas occasion carries that household's budget and spending (with `household` set).
   async "GET tracker"(req, env) {
     const me = await auth(req, env);
     const t = today();
-    const [people, budgets, itemBuys, ideaBuys, ideas, cardGifts] = await Promise.all([
+    const myHh = await householdOf(env, me.id);
+    const team = await givers(env, me, myHh);
+    const teamIds = team.map((x) => x.id);
+    const inTeam = teamIds.map(() => "?").join(",");
+    const [people, budgets, shared, itemBuys, ideaBuys, ideas, cardGifts] = await Promise.all([
       env.DB.prepare(
-        `SELECT DISTINCT m.id, m.name, m.photo_at, m.birthday, m.birth_year FROM group_members gm JOIN members m ON m.id = gm.member_id
+        `SELECT DISTINCT m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id
           WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ?
           ORDER BY m.name COLLATE NOCASE`,
       ).bind(me.id, me.id).all(),
       env.DB.prepare("SELECT subject_id, season, amount_cents FROM budgets WHERE author_id = ? AND season >= ?").bind(me.id, t).all(),
+      myHh
+        ? env.DB.prepare("SELECT target, season, amount_cents FROM household_budgets WHERE household_id = ? AND season >= ?").bind(myHh, t).all()
+        : Promise.resolve({ results: [] }),
       env.DB.prepare(
-        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.qty, c.chip_in
-           FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
-      ).bind(me.id, t).all(),
+        `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.qty, c.chip_in, c.buyer_id
+           FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id IN (${inTeam}) AND c.season >= ? ORDER BY c.created_at`,
+      ).bind(...teamIds, t).all(),
       env.DB.prepare(
-        `SELECT p.subject_id, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash,
+        `SELECT p.subject_id, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.buyer_id,
                 p.author_id, a.name AS author_name
            FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id JOIN members a ON a.id = p.author_id
-          WHERE c.buyer_id = ? AND c.season >= ? ORDER BY c.created_at`,
-      ).bind(me.id, t).all(),
+          WHERE c.buyer_id IN (${inTeam}) AND c.season >= ? ORDER BY c.created_at`,
+      ).bind(...teamIds, t).all(),
       env.DB.prepare(`${IDEA_SELECT} WHERE p.author_id = ? AND c.buyer_id IS NULL ORDER BY p.updated_at DESC`).bind(t, me.id).all(),
       env.DB.prepare(
-        "SELECT member_id AS subject_id, brand, season, amount_cents, created_at, status, stash FROM gift_card_gifts WHERE buyer_id = ? AND season >= ? ORDER BY created_at",
-      ).bind(me.id, t).all(),
+        `SELECT member_id AS subject_id, brand, season, amount_cents, created_at, status, stash, buyer_id FROM gift_card_gifts WHERE buyer_id IN (${inTeam}) AND season >= ? ORDER BY created_at`,
+      ).bind(...teamIds, t).all(),
     ]);
     const nicks = await nicknamesFor(env, me.id);
+    const byId = new Map(people.results.map((p) => [p.id, p]));
+    const isShared = (subjectId) => { const p = byId.get(subjectId); return !!p && sharesBudget(myHh, p); };
+    // Your own purchases, plus your household's for people outside it.
+    const counts = (r) => r.buyer_id === me.id || isShared(r.subject_id);
+    const buyerName = (id) => (id === me.id ? me.name : nicks.get(id) || team.find((x) => x.id === id)?.name || "Someone");
     const purchase = (kind) => (r) => ({
       kind,
       id: r.id,
@@ -2728,7 +2792,10 @@ const handlers = {
       date: r.created_at,
       status: r.status || null,
       stash: r.stash || null,
-      from: kind === "item" ? (r.chip_in ? "Group gift" : "Their list") : r.author_id === me.id ? "My idea" : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
+      mine: r.buyer_id === me.id,
+      buyerId: r.buyer_id,
+      buyerName: buyerName(r.buyer_id),
+      from: kind === "item" ? (r.chip_in ? "Group gift" : "Their list") : r.author_id === me.id ? "My idea" : r.author_id === r.buyer_id ? `${buyerName(r.author_id)}'s idea` : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
     });
     const cardBuy = (r) => ({
       kind: "giftcard",
@@ -2744,19 +2811,44 @@ const handlers = {
       date: r.created_at,
       status: r.status || null,
       stash: r.stash || null,
+      mine: r.buyer_id === me.id,
+      buyerId: r.buyer_id,
+      buyerName: buyerName(r.buyer_id),
       from: "Gift card",
     });
-    const purchases = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea")), ...cardGifts.results.map(cardBuy)]
+    const purchases = [...itemBuys.results.filter(counts).map(purchase("item")), ...ideaBuys.results.filter(counts).map(purchase("idea")), ...cardGifts.results.filter(counts).map(cardBuy)]
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const sharedBudget = (target, code) => shared.results.find((b) => b.target === target && b.season === code)?.amount_cents ?? null;
+    // Households you plan Christmas for as a whole (people outside yours who are in one), with who's in them.
+    const households = {};
+    for (const p of people.results) {
+      if (!p.household_id || !sharesBudget(myHh, p)) continue;
+      (households[p.household_id] ||= { id: p.household_id, members: [] }).members.push(p);
+    }
+    const hhIds = Object.keys(households);
+    if (hhIds.length) {
+      const { results } = await env.DB.prepare(`SELECT id, name FROM households WHERE id IN (${hhIds.map(() => "?").join(",")})`).bind(...hhIds).all();
+      for (const h of results) households[h.id].name = h.name || null;
+    }
+    for (const h of Object.values(households)) {
+      h.label = householdLabel(h.name, h.members.map((p) => nicks.get(p.id) || p.name));
+      h.members = h.members.map((p) => p.id);
+      delete h.name;
+    }
     return {
       today: t,
+      // Who shares your budgets for people outside your household (empty when you have no household).
+      sharedWith: myHh ? team.filter((x) => x.id !== me.id).map((x) => ({ id: x.id, name: nicks.get(x.id) || x.name })) : [],
+      households,
       people: people.results.map((p) => {
         const occasions = occasionsFor(p, t);
         const mine = (rows) => rows.filter((x) => x.subject_id === p.id);
+        const shares = sharesBudget(myHh, p);
         // A mark or budget filed under an old birthday date (they changed it) still shows until that date passes.
-        for (const code of new Set([...mine(budgets.results).map((b) => b.season), ...mine(purchases).map((x) => x.occasion)])) {
+        const sharedCodes = shared.results.filter((b) => b.target === `m:${p.id}`).map((b) => b.season);
+        for (const code of new Set([...(shares ? sharedCodes : mine(budgets.results).map((b) => b.season)), ...mine(purchases).map((x) => x.occasion)])) {
           if (!occasions.some((o) => o.code === code)) {
-            const xmas = code % 10000 === 1225;
+            const xmas = isXmasCode(code);
             occasions.push({ code, date: isoOf(code), christmas: xmas, birthday: !xmas, turning: null });
           }
         }
@@ -2767,14 +2859,22 @@ const handlers = {
           fullName: p.name,
           photo: p.photo_at || null,
           birthday: bdayOf(p),
+          householdId: p.household_id || null,
+          shared: shares,
           occasions: occasions.map((o) => {
             const bought = mine(purchases).filter((x) => x.occasion === o.code);
-            return {
-              ...o,
-              budget_cents: mine(budgets.results).find((b) => b.season === o.code)?.amount_cents ?? null,
-              spent_cents: bought.reduce((sum, x) => sum + x.spent_cents, 0),
-              purchases: bought,
-            };
+            const ownSpent = bought.reduce((sum, x) => sum + x.spent_cents, 0);
+            if (!shares) {
+              return { ...o, budget_cents: mine(budgets.results).find((b) => b.season === o.code)?.amount_cents ?? null, spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
+            }
+            const target = budgetTarget(p, o.code);
+            if (target.startsWith("h:")) {
+              // Their household's Christmas: one budget, everything bought for any of them counts.
+              const members = households[p.household_id].members;
+              const spent = purchases.filter((x) => x.occasion === o.code && members.includes(x.subject_id)).reduce((sum, x) => sum + x.spent_cents, 0);
+              return { ...o, budget_cents: sharedBudget(target, o.code), spent_cents: spent, own_spent_cents: ownSpent, household: p.household_id, purchases: bought };
+            }
+            return { ...o, budget_cents: sharedBudget(target, o.code), spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
           }),
           ideas: ideas.results.filter((r) => r.subject_id === p.id).map((r) => ideaOut(renameRow(r, nicks), me.id)),
         };
@@ -3337,6 +3437,8 @@ const handlers = {
           env.DB.prepare("UPDATE OR IGNORE budgets SET season = ? WHERE subject_id = ? AND season = ?").bind(newCode, who, oldBday),
           // Someone who already had a budget for the new date keeps that one.
           env.DB.prepare("DELETE FROM budgets WHERE subject_id = ? AND season = ?").bind(who, oldBday),
+          env.DB.prepare("UPDATE OR IGNORE household_budgets SET season = ? WHERE target = ? AND season = ?").bind(newCode, `m:${who}`, oldBday),
+          env.DB.prepare("DELETE FROM household_budgets WHERE target = ? AND season = ?").bind(`m:${who}`, oldBday),
           env.DB.prepare("UPDATE OR IGNORE claims SET season = ? WHERE season = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(newCode, oldBday, who),
           env.DB.prepare("UPDATE OR IGNORE idea_claims SET season = ? WHERE season = ? AND idea_id IN (SELECT id FROM private_ideas WHERE subject_id = ?)").bind(newCode, oldBday, who),
           env.DB.prepare("UPDATE OR IGNORE gift_card_gifts SET season = ? WHERE member_id = ? AND season = ?").bind(newCode, who, oldBday),

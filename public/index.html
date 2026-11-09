@@ -900,6 +900,9 @@
   .pill { font-size: 14px; font-weight: 700; padding: 5px 10px; border-radius: 10px; white-space: nowrap; background: var(--ok-soft); color: var(--ok); }
   .pill.over { background: var(--warn-soft); color: var(--warn); }
   .pill.none { background: var(--panel); color: var(--muted); }
+  .pcard-avs { display: flex; flex: none; }
+  .pcard-avs .avatar { width: 38px !important; height: 38px !important; font-size: 16px !important; box-shadow: 0 0 0 2px var(--card); }
+  .pcard-avs .avatar + .avatar { margin-left: -12px; }
   .pcard .chev-d { color: var(--muted); flex: none; transition: transform .3s var(--spring); }
   .pcard.is-open .chev-d { transform: rotate(180deg); }
   .meter { width: 100%; height: 8px; border-radius: 4px; background: var(--panel); overflow: hidden; }
@@ -3968,13 +3971,23 @@ function openHouseholds(gid) {
   });
 }
 
+// Shared budgets: for people outside your household, your household shares one budget (their whole
+// household's at Christmas, see src/wishlist.js sharesBudget). o.household is set on a Christmas occasion
+// planned for the whole household.
+const hhOf = (o) => (o?.household && state.tracker?.households?.[o.household]) || null;
+const sharedNames = () => (state.tracker?.sharedWith || []).map((x) => x.name);
+// "Shared with Sam" / "Only you see this." for a tracker person.
+const budgetPrivacy = (p) => (p?.shared && sharedNames().length ? `Shared with ${peopleNames(sharedNames())}. ${p.name} never sees it.` : "Only you see this.");
+function peopleNames(list) { return list.length <= 2 ? list.join(" and ") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`; }
+
 // Budget bar for someone's next occasion (if you set a budget for it).
 function budgetMini(p) {
   const o = p?.occasions[0];
   if (!o || o.budget_cents == null) return "";
   const over = o.spent_cents > o.budget_cents;
   const pct = o.budget_cents ? Math.min(100, Math.round((o.spent_cents / o.budget_cents) * 100)) : 100;
-  const tag = p.occasions.length > 1 ? `, ${occName(o)}` : "";
+  const h = hhOf(o);
+  const tag = h ? `, ${h.label}` : p.occasions.length > 1 ? `, ${occName(o)}` : "";
   return `<span class="mini${over ? " over" : ""}"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
     <span>${over ? `${money(o.spent_cents - o.budget_cents)} over` : `${money(o.spent_cents)} of ${money(o.budget_cents)}`}${tag}</span></span>`;
 }
@@ -4172,7 +4185,7 @@ async function renderPerson(id) {
   let meter = "";
   const next = plan?.occasions[0];
   if (next?.budget_cents != null) {
-    const forWhat = next.christmas && !next.birthday ? `${esc(name)} this Christmas` : `${esc(name)}'s ${occName(next)}`;
+    const forWhat = hhOf(next) ? `${esc(hhOf(next).label)} this Christmas` : next.christmas && !next.birthday ? `${esc(name)} this Christmas` : `${esc(name)}'s ${occName(next)}`;
     const over = next.spent_cents > next.budget_cents;
     const pct = next.budget_cents ? Math.min(100, Math.round((next.spent_cents / next.budget_cents) * 100)) : 100;
     meter = `<div class="hero-meter"><span class="bar"><i style="width:${over ? 100 : pct}%"></i></span>
@@ -4566,10 +4579,11 @@ function editManagedProfile(member, name) {
 function editPerson(member, plan) {
   const real = member.fullName || member.name;
   const next = plan?.occasions[0];
-  const forWhat = !next ? "" : next.christmas && !next.birthday ? `Christmas ${occParts(next)[0]}` : `${member.name}'s ${occName(next)} (${occDay(next)})`;
+  const forWhat = !next ? "" : hhOf(next) ? `${hhOf(next).label}, Christmas ${occParts(next)[0]}` : next.christmas && !next.birthday ? `Christmas ${occParts(next)[0]}` : `${member.name}'s ${occName(next)} (${occDay(next)})`;
   const hasNick = member.name !== real;
+  const shared = plan?.shared && sharedNames().length;
   openSheet(`
-    <h3>Edit ${esc(member.name)}${lockTip("Only you see these.")}</h3>
+    <h3>Edit ${esc(member.name)}${lockTip(shared ? `Your nickname is just for you. The budget is shared with ${peopleNames(sharedNames())}.` : "Only you see these.")}</h3>
     <form id="personForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span>Nickname</span>
@@ -4764,7 +4778,13 @@ async function renderTracker() {
   renderBudgetTab(t);
 }
 
-const budgetTitle = () => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h1>Budget</h1>${lockTip("Just for you. Nobody else can see your budgets, ideas, or purchases.", true)}</div>`;
+const budgetTitle = () => {
+  const names = sharedNames();
+  const tipText = names.length
+    ? `Budgets and purchases for people outside your household are shared with ${peopleNames(names)}. The people they're for never see them. Ideas, and budgets for your own household, are just for you.`
+    : "Just for you. Nobody else can see your budgets, ideas, or purchases.";
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h1>Budget</h1>${lockTip(tipText, true)}</div>`;
+};
 
 // Draws the tab strip and the chosen tab, from the tracker already loaded (switching tabs doesn't refetch).
 function renderBudgetTab(t) {
@@ -4794,8 +4814,17 @@ function renderPeopleTab(t, v) {
   const shownRows = rows.filter((r) => r.o);
   if (view === "birthday") shownRows.sort((a, b) => a.o.code - b.o.code);
   const noBday = rows.filter((r) => !r.o);
-  const totalBudget = shownRows.reduce((n, r) => n + (r.o.budget_cents || 0), 0);
-  const totalSpent = shownRows.reduce((n, r) => n + r.o.spent_cents, 0);
+  // At Christmas, people whose household you plan for as a whole share one card and one budget.
+  const cards = [];
+  for (const r of shownRows) {
+    const h = view === "christmas" ? hhOf(r.o) : null;
+    if (!h) { cards.push(r); continue; }
+    let c = cards.find((x) => x.h === h);
+    if (!c) cards.push((c = { h, o: r.o, members: [] }));
+    c.members.push(r);
+  }
+  const totalBudget = cards.reduce((n, c) => n + (c.o.budget_cents || 0), 0);
+  const totalSpent = cards.reduce((n, c) => n + c.o.spent_cents, 0);
   const left = totalBudget - totalSpent;
   const hasBudget = totalBudget > 0;
   const shown = hasBudget ? Math.abs(left) : totalSpent;
@@ -4827,7 +4856,7 @@ function renderPeopleTab(t, v) {
       <div class="still-need">${needGift.map((r) => `<button class="chip" type="button" data-need="${esc(r.p.id)}">${avatar(r.p.name, r.p.id, "sm")}${esc(r.p.name)}</button>`).join("")}</div></div>` : ""}
     <div class="b-main">
     ${shownRows.length ? `<div class="label" style="margin-top:18px">${view === "birthday" ? "Coming up" : "By person"}</div>
-    <div class="stack" style="margin-top:12px">${shownRows.map((r, n) => personCard(r.p, r.o, view, n)).join("")}</div>`
+    <div class="stack" style="margin-top:12px">${cards.map((c, n) => (c.h ? hhBudgetCard(c, n) : personCard(c.p, c.o, view, n))).join("")}</div>`
       : `<div class="empty" style="margin-top:18px"><strong>No birthdays yet</strong><p>They show up once people add them in Profile.</p></div>`}
     ${view === "birthday" && noBday.length ? `<div class="label">No birthday added yet${tip("They can add it in Profile.")}</div>
       <div class="stack">${noBday.map((r) => `<button class="member" type="button" data-open="${esc(r.p.id)}">${avatar(r.p.name, r.p.id)}<span class="who"><strong>${esc(r.p.name)}</strong><small>${esc(r.p.name)}'s list</small></span>${CHEV}</button>`).join("")}</div>` : ""}
@@ -4841,7 +4870,8 @@ function renderPeopleTab(t, v) {
   $("#addIdea").addEventListener("click", () => addThing(null));
   v.querySelectorAll(".stack > [data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
   v.querySelectorAll("[data-need]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.need)));
-  v.querySelectorAll(".pcard").forEach((c) => wireTrackerCard(c, t, view));
+  v.querySelectorAll(".pcard[data-person]").forEach((c) => wireTrackerCard(c, t, view));
+  v.querySelectorAll(".pcard[data-household]").forEach((el) => wireHhBudgetCard(el, cards.find((c) => c.h?.id === el.dataset.household)));
 }
 
 // Purchases: everything you've bought for anyone's upcoming occasions, grouped by occasion, with where each
@@ -4906,7 +4936,7 @@ function buyRow({ x, p }, n, still) {
     <div class="row-top">${avatar(p.name, p.id)}
       <div class="row-main">
         <div class="row-head"><span class="row-title">${esc(x.title)}${x.qty > 1 ? ` <small>×${x.qty}</small>` : ""}</span>${x.spent_cents ? `<span class="row-price">${money(x.spent_cents)}</span>` : ""}</div>
-        <span class="from">For ${esc(p.name)} · ${esc(x.from)}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(host(x.url))}</a>` : ""}</span>
+        <span class="from">For ${esc(p.name)}${x.mine === false ? ` · ${esc(x.buyerName)} got it` : ` · ${esc(x.from)}`}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(host(x.url))}</a>` : ""}</span>
         ${x.stash ? `<span class="stash">${PIN}${esc(x.stash)}</span>` : ""}
       </div>
     </div>
@@ -4924,32 +4954,35 @@ async function advancePurchase({ x, o, p }, t, redraw) {
   buzz();
   redraw();
   try {
-    await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: x.status, stash: x.stash || "" });
+    await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: x.status, stash: x.stash || "", buyerId: x.mine === false ? x.buyerId : undefined });
     writeCache("tracker", t);
     toast(`${x.title}: ${to[1].toLowerCase()}`, async () => {
       x.status = before;
       redraw();
-      try { await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: before || "", stash: x.stash || "" }); } catch (e) { toast(e.message); }
+      try { await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: before || "", stash: x.stash || "", buyerId: x.mine === false ? x.buyerId : undefined }); } catch (e) { toast(e.message); }
     });
   } catch (e) { x.status = before; redraw(); toast(e.message); }
 }
 
 // Edit a purchase: how it's going, where it's hidden, what you paid. Or take it back.
+// A housemate's purchase (shared budget): you can move it along and say where it's hidden; the price and
+// taking it back stay with whoever bought it.
 function editPurchase(x, p, o) {
   const at = stageAt(x.status);
+  const theirs = x.mine === false;
   openSheet(`
-    <h3>${esc(x.title)}${lockTip(`Only you see this. ${p.name} never will.`)}</h3>
-    <p class="what">For ${esc(p.name)} · ${esc(occLabel(p, o))} · ${esc(x.from)}</p>
+    <h3>${esc(x.title)}${lockTip(p.shared && sharedNames().length ? `Your household sees this. ${p.name} never will.` : `Only you see this. ${p.name} never will.`)}</h3>
+    <p class="what">For ${esc(p.name)} · ${esc(occLabel(p, o))} · ${theirs ? `${esc(x.buyerName)} got it` : esc(x.from)}</p>
     <form id="buyForm" autocomplete="off">
       <div class="err" hidden></div>
       <div class="field"><span>How's it going?</span>
         <div class="seg stages" role="radiogroup" aria-label="How's it going" data-stage>${STAGES.map((s, n) =>
           `<button type="button" role="radio" data-v="${n}" aria-checked="${n === at}">${s[1]}</button>`).join("")}</div></div>
       <label class="field"><span>Where it's hidden</span><input class="input" name="stash" maxlength="80" value="${esc(x.stash)}" placeholder="Hall closet, top shelf"></label>
-      <label class="field"><span>${x.kind === "giftcard" ? "Amount" : "Price you paid"}</span>
-        <div class="input money-in"><span>$</span><input name="paid" inputmode="decimal" value="${esc(priceIn(x.paid_cents ?? x.list_cents))}" aria-label="Price you paid"></div></label>
+      ${theirs ? `<p class="subtle">${x.spent_cents ? `${money(x.spent_cents)}. ` : ""}Only ${esc(x.buyerName)} can change the price or take it back.</p>` : `<label class="field"><span>${x.kind === "giftcard" ? "Amount" : "Price you paid"}</span>
+        <div class="input money-in"><span>$</span><input name="paid" inputmode="decimal" value="${esc(priceIn(x.paid_cents ?? x.list_cents))}" aria-label="Price you paid"></div></label>`}
       <div class="actions">
-        <button class="btn danger" type="button" id="unbuy">Not getting it</button>
+        ${theirs ? "" : '<button class="btn danger" type="button" id="unbuy">Not getting it</button>'}
         <button class="btn primary" type="submit">Save</button>
       </div>
     </form>`, (el) => {
@@ -4958,13 +4991,13 @@ function editPurchase(x, p, o) {
       const form = $("#buyForm", el);
       wireForm(form, async ({ stash, paid }) => {
         const n = +stageEl.querySelector('[aria-checked="true"]').dataset.v;
-        if (paid.trim() !== priceIn(x.paid_cents ?? x.list_cents)) await setPurchase(x, p, o, true, paid.trim());
-        await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: STAGES[n][0] || "", stash });
+        if (!theirs && paid.trim() !== priceIn(x.paid_cents ?? x.list_cents)) await setPurchase(x, p, o, true, paid.trim());
+        await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: STAGES[n][0] || "", stash, buyerId: theirs ? x.buyerId : undefined });
         closeSheet();
         toast("Saved");
         render();
       });
-      $("#unbuy", el).addEventListener("click", async () => {
+      $("#unbuy", el)?.addEventListener("click", async () => {
         if (!window.confirm(`Take back "${x.title}"? It won't count as purchased anymore.`)) return;
         try { await setPurchase(x, p, o, false); closeSheet(); toast("Taken back"); render(); } catch (e) { toast(e.message); }
       });
@@ -5035,7 +5068,7 @@ function personCard(p, o, view, n = 0, still = false) {
     </button>
     ${isOpen ? `<div class="pcard-body">
       ${o.purchases.length ? `<ul class="buys">${o.purchases.map((x, k) => `<li><button type="button" data-pbuy="${k}" aria-label="${esc(x.title)}, ${STAGES[stageAt(x.status)][1]}. Edit">
-          <span>${esc(x.title)}<small>${esc(x.from)}${x.stash ? ` · ${esc(x.stash)}` : ""}</small></span>${stagePill(x)}<b>${money(x.spent_cents)}</b></button></li>`).join("")}</ul>`
+          <span>${esc(x.title)}<small>${x.mine === false ? `${esc(x.buyerName)} got it` : esc(x.from)}${x.stash ? ` · ${esc(x.stash)}` : ""}</small></span>${stagePill(x)}<b>${money(x.spent_cents)}</b></button></li>`).join("")}</ul>`
         : '<p class="subtle">Nothing bought yet.</p>'}
       ${p.ideas.length ? `<div class="stack">${p.ideas.map(ideaRow).join("")}</div>` : ""}
       <div class="pcard-actions">
@@ -5047,11 +5080,60 @@ function personCard(p, o, view, n = 0, still = false) {
   </div>`;
 }
 
-// p: a tracker person, o: the occasion the budget is for.
+// One Christmas card for a household you plan for as a whole: c = { h, o, members: [{ p, o }] }.
+// The budget and spending cover all of them; purchases list who each is for and who bought it.
+function hhBudgetCard(c, n = 0, still = false) {
+  const { h, o, members } = c;
+  const key = `hh:${h.id}`;
+  const budget = o.budget_cents;
+  const isOpen = state.openPeople.has(key);
+  const over = budget != null && o.spent_cents > budget;
+  const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
+  const pill = budget == null ? '<span class="pill none">No budget</span>'
+    : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
+  const buys = members.flatMap((m) => m.o.purchases.map((x) => ({ x, m })));
+  const ideas = members.flatMap((m) => m.p.ideas);
+  return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-household="${esc(h.id)}">
+    <button class="pcard-head" type="button" data-toggle aria-expanded="${isOpen}">
+      <span class="pcard-top"><span class="pcard-avs">${members.slice(0, 3).map((m) => avatar(m.p.name, m.p.id)).join("")}</span>
+        <span class="pcard-who"><strong>${esc(h.label)}</strong><small>${money(o.spent_cents)}${budget != null ? ` of ${money(budget)}` : " spent"}</small></span>
+        ${pill}${CHEV_D}</span>
+      ${budget != null ? `<span class="meter${over ? " over" : ""}"><i style="width:${over ? 100 : pct}%${still ? ";animation:none" : ""}"></i></span>` : ""}
+    </button>
+    ${isOpen ? `<div class="pcard-body">
+      ${buys.length ? `<ul class="buys">${buys.map(({ x, m }, k) => `<li><button type="button" data-hbuy="${k}" aria-label="${esc(x.title)} for ${esc(m.p.name)}, ${STAGES[stageAt(x.status)][1]}. Edit">
+          <span>${esc(x.title)}<small>For ${esc(m.p.name)}${x.mine ? "" : ` · ${esc(x.buyerName)} got it`}${x.stash ? ` · ${esc(x.stash)}` : ""}</small></span>${stagePill(x)}<b>${money(x.spent_cents)}</b></button></li>`).join("")}</ul>`
+        : '<p class="subtle">Nothing bought yet.</p>'}
+      ${ideas.length ? `<div class="stack">${ideas.map(ideaRow).join("")}</div>` : ""}
+      <div class="pcard-actions">
+        <button class="btn small" type="button" data-budget>${budget != null ? "Change budget" : "Set a budget"}</button>
+        ${members.map((m) => `<button class="btn small quiet" type="button" data-open="${esc(m.p.id)}">${esc(m.p.name)}'s list</button>`).join("")}
+      </div>
+    </div>` : ""}
+  </div>`;
+}
+
+function wireHhBudgetCard(card, c) {
+  if (!card || !c) return;
+  const key = `hh:${c.h.id}`;
+  const buys = c.members.flatMap((m) => m.o.purchases.map((x) => ({ x, m })));
+  card.querySelector("[data-toggle]").onclick = () => {
+    if (state.openPeople.has(key)) state.openPeople.delete(key); else state.openPeople.add(key);
+    card.outerHTML = hhBudgetCard(c, 0, true);
+    wireHhBudgetCard($(`.pcard[data-household="${CSS.escape(c.h.id)}"]`), c);
+  };
+  card.querySelector("[data-budget]")?.addEventListener("click", () => editBudget(c.members[0].p, c.o));
+  card.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
+  card.querySelectorAll("[data-hbuy]").forEach((b) => (b.onclick = () => { const { x, m } = buys[+b.dataset.hbuy]; editPurchase(x, m.p, m.o); }));
+  wireIdeaRows(card, c.members.flatMap((m) => m.p.ideas));
+}
+
+// p: a tracker person, o: the occasion the budget is for (for a household's Christmas, any one of them).
 function editBudget(p, o) {
+  const h = hhOf(o);
   const forWhat = o.christmas && !o.birthday ? `Christmas ${occParts(o)[0]}` : `${p.name}'s ${occName(o)} (${occDay(o)})`;
   openSheet(`
-    <h3>Budget for ${esc(p.name)}${lockTip(`Only you see this. Resets after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.`)}</h3>
+    <h3>Budget for ${esc(h ? h.label : p.name)}${lockTip(`${budgetPrivacy(p).replace(` ${p.name} never sees it.`, h ? " They never see it." : ` ${p.name} never sees it.`)} Resets after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.`)}</h3>
     <form id="budgetForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span>How much for ${esc(forWhat)}?</span>
@@ -5419,8 +5501,18 @@ async function exportExcel(t, view) {
     const day = (iso) => (iso ? iso.slice(0, 10) : null);
     const rows = t.people.map((p) => ({ p, o: viewOcc(p, view) })).filter((r) => r.o);
     if (view === "birthday") rows.sort((a, b) => a.o.code - b.o.code);
-    const summary = rows.map(({ p, o }) => [p.name, o.date, dollars(o.budget_cents), dollars(o.spent_cents), o.budget_cents == null ? null : dollars(o.budget_cents - o.spent_cents), o.purchases.length, p.ideas.length]);
-    const tb = rows.reduce((n, r) => n + (r.o.budget_cents || 0), 0), ts = rows.reduce((n, r) => n + r.o.spent_cents, 0);
+    // A household planned for as a whole at Christmas is one summary row (its budget covers all of them).
+    const lines = [];
+    for (const r of rows) {
+      const h = r.o.household && t.households?.[r.o.household];
+      if (!h) { lines.push({ name: r.p.name, o: r.o, buys: r.o.purchases.length, ideas: r.p.ideas.length }); continue; }
+      let l = lines.find((x) => x.h === h);
+      if (!l) lines.push((l = { h, name: h.label, o: r.o, buys: 0, ideas: 0 }));
+      l.buys += r.o.purchases.length;
+      l.ideas += r.p.ideas.length;
+    }
+    const summary = lines.map(({ name, o, buys, ideas }) => [name, o.date, dollars(o.budget_cents), dollars(o.spent_cents), o.budget_cents == null ? null : dollars(o.budget_cents - o.spent_cents), buys, ideas]);
+    const tb = lines.reduce((n, l) => n + (l.o.budget_cents || 0), 0), ts = lines.reduce((n, l) => n + l.o.spent_cents, 0);
     summary.push(["Total", null, dollars(tb), dollars(ts), dollars(tb - ts), rows.reduce((n, r) => n + r.o.purchases.length, 0), rows.reduce((n, r) => n + r.p.ideas.length, 0)]);
     const blob = window.buildXlsx([
       { name: "Summary", boldLast: true, columns: [
@@ -5430,7 +5522,7 @@ async function exportExcel(t, view) {
       { name: "Purchases", columns: [
           { header: "Person", width: 18 }, { header: "Gift", width: 36 }, { header: "From", width: 22 }, { header: "Paid", money: true },
           { header: "Listed price", money: true }, { header: "Status", width: 12 }, { header: "Hidden", width: 22 }, { header: "Date", width: 12 }, { header: "Link", width: 40 }],
-        rows: rows.flatMap(({ p, o }) => o.purchases.map((x) => [p.name, x.title, x.from, dollars(x.spent_cents), dollars(x.list_cents), STAGES[stageAt(x.status)][1], x.stash, day(x.date), x.url])) },
+        rows: rows.flatMap(({ p, o }) => o.purchases.map((x) => [p.name, x.title, x.mine === false ? `${x.buyerName} got it` : x.from, dollars(x.spent_cents), dollars(x.list_cents), STAGES[stageAt(x.status)][1], x.stash, day(x.date), x.url])) },
       { name: "Ideas", columns: [
           { header: "Person", width: 18 }, { header: "Idea", width: 36 }, { header: "Price", money: true }, { header: "Shared", width: 10 },
           { header: "Note", width: 40 }, { header: "Link", width: 40 }],
