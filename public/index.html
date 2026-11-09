@@ -1650,18 +1650,19 @@ sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); }
 function wireForm(form, submit) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const btn = form.querySelector('[type="submit"]');
+    const btns = form.querySelectorAll('[type="submit"]');
     const errEl = form.querySelector(".err");
     errEl.hidden = true;
-    btn.disabled = true;
-    const data = {};
+    btns.forEach((b) => (b.disabled = true));
+    // Forms with more than one submit button (Add to Maybe / Add to wish list) read which one in data.submitter.
+    const data = { submitter: e.submitter?.value || "" };
     for (const el of form.elements) {
-      if (!el.name || (el.type === "radio" && !el.checked)) continue;
+      if (!el.name || el.type === "submit" || (el.type === "radio" && !el.checked)) continue;
       data[el.name] = el.type === "checkbox" ? el.checked : el.value;
     }
     try { await submit(data); }
     catch (err) { errEl.textContent = err.message; errEl.hidden = false; }
-    finally { btn.disabled = false; }
+    finally { btns.forEach((b) => (b.disabled = false)); }
   });
 }
 
@@ -2403,10 +2404,6 @@ function finishTour() {
 
 // "Add 3 things" on My list, after the tour. Remembered on this device until you reach 3.
 const STARTER_KEY = "wishlist-starter";
-// "Show my circles now" on a new wish: remembered per device, off by default (new wishes start in Maybe).
-const PUB_NOW_KEY = "wishlist-pub-now";
-function readPubNow() { try { return localStorage.getItem(PUB_NOW_KEY) === "1"; } catch { return false; } }
-function writePubNow(on) { try { on ? localStorage.setItem(PUB_NOW_KEY, "1") : localStorage.removeItem(PUB_NOW_KEY); } catch {} }
 // A one-time "add your birthday" card on My list, until you add one or tap Not now.
 const BDAY_NUDGE_KEY = "wishlist-bday-nudge";
 // In November, a "Your list hasn't changed since last year" card on My list when no published wish was added
@@ -2856,7 +2853,6 @@ function editItem(item, opts = {}) {
   item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, notes: c.notes } : {};
   const draft = isNew || !!item.draft;
   const hasDetails = item.price_cents != null || !!item.notes || !!item.category || !!item.brand;
-  const pubNow = isNew && readPubNow();
   const priceField = `<label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="${isNew ? "Fills in from the link" : "From the link"}"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>`;
   const catField = `<label class="field"><span>Category</span>
     <select class="input" name="category"><option value="">${isNew ? "Pick for me" : "Auto"}${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
@@ -2881,14 +2877,16 @@ function editItem(item, opts = {}) {
         <div>${brandField}${priceField}${catField}${notesField}</div>
       </details>` : `<section class="fsec"><h4 class="fsec-h">Details</h4>
         <div class="two pc">${priceField}${catField}</div>${notesField}</section>`}
-      ${isNew ? `<label class="check"><span>Show my circles now<small id="pubNowHint">${pubNow ? "Goes straight to your wish list." : "Off: saves to Maybe, where only you can see it."}</small></span><input type="checkbox" name="pubNow" ${pubNow ? "checked" : ""}></label>` : ""}
       ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">On your list</h4>
         <label class="check"><span>Top pick<small>Gold star on your list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
         ${familySwitches(item.hiddenFrom)}</section>`}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
       <div class="actions sticky">
         ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
-        <button class="btn primary" type="submit" id="itemSave">${isNew ? (pubNow ? "Add to my wish list" : "Save to Maybe") : "Save"}</button>
+        ${isNew
+          ? `<button class="btn" type="submit" value="maybe">${LOCK} Add to Maybe</button>
+        <button class="btn primary" type="submit" value="list">Add to wish list</button>`
+          : `<button class="btn primary" type="submit" id="itemSave">Save</button>`}
       </div>
     </form>`, (el) => {
       const form = $("#itemForm", el);
@@ -2898,12 +2896,6 @@ function editItem(item, opts = {}) {
       const sc = wireSizeColor(form, item);
       wireWhoChips(el);
       restoreImage(form, c);
-      form.elements.pubNow?.addEventListener("change", (e) => {
-        const on = e.target.checked;
-        writePubNow(on);
-        $("#itemSave", el).textContent = on ? "Add to my wish list" : "Save to Maybe";
-        $("#pubNowHint", el).textContent = on ? "Goes straight to your wish list." : "Off: saves to Maybe, where only you can see it.";
-      });
       if (isNew) setTimeout(() => {
         // Link first, unless a starter idea or carried-over text already gave it a name.
         const t = opts.title || form.elements.title.value || form.elements.url.value ? form.elements.title : form.elements.url;
@@ -2919,7 +2911,7 @@ function editItem(item, opts = {}) {
         const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), ...sc.values() };
         if (multi() && !draft) payload.hiddenFrom = hiddenFromForm(form);
         const { id } = await api("item/save", payload);
-        const published = isNew && d.pubNow;
+        const published = isNew && d.submitter === "list";
         if (published) await api("item/publish", { id });
         closeSheet();
         if (isNew) toast(published ? "Hint dropped! It's on your wish list" : "Saved to Maybe", () => api("item/remove", { id }).then(() => { state.stale = true; render(); }, (e) => toast(e.message)));
