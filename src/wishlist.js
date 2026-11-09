@@ -40,7 +40,7 @@ function photoValue(v) {
   if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
   return photo;
 }
-const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, lastName: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, lastName: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, petName: 40, petNotes: 200, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -756,6 +756,8 @@ async function leaveHousehold(env, memberId) {
   const still = await env.DB.prepare("SELECT 1 FROM members WHERE household_id = ? LIMIT 1").bind(hh).first();
   if (!still) {
     await env.DB.batch([
+      // The last one out takes the pets.
+      env.DB.prepare("UPDATE pets SET member_id = ?, household_id = NULL WHERE household_id = ?").bind(memberId, hh),
       env.DB.prepare("DELETE FROM group_households WHERE household_id = ?").bind(hh),
       env.DB.prepare("DELETE FROM households WHERE id = ?").bind(hh),
     ]);
@@ -774,6 +776,37 @@ async function manageableHousehold(env, meId, householdId) {
   if (!results.length) fail(404, "Household not found.");
   for (const r of results) if ((await adminOf(env, r.group_id)) === meId) return hh;
   fail(403, "Only the circle's admin can change someone else's household.");
+}
+
+// ---------- pets ----------
+// Not people: no list, login or birthday, just info for gift-givers (migration 0037). A pet belongs to a household,
+// or to someone who isn't in one. Same visibility as the household or person; edited by the household (or the
+// circle's admin, like the rest of the household), or by the person and whoever looks after them.
+const PET_KINDS = new Set(["dog", "cat", "bird", "fish", "bunny", "reptile", "horse", "other"]);
+const PETS_MAX = 12;
+const petOut = (r) => ({ id: r.id, name: r.name, kind: r.kind, notes: r.notes || null, photo: r.photo_at || null });
+// Someone joins household `hh`: their own pets come with them.
+const petsInto = (env, memberId, hh) => env.DB.prepare("UPDATE pets SET household_id = ?, member_id = NULL WHERE member_id = ?").bind(hh, memberId);
+// Pets of these households and people: { "h:<id>": [...], "m:<id>": [...] }, oldest first.
+async function petsFor(env, householdIds, memberIds) {
+  const out = {};
+  const run = async (col, prefix, ids) => {
+    if (!ids.length) return;
+    const { results } = await env.DB.prepare(
+      `SELECT id, household_id, member_id, name, kind, notes, photo_at FROM pets WHERE ${col} IN (${ids.map(() => "?").join(",")}) ORDER BY created_at`,
+    ).bind(...ids).all();
+    for (const r of results) (out[`${prefix}:${r[col]}`] ||= []).push(petOut(r));
+  };
+  await Promise.all([run("household_id", "h", householdIds), run("member_id", "m", memberIds)]);
+  return out;
+}
+// Whose pets a write is for: { household } or { member }. Throws when it isn't yours to change.
+async function petOwner(env, me, { householdId, as }) {
+  if (householdId) return { household: await manageableHousehold(env, me.id, householdId) };
+  const who = await ownerFor(env, me, as);
+  // In a household: pets live there, not on the person.
+  const hh = await householdOf(env, who);
+  return hh ? { household: hh } : { member: who };
 }
 
 // ---------- people someone looks after ----------
@@ -2236,6 +2269,9 @@ const handlers = {
         }
       }
     }
+    // Pets of every household above, and of people (you included) who aren't in a household.
+    const solo = [...new Set([...people.filter((p) => !p.household_id).map((p) => p.id), ...(myHh ? [] : [me.id])])];
+    const pets = await petsFor(env, Object.keys(households), solo);
     let pinCleared = null;
     const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, claim_hash IS NOT NULL AS has_link FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
@@ -2261,6 +2297,7 @@ const handlers = {
       seen: Object.fromEntries(seenRows.map((r) => [r.owner_id, r.seen_count])),
       today: t,
       households,
+      pets,
       groups: groups.map((g) => ({
         id: g.id,
         name: g.name,
@@ -3558,6 +3595,7 @@ const handlers = {
       if (to.household_id) {
         await env.DB.batch([
           env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(to.household_id, id),
+          petsInto(env, id, to.household_id),
           env.DB.prepare(
             "INSERT INTO group_members (group_id, member_id, joined_at, direct) SELECT group_id, ?, ?, 0 FROM group_households WHERE household_id = ? ON CONFLICT DO NOTHING",
           ).bind(id, now(), to.household_id),
@@ -3677,7 +3715,7 @@ const handlers = {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, ?, ?)").bind(hh, name, t),
       env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?)").bind(groupId, hh, t),
-      ...ids.map((id) => env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, id)),
+      ...ids.flatMap((id) => [env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, id), petsInto(env, id, hh)]),
     ]);
     return { household: { id: hh } };
   },
@@ -3741,6 +3779,7 @@ const handlers = {
       await env.DB.batch([
         env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, NULL, ?)").bind(hh, t),
         env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, me.id),
+        petsInto(env, me.id, hh),
       ]);
     }
     const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all();
@@ -3752,6 +3791,7 @@ const handlers = {
     }
     await env.DB.batch([
       env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, memberId),
+      petsInto(env, memberId, hh),
       env.DB.prepare(
         "INSERT INTO group_members (group_id, member_id, joined_at, direct) SELECT group_id, ?, ?, 0 FROM group_households WHERE household_id = ? ON CONFLICT DO NOTHING",
       ).bind(memberId, t, hh),
@@ -3829,6 +3869,52 @@ const handlers = {
       for (const id of ids) rows.push(...(await dropViaHousehold(env, id, groupId)));
       await env.DB.batch(rows);
     }
+    return { ok: true };
+  },
+
+  // ---------- pets ----------
+  // Add or change a pet. New: { householdId? | as?, name, kind, notes? } (your household by default, or yours if you
+  // aren't in one; as: someone you look after). Existing: { id, name?, kind?, notes? }. photo: data URL, "" removes, absent keeps.
+  async "POST pet/save"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const kind = b.kind === undefined ? undefined : PET_KINDS.has(b.kind) ? b.kind : fail(400, "Pick what kind of pet.");
+    const name = b.name === undefined ? undefined : text(b.name, LIMITS.petName, "Name", true);
+    const notes = b.notes === undefined ? undefined : text(b.notes, LIMITS.petNotes, "Notes");
+    const photo = b.photo === undefined ? undefined : photoValue(b.photo);
+    const t = now();
+    if (b.id) {
+      const pet = await env.DB.prepare("SELECT * FROM pets WHERE id = ?").bind(String(b.id)).first();
+      if (!pet) fail(404, "Pet not found.");
+      if (pet.household_id) await manageableHousehold(env, me.id, pet.household_id);
+      else await ownerFor(env, me, pet.member_id);
+      await env.DB.prepare(
+        `UPDATE pets SET name = ?, kind = ?, notes = ?, photo = ?, photo_at = ? WHERE id = ?`,
+      ).bind(name ?? pet.name, kind ?? pet.kind, notes === undefined ? pet.notes : notes,
+        photo === undefined ? pet.photo : photo, photo === undefined ? pet.photo_at : photo ? t : null, pet.id).run();
+      return { pet: { id: pet.id } };
+    }
+    if (!name) fail(400, "Name is required.");
+    const owner = await petOwner(env, me, b);
+    const col = owner.household ? "household_id" : "member_id";
+    const key = owner.household || owner.member;
+    const { n } = await env.DB.prepare(`SELECT COUNT(*) AS n FROM pets WHERE ${col} = ?`).bind(key).first();
+    if (n >= PETS_MAX) fail(409, `That's ${PETS_MAX} pets already.`);
+    const id = newId();
+    await env.DB.prepare(
+      `INSERT INTO pets (id, ${col}, name, kind, notes, photo, photo_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, key, name, kind || "other", notes ?? null, photo ?? null, photo ? t : null, t).run();
+    return { pet: { id } };
+  },
+
+  async "POST pet/delete"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const pet = await env.DB.prepare("SELECT id, household_id, member_id FROM pets WHERE id = ?").bind(String(b.id || "")).first();
+    if (!pet) fail(404, "Pet not found.");
+    if (pet.household_id) await manageableHousehold(env, me.id, pet.household_id);
+    else await ownerFor(env, me, pet.member_id);
+    await env.DB.prepare("DELETE FROM pets WHERE id = ?").bind(pet.id).run();
     return { ok: true };
   },
 
@@ -3999,10 +4085,10 @@ const handlers = {
 
   // A profile photo. No sign-in needed (an <img> can't send the token); ids are random and photos aren't private.
   // The app adds the photo's version (?v=photo_at), so a changed photo is a new URL and this one can be cached for good.
-  // ?m= a person, ?g= a circle, ?h= a household.
+  // ?m= a person, ?g= a circle, ?h= a household, ?p= a pet.
   async "GET photo"(req, env, url) {
     const q = url.searchParams;
-    const [table, id] = q.has("g") ? ["groups", q.get("g")] : q.has("h") ? ["households", q.get("h")] : ["members", q.get("m")];
+    const [table, id] = q.has("g") ? ["groups", q.get("g")] : q.has("h") ? ["households", q.get("h")] : q.has("p") ? ["pets", q.get("p")] : ["members", q.get("m")];
     const row = await env.DB.prepare(`SELECT photo FROM ${table} WHERE id = ?`).bind(id || "").first();
     const m = row?.photo && PHOTO_RE.exec(row.photo);
     if (!m) return new Response("Not found", { status: 404 });

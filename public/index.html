@@ -591,6 +591,24 @@
   .manage-card { margin: 0 0 18px; border: 1.5px dashed color-mix(in srgb, var(--brand) 35%, transparent); }
   .manage-card .actions { flex-wrap: wrap; }
   .manage-card .actions .btn { flex: 1 1 auto; }
+  /* Pets (on a household page, someone's page and your Profile) and the household link on someone's page. */
+  .pets { display: grid; gap: 12px; }
+  .pet { display: flex; align-items: flex-start; gap: 12px; }
+  .avatar.pet-av { background: var(--gold-soft); font-size: 26px; font-family: inherit; }
+  .avatar.huge.pet-av { font-size: 44px; }
+  .pet-txt { flex: 1; min-width: 0; }
+  .pet-txt strong { display: block; font-size: 17px; }
+  .pet-txt small { color: var(--muted); font-weight: 600; font-size: 14px; }
+  .pet-txt p { margin: 4px 0 0; font-size: 15px; overflow-wrap: break-word; }
+  .pet .btn { flex: none; }
+  .hh-link { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: var(--r); background: var(--card); box-shadow: var(--shadow); text-align: left; font-size: 15px; color: var(--muted); }
+  .hh-link .avatar { width: 40px; height: 40px; font-size: 17px; }
+  .hh-link .mg-txt { flex: 1; min-width: 0; }
+  .hh-link strong { color: var(--ink); }
+  .hh-link small { display: block; margin-top: 2px; font-size: 14px; }
+  .kind-field { display: block; margin-bottom: 16px; }
+  .kind-field > span { display: block; font-size: 16px; font-weight: 700; margin-bottom: 7px; }
+  .kind-pick { display: flex; flex-wrap: wrap; gap: 8px; }
   .mg-hh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 14px; color: var(--muted); font-size: 15px; }
   .mg-hh strong { color: var(--ink); }
   .mg-hh .avatar { width: 32px; height: 32px; font-size: 14px; }
@@ -1653,9 +1671,9 @@ const AV_COLORS = ["#7A1B36", "#2F6B4F", "#33407A", "#6A3667", "#A0651A", "#A23B
 // Profile photos: member id -> photo version (when it was last changed). Filled from every API answer that lists people.
 const PHOTOS = new Map();
 function notePhotos(people) { for (const p of people || []) if (p?.id) p.photo ? PHOTOS.set(p.id, p.photo) : PHOTOS.delete(p.id); }
-// Keys: a person's id, "g:<id>" for a circle, "h:<id>" for a household.
+// Keys: a person's id, "g:<id>" for a circle, "h:<id>" for a household, "p:<id>" for a pet.
 const photoUrl = (id) => {
-  const [k, v] = id.startsWith("g:") ? ["g", id.slice(2)] : id.startsWith("h:") ? ["h", id.slice(2)] : ["m", id];
+  const [k, v] = id.startsWith("g:") ? ["g", id.slice(2)] : id.startsWith("h:") ? ["h", id.slice(2)] : id.startsWith("p:") ? ["p", id.slice(2)] : ["m", id];
   return `${API}photo?${k}=${encodeURIComponent(v)}&v=${encodeURIComponent(PHOTOS.get(id))}`;
 };
 // Up to two initials for a circle or household: "Family Christmas" FC, "Alexis & Sam" AS, "Jen's household" J.
@@ -2134,7 +2152,7 @@ function wireForm(form, submit) {
 
 // ---------- state + routing ----------
 // One-shot animation flags: the next render plays them once, then they're cleared.
-const state = { me: null, groups: [], households: {}, today: null, tab: "mine", person: null, view: null, openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
+const state = { me: null, groups: [], households: {}, pets: {}, today: null, tab: "mine", person: null, household: null, view: null, openPeople: new Set(), flash: null, burst: null, pop: null, lastLeft: null };
 
 const hashFor = (tab) => (tab === "notes" ? "budget" : tab);
 function setTab(tab, person = null) {
@@ -2143,6 +2161,7 @@ function setTab(tab, person = null) {
   state.tab = tab;
   state.profileEdit = false;
   state.person = person;
+  state.household = null;
   state.view = null;
   const h = person ? `#person/${person}` : `#${hashFor(tab)}`;
   if (location.hash !== h) history.pushState(null, "", h);
@@ -2152,6 +2171,9 @@ function setTab(tab, person = null) {
 window.addEventListener("popstate", () => { $(".coach")?._done?.(); readHash(); render(); });
 function readHash() {
   const h = location.hash.slice(1);
+  state.household = null;
+  // #household/ID: a household's page (its people and pets).
+  if (h.startsWith("household/")) { state.tab = "family"; state.person = null; state.household = h.slice(10); return; }
   // #person/ID, or #person/ID/chat/CIRCLE (from a chat notification: opens that chat once the page loads).
   if (h.startsWith("person/")) {
     const [pid, sub, gid] = h.slice(7).split("/");
@@ -2314,7 +2336,9 @@ async function refreshMe() {
   state.me = data.me;
   state.groups = data.groups;
   state.households = data.households || {};
+  state.pets = data.pets || {};
   for (const g of data.groups) notePhotos(g.members);
+  notePhotos(Object.values(state.pets).flat().map((p) => ({ id: `p:${p.id}`, photo: p.photo })));
   notePhotos(data.groups.map((g) => ({ id: `g:${g.id}`, photo: g.photo })));
   notePhotos(Object.values(state.households).map((h) => ({ id: `h:${h.id}`, photo: h.photo })));
   notePhotos([data.me]);
@@ -2357,13 +2381,13 @@ async function render() {
 
   // Settings lives under Profile, so the Profile tab stays lit there.
   const lit = state.tab === "settings" ? "profile" : state.tab;
-  document.querySelectorAll(".tab[data-tab]").forEach((b) => b.setAttribute("aria-current", !state.person && b.dataset.tab === lit ? "page" : "false"));
-  if (state.person) $('.tab[data-tab="family"]').setAttribute("aria-current", "page");
+  document.querySelectorAll(".tab[data-tab]").forEach((b) => b.setAttribute("aria-current", !state.person && !state.household && b.dataset.tab === lit ? "page" : "false"));
+  if (state.person || state.household) $('.tab[data-tab="family"]').setAttribute("aria-current", "page");
   placeTabInd();
   // Which screen is showing (for the desktop layouts), and a soft entrance when it changes.
-  const viewKey = state.person ? "person" : state.tab;
+  const viewKey = state.person ? "person" : state.household ? "household" : state.tab;
   document.body.dataset.view = viewKey;
-  const changed = (state.person || state.tab) !== lastViewKey;
+  const changed = (state.person || (state.household && `h:${state.household}`) || state.tab) !== lastViewKey;
   // Same screen redrawn with fresh data: keep it still (no cards sliding in again, no bars refilling).
   $("#view").classList.toggle("still", !changed);
   $("#hero").classList.toggle("still", !changed);
@@ -2374,13 +2398,14 @@ async function render() {
     // Your own list always opens on My list, which is the only place Maybe wishes show.
     if (state.person && state.person === state.me?.id) { state.person = null; state.tab = "mine"; }
     if (state.person) await renderPerson(state.person);
+    else if (state.household) await renderHousehold(state.household);
     else if (state.tab === "family") await renderFamily();
     else if (state.tab === "notes") await renderTracker();
     else if (state.tab === "profile") await renderProfile();
     else if (state.tab === "settings") await renderSettings();
     else await renderMine();
     if (seq !== renderSeq) return;
-    lastViewKey = state.person || state.tab;
+    lastViewKey = state.person || (state.household && `h:${state.household}`) || state.tab;
     lastDrawAt = Date.now();
     if (!state.me.onboarded && !state.toured) openTour();
     else openPendingShare();
@@ -4773,6 +4798,7 @@ async function renderPerson(id) {
   v.innerHTML = `<div class="person-layout"><div class="person-side">
     ${manage ? manageCard(list, name) + heldCard(list.held, id, name) : ""}
     ${chatBar(id, name)}
+    ${homeCard(everyone().find((m) => m.id === id), manage)}
     ${hintsCard(list.member.profile)}
     ${knowCard(list.member.profile)}
     ${all.length ? `<div class="stats" role="group" aria-label="Show">
@@ -4805,6 +4831,7 @@ async function renderPerson(id) {
   $("#editBtn").onclick = () => editPerson(list.member, plan);
   $("#addIdea").onclick = () => addThing(id);
   $("#chatBar")?.addEventListener("click", () => openChat(id));
+  wireHomeCard(v, everyone().find((m) => m.id === id), manage);
   if (state.chatOnLoad) { const gid = state.chatOnLoad; state.chatOnLoad = null; openChat(id, typeof gid === "string" ? { group: gid } : {}); }
   v.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = () => {
     const [kind, itemId] = b.dataset.ask.split(":");
@@ -4855,6 +4882,166 @@ async function renderPerson(id) {
   if (!manage && open.length && !personTourSeen()) setTimeout(() => {
     if ($("#personHelp") && !tourEl.open && !sheet.open) personTour(name);
   }, 700);
+}
+
+// ---------- pets and household pages ----------
+// Pets aren't people (no list, login or birthday): a name, what kind, one line of notes and a photo, so gift-givers
+// know about them. They live on a household, or on someone who isn't in one (src/wishlist.js, migration 0037).
+// state.pets: { "h:<householdId>": [...], "m:<memberId>": [...] }.
+const PET_KINDS = [["dog", "Dog", "🐕"], ["cat", "Cat", "🐈"], ["bird", "Bird", "🐦"], ["fish", "Fish", "🐟"], ["bunny", "Bunny", "🐇"], ["reptile", "Reptile", "🦎"], ["horse", "Horse", "🐎"], ["other", "Other", "🐾"]];
+const PET_KIND = Object.fromEntries(PET_KINDS.map(([k, label, emoji]) => [k, { label, emoji }]));
+const petEmoji = (pet) => (PET_KIND[pet.kind] || PET_KIND.other).emoji;
+const petsOf = (key) => state.pets?.[key] || [];
+// Where someone's pets live: their household's, or their own when they aren't in one.
+const petsKeyFor = (m) => (m?.householdId ? `h:${m.householdId}` : `m:${m?.id}`);
+function petAvatar(pet, size) {
+  const key = `p:${pet.id}`;
+  const pic = PHOTOS.has(key) ? `<img src="${esc(photoUrl(key))}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `<span class="avatar pet-av${size ? ` ${size}` : ""}" aria-hidden="true">${petEmoji(pet)}${pic}</span>`;
+}
+// "🐕 Biscuit · 🐈 Max"
+const petNames = (pets) => pets.map((p) => `${petEmoji(p)} ${esc(p.name)}`).join(" · ");
+// Who can change a household: the people in it, and the admin of a circle someone in it is in (the API checks too).
+const canEditHousehold = (id) => !!id && (id === myHouseholdId()
+  || state.groups.some((g) => g.createdBy === state.me.id && g.members.some((m) => m.householdId === id)));
+function openHousehold(id) {
+  state.tab = "family"; state.person = null; state.household = id; state.view = null;
+  const h = `#household/${id}`;
+  if (location.hash !== h) history.pushState(null, "", h);
+  window.scrollTo(0, 0);
+  render();
+}
+
+// The Pets card. owner: what pet/save needs for a new pet ({ householdId } or { as }); edit: you can change them.
+function petsCard(pets, { edit, title = "Pets", empty = "" } = {}) {
+  if (!pets.length && !edit) return "";
+  return `<section class="hcard" data-pets>
+    <h3 class="hcard-h"><span class="ico" style="background:var(--gold-soft);color:var(--gold-ink)">🐾</span>${esc(title)}${pets.length ? ` <small>${pets.length}</small>` : ""}</h3>
+    ${pets.length ? `<div class="pets">${pets.map((p) => `<div class="pet">${petAvatar(p)}<div class="pet-txt"><strong>${esc(p.name)}</strong>
+        <small>${esc((PET_KIND[p.kind] || PET_KIND.other).label)}</small>${p.notes ? `<p>${esc(p.notes)}</p>` : ""}</div>
+        ${edit ? `<button class="btn small quiet" type="button" data-pet-edit="${esc(p.id)}">Edit</button>` : ""}</div>`).join("")}</div>
+      ${edit ? `<button class="btn small" type="button" data-pet-add style="margin-top:14px">${PLUS} Add a pet</button>` : ""}`
+    : `<div class="hcard-empty">${esc(empty || "Got pets? Add them so your people can spoil them too.")}
+      <br><button class="btn small" type="button" data-pet-add>${PLUS} Add a pet</button></div>`}
+  </section>`;
+}
+function wirePetsCard(root, pets, owner) {
+  const card = root.querySelector("[data-pets]");
+  if (!card) return;
+  card.querySelectorAll("[data-pet-add]").forEach((b) => (b.onclick = () => editPet(null, owner)));
+  card.querySelectorAll("[data-pet-edit]").forEach((b) => (b.onclick = () => editPet(pets.find((p) => p.id === b.dataset.petEdit), owner)));
+}
+
+// Add or change a pet. The photo is kept until Save, so a new pet can have one from the start.
+function editPet(pet, owner) {
+  let kind = pet?.kind || "dog";
+  let photo; // undefined: unchanged, "": remove, data URL: new
+  const preview = () => {
+    const had = pet && PHOTOS.has(`p:${pet.id}`) && photo === undefined;
+    const src = photo || (had ? photoUrl(`p:${pet.id}`) : "");
+    return `<span class="avatar huge pet-av" aria-hidden="true">${PET_KIND[kind].emoji}${src ? `<img src="${esc(src)}" alt="">` : ""}</span>
+      <div class="btns"><button class="btn small" type="button" data-pick-photo>${CAMERA} ${src ? "Change photo" : "Add a photo"}</button>
+      ${src ? '<button class="btn small quiet danger" type="button" data-drop-photo>Remove</button>' : ""}</div>`;
+  };
+  openSheet(`<h3>${pet ? `Edit ${esc(pet.name)}` : "Add a pet"}</h3>
+    <form id="petForm" autocomplete="off"><div class="err" hidden></div>
+      <div class="photo-row" id="petPhoto">${preview()}</div>
+      <input type="file" accept="image/*" id="petFile" hidden>
+      <label class="field"><span>Name</span><input class="input" name="name" maxlength="40" required value="${esc(pet?.name || "")}" placeholder="Biscuit"></label>
+      <div class="kind-field"><span>What kind?</span><div class="kind-pick" role="group" aria-label="What kind of pet">
+        ${PET_KINDS.map(([k, label, emoji]) => `<button class="chip" type="button" data-kind="${k}" aria-pressed="${k === kind}">${emoji} ${label}</button>`).join("")}</div></div>
+      <label class="field"><span>Good to know <em>(optional)</em></span><input class="input" name="notes" maxlength="200" value="${esc(pet?.notes || "")}" placeholder="Size L harness, destroys plush toys"></label>
+      <button class="btn primary wide" type="submit">${pet ? "Save" : "Add pet"}</button>
+      ${pet ? '<button class="btn wide quiet danger" type="button" id="petDel" style="margin-top:8px">Remove pet</button>' : ""}
+    </form>`, (el) => {
+    const row = $("#petPhoto", el), file = $("#petFile", el);
+    const wireRow = () => {
+      row.innerHTML = preview();
+      row.querySelector("[data-pick-photo]").onclick = () => file.click();
+      row.querySelector("[data-drop-photo]")?.addEventListener("click", () => { photo = ""; wireRow(); });
+    };
+    wireRow();
+    file.onchange = async () => {
+      const f = file.files[0];
+      if (!f) return;
+      file.value = "";
+      try { const picked = await squarePhoto(f); if (picked) { photo = picked; wireRow(); } } catch (e) { oops(e.message); }
+    };
+    el.querySelectorAll("[data-kind]").forEach((b) => (b.onclick = () => {
+      kind = b.dataset.kind;
+      el.querySelectorAll("[data-kind]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      wireRow();
+    }));
+    if (!pet) setTimeout(() => $("#petForm", el).elements.name.focus(), 300);
+    const done = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
+    wireForm($("#petForm", el), async ({ name, notes }) => {
+      await api("pet/save", { ...(pet ? { id: pet.id } : owner), name, notes, kind, ...(photo === undefined ? {} : { photo }) });
+      buzz();
+      done(pet ? "Saved" : `${name.trim()} added`);
+    });
+    $("#petDel", el)?.addEventListener("click", async () => {
+      if (!(await ask(`Remove ${pet.name}?`, { yes: "Remove", danger: true }))) return;
+      try { await api("pet/delete", { id: pet.id }); done(`${pet.name} removed`); } catch (e) { oops(e.message); }
+    });
+  });
+}
+
+// On someone's page: their household (tap for its page) and its pets. Someone not in a household: their own pets.
+function homeCard(m, manage) {
+  if (!m) return "";
+  if (m.householdId) {
+    const pets = petsOf(`h:${m.householdId}`);
+    const label = householdLabel(m.householdId);
+    return `<button class="hh-link" type="button" data-open-hh="${esc(m.householdId)}">${tileAvatar(label, `h:${m.householdId}`)}
+      <span class="mg-txt">Household: <strong>${esc(label)}</strong>${pets.length ? `<small>Lives with ${petNames(pets)}</small>` : ""}</span>${CHEV}</button>`;
+  }
+  return petsCard(petsOf(`m:${m.id}`), { edit: manage || m.id === state.me.id, title: `${m.name}'s pets` });
+}
+function wireHomeCard(root, m, manage) {
+  root.querySelectorAll("[data-open-hh]").forEach((b) => (b.onclick = () => openHousehold(b.dataset.openHh)));
+  if (m && !m.householdId) wirePetsCard(root, petsOf(`m:${m.id}`), { as: m.id });
+}
+
+// A household's page: its picture and name, its people, and its pets.
+async function renderHousehold(id) {
+  const h = state.households[id];
+  if (!h) {
+    setHero(`<button class="back" type="button" id="backBtn">${BACK} Circles</button>${heroTitle("", "Household not found")}`);
+    $("#view").innerHTML = `<div class="empty"><p>You can only see households you share a circle with.</p></div>`;
+    $("#backBtn").onclick = () => setTab("family");
+    return;
+  }
+  const label = householdLabel(id);
+  const mine = id === myHouseholdId();
+  const edit = canEditHousehold(id);
+  const pets = petsOf(`h:${id}`);
+  const known = new Map(everyone().map((m) => [m.id, m]));
+  const people = h.memberIds.map((pid) => known.get(pid) || (pid === state.me.id ? { id: pid, name: state.me.name } : null)).filter(Boolean);
+  setHero(`<button class="back" type="button" id="backBtn">${BACK} Circles</button>
+    <div class="hero-row">${tileAvatar(label, `h:${id}`, true)}
+      <div class="who-name"><h1>${esc(mine ? "Your household" : label)}</h1>${mine && h.name ? `<span class="realname">${esc(label)}</span>` : ""}</div>
+      ${edit ? `<button class="hero-edit" type="button" id="hhEdit" aria-label="Edit household name and photo">${PENCIL}<span>Edit</span></button>` : ""}</div>`);
+  const v = $("#view");
+  v.innerHTML = `<div class="label">People</div>
+    <div class="stack">${people.map((m) => `<button class="member" type="button" data-open-person="${esc(m.id)}">${avatar(m.name, m.id)}
+      <span class="who"><strong>${esc(m.id === state.me.id ? `${m.name} (you)` : m.name)}</strong>${m.itemCount != null ? `<small>${plural(m.itemCount, "wish", "wishes")}</small>` : ""}</span>${CHEV}</button>`).join("")}</div>
+    <div style="margin-top:22px">${petsCard(pets, { edit, empty: mine ? "Got pets? Add them so your people can spoil them too." : `Add ${label}'s pets so everyone knows about them.` })}</div>`;
+  $("#backBtn").onclick = () => setTab("family");
+  v.querySelectorAll("[data-open-person]").forEach((b) => (b.onclick = () => (b.dataset.openPerson === state.me.id ? setTab("profile") : setTab("family", b.dataset.openPerson))));
+  wirePetsCard(v, pets, { householdId: id });
+  $("#hhEdit")?.addEventListener("click", () => {
+    const auto = householdAuto(people.map((m) => m.name));
+    const back = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
+    openSheet(`<h3>Edit household</h3>
+      ${photoRowHtml(label, `h:${id}`)}
+      <hr class="set-div">
+      <form id="hhRename2" autocomplete="off"><div class="err" hidden></div>
+        <label class="field"><span>Household name</span><input class="input" name="name" maxlength="40" value="${esc(h.name || "")}" placeholder="${esc(auto)}"></label>
+        <button class="btn primary wide" type="submit">Save</button></form>`, (el) => {
+      wirePhotoRow(el, async (photo) => { await api("household/photo", { householdId: id, photo }); back(photo ? "Photo saved" : "Photo removed"); });
+      wireForm($("#hhRename2", el), async ({ name }) => { await api("household/rename", { householdId: id, name }); back("Household name saved"); });
+    });
+  });
 }
 
 // ---------- someone's list walkthrough ----------
@@ -6722,8 +6909,14 @@ async function renderProfile() {
           <br><button class="btn small" type="button" data-edit="sizes">${PLUS} Add details</button></div>`}
       </section>
       ${carefulHtml(p)}
+      ${myHouseholdId() ? `${petsCard(petsOf(`h:${myHouseholdId()}`), { edit: true, title: "Our pets" })}
+        <button class="hh-link" type="button" data-open-hh="${esc(myHouseholdId())}">${tileAvatar(householdLabel(myHouseholdId()), `h:${myHouseholdId()}`)}
+          <span class="mg-txt">Household: <strong>${esc(householdLabel(myHouseholdId()))}</strong></span>${CHEV}</button>`
+        : petsCard(petsOf(`m:${state.me.id}`), { edit: true })}
     </div>
   </div>`;
+  wirePetsCard(v, petsOf(myHouseholdId() ? `h:${myHouseholdId()}` : `m:${state.me.id}`), myHouseholdId() ? { householdId: myHouseholdId() } : {});
+  v.querySelectorAll("[data-open-hh]").forEach((b) => (b.onclick = () => openHousehold(b.dataset.openHh)));
   $("#gearBtn").onclick = () => { state.setSec = "app"; setTab("settings"); };
   v.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { state.profileEdit = b.dataset.edit; render(); }));
 }
@@ -7445,6 +7638,7 @@ function householdCard() {
       ${hhActs(`${m.id !== state.me.id && m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
       ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}`)}</div>`).join("")}</div>
     <button class="btn wide" type="button" id="hhAdd" style="margin-top:8px">${PLUS} Add someone</button>
+    <button class="btn wide quiet" type="button" data-open-hh="${esc(hh.id)}" style="margin-top:8px">🐾 Household page and pets</button>
     <hr class="set-div">
     <form id="hhNameForm" autocomplete="off">
       <div class="err" hidden></div>
@@ -7461,6 +7655,7 @@ function householdCard() {
 
 function wireHousehold(v, reload) {
   const hh = state.me.household;
+  v.querySelectorAll("[data-open-hh]").forEach((b) => (b.onclick = () => openHousehold(b.dataset.openHh)));
   if (hh) wirePhotoRow($("#hhPhoto", v), async (photo) => { await api("household/photo", { photo }); reload(photo ? "Photo saved" : "Photo removed"); });
   $("#hhAdd", v)?.addEventListener("click", () => {
     const mine = new Set((hh?.members || []).map((m) => m.id));
