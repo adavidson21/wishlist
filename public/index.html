@@ -3287,7 +3287,6 @@ function editItem(item, opts = {}) {
       ${isNew ? "" : linkField(item.url)}
       ${sizeColorRow()}
       ${photoField()}
-      ${isNew && !asId ? `<p class="hint" style="margin-top:-6px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       ${isNew ? `<details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes)</span></summary>
         <div>${brandField}${priceField}${catField}${qtyField}${notesField}</div>
@@ -3297,6 +3296,7 @@ function editItem(item, opts = {}) {
         <label class="check"><span>Top pick<small>Gold star on ${asId ? "their" : "your"} list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
         ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
+      ${isNew && !asId ? `<p class="hint" style="text-align:center"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       <div class="actions sticky">
         ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
         ${isNew && asId ? `<button class="btn primary" type="submit" value="list">Add to ${esc(asName)}'s list</button>`
