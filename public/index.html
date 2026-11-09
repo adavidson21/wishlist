@@ -376,6 +376,13 @@
   .check input:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
   .err { background: var(--err-bg); color: var(--err); border-radius: 12px; padding: 12px 14px; font-size: 15px; margin-bottom: 16px; font-weight: 600; }
   .hint { color: var(--muted); font-size: 14px; margin: -8px 0 16px; }
+  /* Help button: a small round "?" that reveals one line of guidance under its heading. */
+  .tip { display: inline-grid; place-items: center; position: relative; width: 20px; height: 20px; padding: 0; margin-left: 6px; flex: none; vertical-align: 2px;
+    border: 1.5px solid var(--faint); border-radius: 50%; background: none; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
+  .tip::before { content: ""; position: absolute; inset: -12px; }
+  .tip[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .tip:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+  .tip-pop { margin: 4px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--panel); color: var(--ink); font-size: 14px; font-weight: 400; font-family: inherit; animation: fade .2s ease both; }
   .actions { display: flex; gap: 10px; margin-top: 8px; }
   .actions .btn { flex: 1; }
   details.more { margin-bottom: 16px; }
@@ -1082,6 +1089,18 @@ const CHEV = '<svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill=
 const CHEV_D = '<svg class="chev-d" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
 const PUBLISH_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+// Help button: one line of guidance on tap, instead of a paragraph under every heading.
+const tip = (text) => `<button class="tip" type="button" aria-label="More info" aria-expanded="false" data-tip="${esc(text)}">?</button>`;
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.(".tip");
+  if (!b) return;
+  e.preventDefault();
+  const host = b.closest(".field") || b.parentElement;
+  const open = host.nextElementSibling?.classList.contains("tip-pop") ? host.nextElementSibling : null;
+  if (open) open.remove();
+  else host.insertAdjacentHTML("afterend", `<p class="tip-pop" role="note">${esc(b.dataset.tip)}</p>`);
+  b.setAttribute("aria-expanded", String(!open));
+});
 const LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const CAMERA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
@@ -1483,7 +1502,7 @@ async function renderWelcome(step = "code", info = {}) {
       <form class="card slide" id="newForm" autocomplete="off">
         <div class="err" hidden></div>
         <div class="name-preview" id="namePrev">${avatar("?", "new", true)}</div>
-        ${starting ? "" : `<p class="hint" style="margin-top:0">Already in another circle on Wishlist? Sign in there instead, then join this one from Settings, so you keep one list.</p>`}
+        ${starting ? "" : `<p class="hint" style="margin-top:0">Already on Wishlist?${tip("Sign in as yourself, then join this circle from Settings. That way you keep one list.")}</p>`}
         ${starting ? `<label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>` : ""}
         <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
         <button class="btn primary wide" type="submit">${starting ? "Create circle" : `Join ${esc(info.group.name)}`}</button>
@@ -1884,7 +1903,7 @@ const STARTER_IDEAS = [["📚", "A book", { placeholder: "A book you'd like to r
 function quickBirthday() {
   openSheet(`
     <h3>When's your birthday?</h3>
-    <p>Everyone can then plan and budget for it, not just Christmas. No year needed.</p>
+    <p class="subtle">No year needed.</p>
     <form id="bdayForm" autocomplete="off">
       <div class="err" hidden></div>
       <div class="bday" style="grid-template-columns:1.6fr 1fr">
@@ -1962,17 +1981,17 @@ async function renderMine() {
     ${showBdayNudge() ? `<div class="starter slide" id="bdayNudge" style="margin:18px 0 0"><strong>When's your birthday?</strong>
       <p>Add it so everyone can plan for it too, not just Christmas.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="bdayLater">Not now</button><button class="btn primary" type="button" id="bdayAdd">Add birthday</button></div></div>` : ""}
-    <p class="footnote">Your circles see this list. Surprises stay hidden from you.</p>` : `
+    <p class="footnote">Surprises stay hidden from you.</p>` : `
     <p class="label">Wish list</p>
-    <p class="subtle">Nothing published yet. Tap Publish on a wish above when you want your circles to see it.</p>`;
+    <p class="subtle">Nothing published yet.</p>`;
   v.innerHTML = '<div id="installSlot"></div>' + (data.items.length ? draftSection + liveSection + myGiftCards(data.giftCards) : `
     <div class="empty">
       ${giftBox("Add your first wish")}
       <strong>Let's start your list</strong>
-      <p>Add a few things you'd like. A name is all you need. Each one starts in Just me, where only you can see it, until you publish it. Need a nudge? Tap one:</p>
+      <p>A name is all you need.${tip("New wishes start in Just me, where only you see them, until you publish.")}</p>
       <div class="idea-chips">${STARTER_IDEAS.map(([e, l], k) => `<button class="chip" type="button" data-idea="${k}" style="animation-delay:${0.2 + k * 0.07}s">${e} ${esc(l)}</button>`).join("")}</div>
       <button class="add big shine" type="button" id="addFirst">${PLUS} Add a wish</button>
-      <p class="footnote">Your circles see your published wishes. Surprises stay hidden from you.</p>
+      <p class="footnote">Surprises stay hidden from you.</p>
     </div>
     ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`);
   paintInstallCard();
@@ -2029,8 +2048,8 @@ function confirmPublish(item) {
   if (!item) return;
   openSheet(`
     <h3>Publish to your wish list?</h3>
-    <p class="lead"><strong>${esc(item.title)}</strong> will show on your wish list for your circles to see and buy.</p>
-    <p class="just-me-note">${LOCK}<span><strong>This can't be undone.</strong> Published wishes can't be moved back to Just me. You can still edit or remove it later.</span></p>
+    <p class="lead"><strong>${esc(item.title)}</strong> goes on your wish list.</p>
+    <p class="just-me-note">${LOCK}<span><strong>Can't go back to Just me.</strong> You can still edit or remove it.</span></p>
     <div class="actions">
       <button class="btn" type="button" id="pubCancel">Not yet</button>
       <button class="btn primary" type="button" id="pubGo">${PUBLISH_ICON} Publish</button>
@@ -2131,7 +2150,7 @@ function editItem(item, opts = {}) {
     <form id="itemForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || "Warm slippers, size 8")}" required></label>
-      ${isNew ? `<p class="hint" style="margin-top:-10px">Want a gift card? <button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Pick stores instead</button></p>` : ""}
+      ${isNew ? `<p class="hint" style="margin-top:-10px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       ${linkField(item.url)}
       <details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(price, category, notes)</span></summary>
@@ -2350,8 +2369,8 @@ function wireAutofill(form) {
     last = v;
     btn.disabled = true; say("Looking it up...");
     clearTimeout(slow);
-    // Blocked stores get looked up through Google, which takes a few seconds. Say so instead of looking stuck.
-    slow = setTimeout(() => { if (mine === seq) say("Still looking. This store makes us look it up another way, so it can take a few seconds..."); }, 3500);
+    // Blocked stores get looked up through Google Search, which takes a few seconds. Say so instead of looking stuck.
+    slow = setTimeout(() => { if (mine === seq) say("Still looking. Some stores take a few seconds..."); }, 3500);
     try {
       const r = await api("preview", { url: v }).catch((e) => {
         if (!hint) throw e;
@@ -2369,7 +2388,6 @@ function wireAutofill(form) {
       if (r.image) filled.push("photo");
       const list = filled.length > 1 ? `${filled.slice(0, -1).join(", ")} and ${filled.at(-1)}` : filled[0];
       say(r.guessed && filled.length ? `${r.site} wouldn't let us read that page, so the name is a guess from the link. Fix it up, or snap a photo instead.`
-        : r.via === "search" && filled.length ? `Filled in the ${list}. ${r.site} doesn't let apps read its pages, so we looked it up on Google. Check it looks right.`
         : filled.length ? `Filled in the ${list} from ${r.site}. Check it looks right.`
         : r.title || r.price != null ? "Already filled in. Tap Fill to replace with the link's details."
         : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0, r.image);
@@ -2440,7 +2458,7 @@ async function renderFamily() {
     </div>` : `
     ${people.length ? `<div class="label fam-label" style="margin-top:0"><span>Who you're shopping for</span>${g ? `<button class="btn quiet small" type="button" data-hhs="${esc(g.id)}">Households</button>` : ""}</div><div class="stack" style="margin-top:12px">
       ${peopleHtml(people, personBtn)}</div>` : `
-      <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Send the invite below and everyone's lists will show up here.</p></div>`}
+      <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Their lists show up here once they join.</p></div>`}
     <div class="label">You</div>
     <div class="stack" style="margin-top:12px">
       <button class="member" type="button" id="meRow">${avatar(state.me.name, state.me.id)}<span class="who"><strong>${esc(state.me.name)}</strong><small>Your list</small></span>${CHEV}</button>
@@ -2477,8 +2495,7 @@ function openHouseholds(gid) {
     openHouseholds(gid);
   };
   const showErr = (el, e) => { const err = $(".err", el); err.textContent = e.message; err.hidden = false; };
-  openSheet(`<h3>Households in ${esc(g.name)}</h3>
-    <p>Group people who live or gift together, like Mom &amp; Dad or Jen, Mike &amp; the kids. Anyone in ${esc(g.name)} can set these up.</p>
+  openSheet(`<h3>Households in ${esc(g.name)}${tip(`People who live or gift together, like Mom & Dad. Anyone in ${g.name} can set these up.`)}</h3>
     <div class="err" hidden></div>
     ${[...by].map(([id, ppl]) => `<div class="hh" style="margin-bottom:12px">
       <div class="hh-name">${HOME_I} ${esc(householdLabel(id))}<button class="btn quiet small" type="button" data-rename="${esc(id)}">Rename</button></div>
@@ -2503,7 +2520,6 @@ function openHouseholds(gid) {
       openSheet(`<h3>Name this household</h3>
         <form id="hhRename" autocomplete="off"><div class="err" hidden></div>
           <label class="field"><span>Household name</span><input class="input" name="name" maxlength="40" value="${esc(h.name || "")}" placeholder="${esc(auto)}"></label>
-          <p class="hint" style="margin-top:-10px">Leave it empty to use first names.</p>
           <div class="actions"><button class="btn" type="button" id="hhBack">Back</button><button class="btn primary" type="submit">Save</button></div></form>`, (el2) => {
         $("#hhBack", el2).onclick = () => openHouseholds(gid);
         wireForm($("#hhRename", el2), async ({ name }) => { await api("household/rename", { householdId: id, name }); await back("Household name saved"); });
@@ -2625,7 +2641,7 @@ function wireInviteCard(root, g) {
 }
 
 function openInvite(g) {
-  openSheet(`<h3>Invite to ${esc(g.name)}</h3><p>Send this link. It opens right to your circle, no code typing needed.</p>${inviteCard(g)}`, (el) => wireInviteCard(el, g));
+  openSheet(`<h3>Invite to ${esc(g.name)}</h3>${inviteCard(g)}`, (el) => wireInviteCard(el, g));
 }
 
 // "Remind them" on someone's empty list.
@@ -2741,10 +2757,9 @@ async function renderPerson(id) {
         <div class="stack"><button class="add" type="button" id="nudge">${MSG} Send ${esc(name)} a reminder</button></div>
       </div>`}
     ${theirGiftCards(list.giftCards, name, id)}
-    ${sugg.length ? `<div class="label">Ideas from others</div><p class="subtle">Hidden from ${esc(name)}.</p>
+    ${sugg.length ? `<div class="label">Ideas from others${tip(`Hidden from ${name}.`)}</div>
       <div class="stack">${sugg.map((i, n) => personRow(i, "idea", n)).join("")}</div>` : ""}
-    <div class="label">Your ideas for ${esc(name)}</div>
-    <p class="subtle">Just for you, unless you share one.</p>
+    <div class="label">Your ideas for ${esc(name)}${tip("Only you see these, unless you share one.")}</div>
     <div class="stack">
       ${mine.map(ideaRow).join("")}
       <button class="add soft" type="button" id="addIdea">${PLUS} Add your own idea for ${esc(name)}</button>
@@ -2785,7 +2800,7 @@ function editPerson(member, plan) {
         <input class="input" name="nickname" maxlength="40" value="${hasNick ? esc(member.name) : ""}" placeholder="${esc(real)}"></label>
       ${next ? `<label class="field"><span>Budget for ${esc(forWhat)}</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(next.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>` : ""}
-      <p class="hint">${LOCK} Just for you. Everyone else still sees ${esc(real)}, and nobody sees your budget.</p>
+      <p class="hint">${LOCK} Only you see these.</p>
       <button class="btn primary wide" type="submit">Save</button>
     </form>`, (el) => {
       wireForm($("#personForm", el), async ({ nickname, amount }) => {
@@ -2862,7 +2877,7 @@ function markPurchased(kind, x, name, personId) {
       <label class="field"><span>${editing ? "Price you paid" : "Price"}</span>
         <div class="input money-in"><span>$</span><input name="price" inputmode="decimal" value="${esc(priceIn(paid))}" placeholder="0" aria-label="Price"></div></label>
       ${occPicker(personId, x.claim?.occasion)}
-      <p class="hint">${occ.length > 1 ? "This goes toward your budget for the one you pick." : `This goes toward your budget for ${esc(who)}.`}${editing ? "" : " Not bought yet? Mark it anyway so nobody doubles up. You can fix the price later."}</p>
+      ${editing ? "" : `<p class="hint">Not bought yet? Mark it anyway so nobody doubles up.</p>`}
       ${editing ? `<div class="actions"><button class="btn danger" type="button" id="unmark">Not getting it</button><button class="btn primary" type="submit">Save</button></div>`
         : `<button class="btn primary wide" type="submit">Yes, I'm getting it</button><button class="btn quiet wide" type="button" id="cancelMark" style="margin-top:6px">Cancel</button>`}
     </form>`, (el) => {
@@ -2923,7 +2938,7 @@ async function renderTracker() {
     <div class="hero-stat">
       <p class="kicker">${hasBudget ? (left < 0 ? `Over budget for ${esc(what)} by` : `Left to spend for ${esc(what)}`) : `Spent so far for ${esc(what)}`}</p>
       <span class="big-num" id="bigNum">${money(shown)}</span>
-      <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : "Set a budget for anyone below to see what's left."}</p>
+      <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : "No budget set"}</p>
       ${hasBudget ? `<div class="hero-meter" style="margin-top:12px"><span class="bar"><i style="width:${pct}%"></i></span></div>` : ""}
       ${countdown ? `<p class="hero-sub" style="margin-top:10px;font-weight:700">${esc(countdown)}</p>` : ""}
     </div>`);
@@ -2939,15 +2954,14 @@ async function renderTracker() {
       <div class="still-need">${needGift.map((r) => `<button class="chip" type="button" data-need="${esc(r.p.id)}">${avatar(r.p.name, r.p.id, "sm")}${esc(r.p.name)}</button>`).join("")}</div>` : ""}
     ${shownRows.length ? `<div class="label" style="margin-top:18px">${view === "birthday" ? "Coming up" : "By person"}</div>
     <div class="stack" style="margin-top:12px">${shownRows.map((r, n) => personCard(r.p, r.o, view, n)).join("")}</div>`
-      : `<div class="empty" style="margin-top:18px"><strong>No birthdays yet</strong><p>When people add their birthday in Settings, you can plan and budget for it here.</p></div>`}
-    ${view === "birthday" && noBday.length ? `<div class="label">No birthday added yet</div>
-      <p class="subtle">They can add it in Settings.</p>
+      : `<div class="empty" style="margin-top:18px"><strong>No birthdays yet</strong><p>They show up once people add them in Settings.</p></div>`}
+    ${view === "birthday" && noBday.length ? `<div class="label">No birthday added yet${tip("They can add it in Settings.")}</div>
       <div class="stack">${noBday.map((r) => `<button class="member" type="button" data-open="${esc(r.p.id)}">${avatar(r.p.name, r.p.id)}<span class="who"><strong>${esc(r.p.name)}</strong><small>${esc(r.p.name)}'s list</small></span>${CHEV}</button>`).join("")}</div>` : ""}
     <div class="stack" style="margin-top:18px">
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
       ${shownRows.length ? `<button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>` : ""}
-    </div>` : `<div class="empty">${giftBox("Invite your people")}<strong>No one to plan for yet</strong><p>Once people join, you can set budgets and track gifts for each of them here.</p></div>`;
+    </div>` : `<div class="empty">${giftBox("Invite your people")}<strong>No one to plan for yet</strong><p>Budgets and gifts show up once people join.</p></div>`;
   $("#viewSeg") && wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderTracker(); });
   $("#addPurchase")?.addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
   $("#addIdea")?.addEventListener("click", () => addThing(null));
@@ -3011,7 +3025,7 @@ function editBudget(p, o) {
       <div class="err" hidden></div>
       <label class="field"><span>How much for ${esc(forWhat)}?</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(o.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
-      <p class="hint">${LOCK} Just for you. It starts fresh after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.</p>
+      <p class="hint">${LOCK} Only you see this. Resets after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.</p>
       <div class="actions">
         ${o.budget_cents != null ? '<button class="btn danger" type="button" id="clearBudget">Clear</button>' : ""}
         <button class="btn primary" type="submit">Save</button>
@@ -3148,8 +3162,7 @@ function giftCard(g, extra = "") {
 function myGiftCards(cards = []) {
   const list = cards.filter((c) => GC[c.brand]);
   let k = 0;
-  return `<div class="label">Gift cards</div>
-    <p class="subtle">${list.length ? "Always on your list, never used up. People can give as many as they like." : "Pick stores you'd love a gift card to. Just tap, no details needed."}</p>
+  return `<div class="label">Gift cards${tip("They stay on your list every year, and people can give as many as they like.")}</div>
     <div class="gc-grid">${list.map((c, n) => {
       const pop = state.gcNew?.has(c.brand);
       return `<button class="gc-item ${pop ? "gc-pop" : "slide"}" type="button" data-gc-edit style="${pop ? `--d:${k++ * 0.08}s` : `animation-delay:${n * 0.04}s`}"
@@ -3165,11 +3178,10 @@ function pickGiftCards(current = []) {
   const card = (g) => `<button class="gc-item" type="button" data-pick="${g.key}" aria-pressed="${chosen.has(g.key)}" aria-label="${esc(g.name)}">${giftCard(g, `<span class="gc-check">${CHECK}</span>`)}</button>`;
   openSheet(`
     <h3>Gift cards you'd love</h3>
-    <p class="subtle">Tap as many as you like. No details needed, and they stay on your list every year.</p>
     <input class="input gc-search" type="search" placeholder="Search stores" aria-label="Search stores" autocomplete="off">
     ${GC_GROUPS.map((grp) => `<section data-group><div class="gc-group">${esc(grp)}</div>
       <div class="gc-pick">${GIFT_LIST.filter((g) => g.group === grp).map(card).join("")}</div></section>`).join("")}
-    <p class="subtle" id="gcNone" hidden style="margin-top:14px">No stores match. Try another name.</p>
+    <p class="subtle" id="gcNone" hidden style="margin-top:14px">No matches</p>
     <div class="gc-pick-foot"><div class="err" hidden></div><button class="btn primary wide" type="button" id="gcSave"></button></div>`, (el) => {
       const save = $("#gcSave", el);
       const label = () => {
@@ -3231,8 +3243,7 @@ function pickGiftCards(current = []) {
 function theirGiftCards(cards = [], name, personId) {
   const list = cards.filter((c) => GC[c.brand]);
   if (!list.length) return "";
-  return `<div class="label">Gift cards ${esc(name)} would love</div>
-    <p class="subtle">Anyone can give one, and ${esc(name)} won't see who.</p>
+  return `<div class="label">Gift cards ${esc(name)} would love${tip(`Anyone can give one. ${name} won't see who.`)}</div>
     <div class="gc-grid">${list.map((c, n) => {
       const g = GC[c.brand];
       const mine = c.mine || [];
@@ -3260,14 +3271,14 @@ function giveGiftCard(c, member, name, personId) {
   openSheet(`
     <h3>${mine.length ? "Your gift card" : `Give ${esc(who)} a gift card?`}</h3>
     <div class="gc-hero">${giftCard(g)}</div>
-    ${c.removed ? `<p class="hint" style="margin-top:0">${esc(who)} took this one off their list. You can keep it or take it back.</p>` : ""}
-    ${c.others ? `<p class="hint" style="margin-top:0">${c.others === 1 ? "1 other person is" : `${c.others} others are`} giving ${esc(g.name)} too. That's fine, gift cards add up.</p>` : ""}
+    ${c.removed ? `<p class="hint" style="margin-top:0">${esc(who)} removed this from their list.</p>` : ""}
+    ${c.others ? `<p class="hint" style="margin-top:0">${c.others === 1 ? "1 other person is" : `${c.others} others are`} giving one too.</p>` : ""}
     <form id="giveForm" autocomplete="off">
       <div class="err" hidden></div>
       ${occPicker(personId, first)}
       <label class="field"><span>Amount</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" placeholder="25" aria-label="Gift card amount"></div></label>
-      <p class="hint">${LOCK} ${esc(who)} never sees who gives gift cards. ${occ.length > 1 ? "This goes toward your budget for the one you pick." : `This goes toward your budget for ${esc(who)}.`}</p>
+      <p class="hint">${LOCK} ${esc(who)} won't see it's from you.</p>
       <div id="giveActions"></div>
       <a class="btn quiet wide gc-find" href="${esc(gcFindUrl(g))}" target="_blank" rel="noopener">Find ${esc(g.name)} gift cards ${OUT}</a>
     </form>`, (el) => {
@@ -3470,7 +3481,6 @@ async function renderSettings() {
         </div>
         <input type="file" accept="image/*" id="photoFile" hidden>
       </div>
-      <p class="sub" style="margin:10px 0 0">Your circles see your profile on your list.</p>
       <hr class="set-div">
       <form id="profileForm" autocomplete="off">
         <div class="err" hidden></div>
@@ -3491,14 +3501,12 @@ async function renderSettings() {
         </div>
         <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
         <div class="fun-h">✨ Just for fun</div>
-        <p class="sub" style="margin:0 0 12px">Small things that help people pick something you'll love.</p>
         <span class="flabel">Gift style <em>(up to 3)</em></span>
         <div class="pick-chips" id="styleChips">${GIFT_STYLES.map(([k, l]) => `<button class="chip" type="button" data-style="${k}" aria-pressed="${(prof.giftStyle || []).includes(k)}">${esc(l).replace(/^(\S+) /, '<span aria-hidden="true">$1</span>')}</button>`).join("")}</div>
         <span class="flabel">Favorite colors <em>(up to 3)</em></span>
         <div class="swatches" id="colorPick">${FAV_COLORS.map(([k, l, c]) => `<button class="swatch" type="button" data-color="${k}" aria-pressed="${(prof.colors || []).includes(k)}" aria-label="${l}" title="${l}" style="--c:${c};${["white", "yellow", "silver"].includes(k) ? "--tick:#2A1E22" : ""}"></button>`).join("")}</div>
         <label class="field"><span>Little things I love</span>
           <input class="input" name="loves" maxlength="200" value="${esc(prof.loves || "")}" placeholder="Oat lattes, sour gummies, anything lavender"></label>
-        <p class="hint" style="margin-top:-10px">Great for stocking stuffers.</p>
         <label class="field" style="margin-top:4px"><span>Dislikes and allergies</span>
           <textarea class="input" name="avoid" maxlength="300" placeholder="No scented candles, allergic to wool">${esc(prof.avoid || "")}</textarea></label>
         <button class="btn primary wide" type="submit">Save profile</button>
@@ -3528,9 +3536,9 @@ async function renderSettings() {
       ${swRow("motionSw", "Animations", "", root.dataset.motion !== "off")}
     </div>
 
-    <div class="label">Sign-in PIN</div>
+    <div class="label">Sign-in PIN${tip("Stops anyone else signing in as you and seeing your notes.")}</div>
     <div class="set-card">
-      <p class="sub">${state.me.hasPin ? "Your name is PIN protected." : "No PIN yet. Add one so nobody else can sign in as you and see your notes."}</p>
+      <p class="sub">${state.me.hasPin ? "PIN is on." : "No PIN yet."}</p>
       <form id="pinForm" autocomplete="off">
         <div class="err" hidden></div>
         <label class="field"><span>${state.me.hasPin ? "New PIN" : "PIN"}</span><input class="input pin-in" name="pin" inputmode="numeric" pattern="\\d{4}" maxlength="4" required></label>
@@ -3541,7 +3549,7 @@ async function renderSettings() {
       </form>
     </div>
 
-    <div class="label" id="famSec">${multi() ? "Your circles" : "Your circle"}</div>
+    <div class="label" id="famSec">${multi() ? "Your circles" : "Your circle"}${tip(multi() ? "Every circle sees the same list. To hide a wish from one, open it and turn that circle off." : "Do gifts with another group too? Join their circle and keep one list for all of them.")}</div>
     <div class="set-card">
       ${state.groups.map((g) => `<div class="fam">
           <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}</small></span>
@@ -3562,13 +3570,12 @@ async function renderSettings() {
       </form>
     </div>
 
-    <div class="label" id="hhSec">Your household</div>
+    <div class="label" id="hhSec">Your household${tip("People you live or gift with. Add them to a circle together in one tap.")}</div>
     <div class="set-card">${householdCard()}</div>
 
     <div class="label">The app</div>
     <div class="set-card">
       ${standalone ? "" : `<h4>Add to home screen</h4>
-      <p class="sub">Open Wishlist in one tap, full screen, like any other app.</p>
       <button class="btn primary wide" type="button" id="installSettings" style="margin-bottom:10px">${iOS ? "Show me how" : installPrompt ? "Install" : "Show me how"}</button>`}
       <button class="btn wide" type="button" id="replayTour">Replay the welcome tour</button>
     </div>
@@ -3614,7 +3621,6 @@ async function renderSettings() {
   wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
   $("#startFam", v).onclick = () => openSheet(`
     <h3>Start a new circle</h3>
-    <p>You'll get a code to share. Your list comes with you.</p>
     <form id="startForm" autocomplete="off">
       <div class="err" hidden></div>
       <label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>
@@ -3704,8 +3710,7 @@ async function renderSettings() {
 // whole household in it, including people added later.
 function householdCard() {
   const hh = state.me.household;
-  if (!hh) return `<p class="sub">Optional. Group the people you live or gift with, like you and your partner or you and the kids. Then add your whole household to a circle in one tap, and anyone you add later comes along.</p>
-    <button class="btn wide" type="button" id="hhAdd">${PLUS} Add someone to your household</button>`;
+  if (!hh) return `<button class="btn wide" type="button" id="hhAdd">${PLUS} Add someone to your household</button>`;
   const auto = householdAuto(hh.members.map((m) => m.name));
   return `<h4>${HOME_I} ${esc(hh.label)}</h4>
     <div style="margin-top:6px">${hh.members.map((m) => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}</strong>
@@ -3716,12 +3721,10 @@ function householdCard() {
       <div class="err" hidden></div>
       <label class="field"><span>Household name <em style="font-weight:600;color:var(--muted)">(optional)</em></span>
         <input class="input" name="name" maxlength="40" value="${esc(hh.name || "")}" placeholder="${esc(auto)}"></label>
-      <p class="hint" style="margin-top:-10px">Leave it empty to use your first names.</p>
       <button class="btn wide" type="submit">Save name</button>
     </form>
     <hr class="set-div">
-    <h4>Bring the whole household</h4>
-    <p class="sub">On: everyone in your household is in that circle, even people you add later. Off: only people who joined it themselves.</p>
+    <h4>Bring the whole household${tip("On: everyone in your household is in that circle, including people you add later.")}</h4>
     ${state.groups.map((g, i) => swRow(`hhc${i}`, g.name, "", hh.circles.includes(g.id)).replace('type="button"', `type="button" data-hh-circle="${esc(g.id)}"`)).join("")}
     <hr class="set-div">
     <button class="btn wide quiet danger" type="button" id="hhLeave">Leave household</button>`;
@@ -3735,10 +3738,10 @@ function wireHousehold(v, reload) {
     const free = ppl.filter((m) => !m.householdId);
     const taken = ppl.filter((m) => m.householdId);
     openSheet(`<h3>Add to your household</h3>
-      <p>Pick someone you share a circle with. ${hh?.circles.length ? `They'll join ${hh.circles.map(groupName).join(", ")} with your household.` : "You can add your household to circles after."}</p>
+      <p class="subtle">${hh?.circles.length ? `They'll join ${hh.circles.map(groupName).join(", ")} with your household.` : ""}</p>
       <div class="err" hidden></div>
       ${free.length ? free.map((m) => `<button class="pick-person" type="button" data-hh-in="${esc(m.id)}">${avatar(m.name, m.id)}<span>${esc(m.name)}</span></button>`).join("")
-        : `<p class="subtle">Nobody to add yet. Invite them to one of your circles first.</p>`}
+        : `<p class="subtle">Nobody to add yet. Invite them to a circle first.</p>`}
       ${taken.length ? `<p class="subtle" style="margin-top:16px">Already in a household</p>${taken.map((m) => `<button class="pick-person" type="button" disabled>${avatar(m.name, m.id)}<span>${esc(m.name)}<small>${esc(householdLabel(m.householdId))}</small></span></button>`).join("")}` : ""}`,
     (el) => el.querySelectorAll("[data-hh-in]").forEach((b) => (b.onclick = async () => {
       b.disabled = true;
