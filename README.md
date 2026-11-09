@@ -102,6 +102,8 @@ Hints pays Google for this, and under Google's paid terms, **what we send isn't 
 - 🔢 **Set a PIN.** Signing in is simple on purpose: tap your name. Without a PIN, someone with your circle's invite link could sign in as you. A 4-digit PIN (in Settings) stops that.
 - ☁️ **Where it's stored.** Hints runs on Cloudflare, a large internet company that millions of websites use. Their terms say they don't use what's stored there to train AI.
 - 👩‍💻 **Who runs it.** Alexis built and runs Hints. Like the owner of any app, she can get to the database to fix things.
+- 🛠️ **When something breaks.** If Hints hits an error, it tells Alexis what went wrong (the error message, which screen, and what kind of phone or browser), so she can fix it. Never what you typed, your wishes or anything private.
+- 💾 **Backups.** Everything is backed up so a mistake can be undone. Weekly backups are encrypted before they're stored.
 - 🗑️ **Want your info deleted?** Ask Alexis and she'll remove you and everything you added.
 
 ---
@@ -124,7 +126,7 @@ Yes. Go to **[hints.alexisdavidson.org](https://hints.alexisdavidson.org)** in a
 Yes. In the Circles tab, tap "Add someone who doesn't use the app." You can keep their list for them.
 
 **Something isn't working, or I have an idea.**
-Tell Alexis!
+Tell Alexis! The easiest way is **Settings > Questions or problems** in Hints. It goes straight to her.
 
 ---
 

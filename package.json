@@ -6,7 +6,8 @@
     "dev": "wrangler dev",
     "check": "node scripts/check-routes.mjs && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "deploy": "wrangler deploy",
-    "migrate": "wrangler d1 migrations apply wishlist --remote"
+    "migrate": "wrangler d1 migrations apply wishlist --remote",
+    "backup": "node scripts/backup.mjs"
   },
   "devDependencies": {
     "wrangler": "^4"
