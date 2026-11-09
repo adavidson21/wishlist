@@ -881,7 +881,7 @@
     padding: calc(env(safe-area-inset-top, 0px) + 10px) 18px 0; }
   .dots { display: flex; gap: 6px; }
   .dots i { width: 8px; height: 8px; border-radius: 4px; background: var(--line); transition: width .35s var(--spring), background-color .3s ease; }
-  .dots i.on { width: 26px; background: var(--brand); }
+  .dots i.on { width: 26px; background: var(--gold); }
   .track { flex: 1; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
   .track::-webkit-scrollbar { display: none; }
   .slide-card { flex: 0 0 100%; scroll-snap-align: center; scroll-snap-stop: always; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -1020,7 +1020,7 @@
     .tab[data-tab]:hover .ico svg { animation: hop .5s ease both; }
     .tab-ind { display: block; position: absolute; left: 0; right: 0; top: 0; height: 50px; border-radius: 14px; background: var(--soft); opacity: 0; z-index: 0;
       transition: transform .5s var(--spring), height .3s ease, opacity .2s ease; }
-    .tab-ind::before { content: ""; position: absolute; left: -16px; top: 50%; width: 5px; height: 24px; margin-top: -12px; border-radius: 0 4px 4px 0; background: var(--brand); }
+    .tab-ind::before { content: ""; position: absolute; left: -16px; top: 50%; width: 5px; height: 24px; margin-top: -12px; border-radius: 0 4px 4px 0; background: var(--gold); }
     /* The add button leads the sidebar as a big pill. */
     .tab.add-tab { order: -1; margin-bottom: 18px; justify-content: center; gap: 10px; min-height: 56px; border-radius: 18px; overflow: hidden;
       background: var(--brand); color: var(--brand-ink); font-size: 17px; font-weight: 800;
@@ -1194,6 +1194,18 @@
   @keyframes appIn { 0% { opacity: 0; transform: translateY(-90px) scale(1.6) rotate(-20deg); } 60% { opacity: 1; transform: translateY(4px) scale(.95) rotate(4deg); } 100% { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; } }
   :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after, :root[data-motion="off"] ::backdrop { animation: none !important; transition: none !important; }
+  /* Gold accents: the hero's squiggle, carried into headings across the app. */
+  :root { --squig: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 10'%3E%3Cpath d='M2 6c6-5 11 3 17 0s11-5 17 0 11 3 17 0 5-2 5-2' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"); }
+  .sheet h3::after, .empty strong::after, .pf-name::after, .slide-card h2::after {
+    content: ""; display: block; width: 52px; height: 9px; margin-top: 6px; background: var(--gold);
+    -webkit-mask: var(--squig) center / 100% 100% no-repeat; mask: var(--squig) center / 100% 100% no-repeat; }
+  .empty strong::after, .pf-name::after, .slide-card h2::after { margin-left: auto; margin-right: auto; }
+  .label::before { content: ""; flex: none; width: 4px; height: 18px; border-radius: 2px; background: var(--gold); }
+  @media (max-width: 1023px) {
+    .tab[data-tab] { position: relative; }
+    .tab[data-tab][aria-current="page"]::after { content: ""; position: absolute; bottom: -5px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--gold); }
+  }
+  ::selection { background: color-mix(in srgb, var(--gold) 40%, transparent); }
 </style>
 </head>
 <body>
