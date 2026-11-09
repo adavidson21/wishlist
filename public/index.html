@@ -2670,8 +2670,8 @@ function showStaleNudge(live) {
 const showBdayNudge = () => { if (state.me?.profile?.birthday) return false; try { return localStorage.getItem(BDAY_NUDGE_KEY) !== state.me.id; } catch { return false; } };
 function readStarter() { try { return localStorage.getItem(STARTER_KEY) === state.me?.id; } catch { return false; } }
 function writeStarter(on) { try { on ? localStorage.setItem(STARTER_KEY, state.me.id) : localStorage.removeItem(STARTER_KEY); } catch {} }
-const STARTER_IDEAS = [["📚", "A book", { placeholder: "A book you'd like to read" }], ["🧦", "Something cozy", { placeholder: "Warm slippers, size 8" }],
-  ["🍳", "For the kitchen", { placeholder: "A nice olive oil, a cast iron pan" }], ["🎟️", "An experience", { placeholder: "Concert tickets, a class, a day out" }],
+const STARTER_IDEAS = [["📚", "A book", { placeholder: "A book you'd like to read" }], ["🧦", "Something cozy", { placeholder: "Something comfy to wear or wrap up in" }],
+  ["🍳", "For the kitchen", { placeholder: "A tool or treat for the kitchen" }], ["🎟️", "An experience", { placeholder: "Tickets, a class, a day out" }],
   ["💳", "Gift cards", { giftCards: true }]];
 
 // The birthday nudge's sheet: just month and day, saved right here (the year and the rest live in Profile).
@@ -3322,7 +3322,7 @@ function editItem(item, opts = {}) {
   const catField = `<label class="field"><span>Category</span>
     <select class="input" name="category"><option value="">${isNew ? "Pick for me" : "Auto"}${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
       ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>`;
-  const brandField = `<label class="field"><span>Brand</span><input class="input" name="brand" maxlength="40" value="${esc(item.brand || "")}" placeholder="Zara, Nike, LEGO" autocomplete="off"></label>`;
+  const brandField = `<label class="field"><span>Brand</span><input class="input" name="brand" maxlength="40" value="${esc(item.brand || "")}" placeholder="Store or brand" autocomplete="off"></label>`;
   const notesField = `<label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>`;
   // How many: 1 to 10, or 0 for "as many as I like" (books from a series, LEGO minifigures).
   const qtyNow = item.quantity ?? 1;
@@ -3337,7 +3337,7 @@ function editItem(item, opts = {}) {
     <form id="itemForm" autocomplete="off"${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}>
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
-      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "Warm slippers, size 8"))}" required></label>
+      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "What is it?"))}" required></label>
       ${isNew ? "" : brandField}
       ${isNew ? "" : linkField(item.url)}
       ${sizeColorRow()}
@@ -3874,7 +3874,7 @@ function openHouseholds(gid) {
     wireInviteBtns(el);
     // New people who aren't on Hints yet. You look after their lists until they open their invite.
     $("#setupHh", el).onclick = () => {
-      const nameRow = (i) => `<label class="field"><span>Person ${i}</span><input class="input" name="p" maxlength="40" placeholder="${i === 1 ? "Grandma" : i === 2 ? "Grandpa" : "Name"}"></label>`;
+      const nameRow = (i) => `<label class="field"><span>Person ${i}</span><input class="input" name="p" maxlength="40" placeholder="Name"></label>`;
       openSheet(`<h3>Add a household</h3>
         <p class="subtle">Everyone you shop for in one home. They don't need to be on Hints yet: you can add wishes for them, then send each one an invite.</p>
         <form id="setupForm" autocomplete="off"><div class="err" hidden></div>
@@ -4520,7 +4520,7 @@ function addManaged() {
     <p class="subtle">A kid, or a grandparent who'd rather not. You'll add their wishes for them, and everyone can shop from their list.${hh ? ` They'll join ${esc(hh.label)}, so everyone in it can help.` : ""}</p>
     <form id="mgForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Their name</span><input class="input" name="name" maxlength="40" placeholder="Ella" required></label>
+      <label class="field"><span>Their name</span><input class="input" name="name" maxlength="40" placeholder="First name is fine" required></label>
       ${multi() ? `<fieldset class="fsec"><h4 class="fsec-h">Which circles?</h4>
         ${state.groups.map((g) => `<label class="check"><span>${esc(g.name)}</span><input type="checkbox" name="g:${esc(g.id)}" checked></label>`).join("")}</fieldset>` : ""}
       <button class="btn primary wide" type="submit">Add them</button>
@@ -4552,8 +4552,8 @@ function editManagedProfile(member, name) {
       <div class="two"><label class="field"><span>Birthday month</span><select class="input" name="bm"><option value="">None</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select></label>
         <label class="field"><span>Day</span><select class="input" name="bd"><option value=""></option>${Array.from({ length: 31 }, (_, k) => `<option${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select></label></div>
       <div class="two">${SIZE_LABELS.map(([k, l]) => `<label class="field"><span>${l}</span><input class="input" name="size_${k}" maxlength="30" value="${esc(p.sizes?.[k] || "")}"></label>`).join("")}</div>
-      <label class="field"><span>Loves <em style="font-weight:600;color:var(--muted)">(commas between)</em></span><input class="input" name="likes" value="${esc((p.likes || []).join(", "))}" placeholder="Unicorns, dinosaurs, drawing"></label>
-      <label class="field"><span>Nopes</span><input class="input" name="dislikes" value="${esc((p.dislikes || []).join(", "))}" placeholder="Scary stuff, glitter"></label>
+      <label class="field"><span>Loves <em style="font-weight:600;color:var(--muted)">(commas between)</em></span><input class="input" name="likes" value="${esc((p.likes || []).join(", "))}" placeholder="Things they're into"></label>
+      <label class="field"><span>Nopes</span><input class="input" name="dislikes" value="${esc((p.dislikes || []).join(", "))}" placeholder="Things to skip"></label>
       <label class="field"><span>Allergies and hard nos</span><textarea class="input" name="avoid" maxlength="300">${esc(p.avoid || "")}</textarea></label>
       <button class="btn primary wide" type="submit">Save</button>
     </form>`, (el) => {
@@ -5214,7 +5214,7 @@ function editIdea(idea, subjectId, opts = {}) {
           <option value="">Choose someone</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`
         : `<p class="what">For ${esc(personName(idea.subject_id))}</p>`}
       ${isNew ? linkField(idea.url, true) : ""}
-      <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : isNew ? "Or type the idea" : "That book she mentioned"}" required></label>
+      <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : isNew ? "Or type the idea" : "Something they mentioned"}" required></label>
       <div class="nope-warn" id="nopeWarn" role="status" hidden></div>
       ${isNew ? "" : linkField(idea.url)}
       ${photoField()}
@@ -5593,9 +5593,9 @@ const TAG_EMOJI = [
 ];
 const tagEmoji = (t) => { const s = t.toLowerCase(); for (const [re, e] of TAG_EMOJI) if (re.test(s)) return e; return ""; };
 // Tap-to-add ideas while editing. A mix of things people love and things people would rather not get.
-const TAG_IDEAS = ["Cats", "Dogs", "Coffee", "Tea", "Chocolate", "Sour candy", "Candles", "Plants", "Cozy blankets", "Fuzzy socks", "Books", "Puzzles",
-  "Board games", "Video games", "Lego", "Baking", "Skincare", "Bath stuff", "Jewelry", "Perfume", "Neutral decor", "Gift cards", "Wine", "Hot sauce",
-  "Camping", "Golf", "Music", "Art supplies", "Movies", "Surprises", "Clutter", "Glitter", "Pink", "Gardening", "Travel", "Hoodies", "Yoga", "Sushi"];
+const TAG_IDEAS = ["Animals", "Coffee", "Tea", "Chocolate", "Snacks", "Candles", "Plants", "Blankets", "Socks", "Books", "Puzzles",
+  "Board games", "Video games", "Building sets", "Baking", "Cooking", "Skincare", "Bath stuff", "Jewelry", "Fragrance", "Home decor", "Gift cards",
+  "Camping", "Sports", "Music", "Art supplies", "Movies", "Surprises", "Clutter", "Gardening", "Travel", "Comfy clothes", "Fitness", "Tech"];
 const HEART_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4h2c.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>';
 const NOPE_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>';
 const CAREFUL_I = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>';
@@ -5727,7 +5727,7 @@ async function renderProfileEdit() {
       <hr class="set-div">
       <label class="field"><span>Your name</span><input class="input" name="name" maxlength="40" value="${esc(state.me.name)}" required></label>
       <label class="field"><span>A line about you <span class="counter" id="bioCount"></span></span>
-        <input class="input" name="bio" id="bioIn" maxlength="100" value="${esc(prof.bio || "")}" placeholder="Cat mom, coffee first, always cold"></label>
+        <input class="input" name="bio" id="bioIn" maxlength="100" value="${esc(prof.bio || "")}" placeholder="A few words about you"></label>
       <span class="flabel">Birthday</span>
       <div class="bday">
         <select class="input" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
@@ -5764,7 +5764,7 @@ async function renderProfileEdit() {
       <span class="flabel" style="margin-top:8px">Favorite brands</span>
       <div id="brandChips">${brandChips(prof.brands || [], true)}</div>
       <div class="brand-add">
-        <input class="input" id="brandIn" maxlength="40" list="brandList" placeholder="Lululemon, Trader Joe's" autocomplete="off" enterkeyhint="done" aria-label="Add a favorite brand">
+        <input class="input" id="brandIn" maxlength="40" list="brandList" placeholder="Add a store or brand" autocomplete="off" enterkeyhint="done" aria-label="Add a favorite brand">
         <button class="btn small" type="button" id="brandAdd">${PLUS} Add</button>
       </div>
       <datalist id="brandList">${GIFT_LIST.map((g) => `<option value="${esc(g.name)}">`).join("")}</datalist>
@@ -5780,7 +5780,7 @@ async function renderProfileEdit() {
     <div class="set-card" id="ed-careful">
       <h4>Allergies and hard nos</h4>
       <p>Shown with a heads up on your page, so nobody misses it.</p>
-      <textarea class="input" name="avoid" maxlength="300" aria-label="Allergies and hard nos" placeholder="Allergic to wool, no scented candles">${esc(prof.avoid || "")}</textarea>
+      <textarea class="input" name="avoid" maxlength="300" aria-label="Allergies and hard nos" placeholder="Allergies, materials or anything to avoid">${esc(prof.avoid || "")}</textarea>
     </div>
 
     <div class="err" hidden></div>
