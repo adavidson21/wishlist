@@ -27,6 +27,12 @@ import "../public/giftcards.js";
 const BASE = "/api/";
 const PHOTO_RE = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
 const MAX_PHOTO = 120_000; // characters of data URL; the app sends about 10 to 20 KB
+// A photo from the app (data URL), or null to remove it.
+function photoValue(v) {
+  const photo = v ? String(v) : null;
+  if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
+  return photo;
+}
 const LIMITS = { tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
@@ -1167,6 +1173,7 @@ const handlers = {
         t,
       ),
       env.DB.prepare(JOIN_DIRECT).bind(groupId, memberId, t),
+      env.DB.prepare("UPDATE groups SET created_by = ? WHERE id = ?").bind(memberId, groupId),
     ]);
     return { token: await signIn(env, memberId) };
   },
@@ -1175,7 +1182,7 @@ const handlers = {
   async "GET me"(req, env) {
     const me = await auth(req, env);
     const { results: groups } = await env.DB.prepare(
-      "SELECT g.id, g.name, g.join_code FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = ? ORDER BY gm.joined_at",
+      "SELECT g.id, g.name, g.join_code, g.created_by, g.photo_at FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = ? ORDER BY gm.joined_at",
     )
       .bind(me.id)
       .all();
@@ -1207,7 +1214,7 @@ const handlers = {
     if (hhIds.length) {
       const marks = hhIds.map(() => "?").join(",");
       const [{ results: hhRows }, { results: inCircles }, { results: myPeople }] = await Promise.all([
-        env.DB.prepare(`SELECT id, name FROM households WHERE id IN (${marks})`).bind(...hhIds).all(),
+        env.DB.prepare(`SELECT id, name, photo_at FROM households WHERE id IN (${marks})`).bind(...hhIds).all(),
         env.DB.prepare(`SELECT group_id, household_id FROM group_households WHERE household_id IN (${marks})`).bind(...hhIds).all(),
         myHh
           ? env.DB.prepare("SELECT id, name, photo_at FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(myHh).all()
@@ -1220,6 +1227,7 @@ const handlers = {
         households[h.id] = {
           id: h.id,
           name: h.name || null,
+          photo: h.photo_at || null,
           label: householdLabel(h.name, list.map((p) => (p.id === me.id ? me.name : nicks.get(p.id) || p.name))),
           circles: inCircles.filter((c) => c.household_id === h.id).map((c) => c.group_id),
         };
@@ -1242,6 +1250,8 @@ const handlers = {
         id: g.id,
         name: g.name,
         code: g.join_code,
+        createdBy: g.created_by || null,
+        photo: g.photo_at || null,
         members: people.filter((p) => p.group_id === g.id).map(person).sort(byName),
       })),
     };
@@ -1884,10 +1894,30 @@ const handlers = {
     const t = now();
     const code = await newUniqueJoinCode(env);
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at) VALUES (?, ?, ?, ?)").bind(id, name, code, t),
+      env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at, created_by) VALUES (?, ?, ?, ?, ?)").bind(id, name, code, t, me.id),
       env.DB.prepare(JOIN_DIRECT).bind(id, me.id, t),
     ]);
     return { group: { id, name, code } };
+  },
+
+  // Rename a circle, or set or remove its photo. Only the person who started the circle.
+  // photo: a small JPEG data URL (the app squares it first), "" removes it, absent leaves it alone.
+  async "POST family/edit"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const g = await env.DB.prepare(
+      "SELECT g.id, g.created_by FROM groups g JOIN group_members gm ON gm.group_id = g.id WHERE g.id = ? AND gm.member_id = ?",
+    ).bind(String(b.groupId || ""), me.id).first();
+    if (!g) fail(404, "Circle not found.");
+    if (g.created_by !== me.id) fail(403, "Only the person who started this circle can change it.");
+    const rows = [];
+    if (b.name !== undefined) rows.push(env.DB.prepare("UPDATE groups SET name = ? WHERE id = ?").bind(text(b.name, LIMITS.group, "Circle name", true), g.id));
+    if (b.photo !== undefined) {
+      const photo = photoValue(b.photo);
+      rows.push(env.DB.prepare("UPDATE groups SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, g.id));
+    }
+    if (rows.length) await env.DB.batch(rows);
+    return { ok: true };
   },
 
   // Leave one of your families (not your last one). Your list stays; that family just stops seeing it.
@@ -1993,6 +2023,17 @@ const handlers = {
     if (!hh) fail(404, "You're not in a household.");
     const name = text(b.name, LIMITS.household, "Household name");
     await env.DB.prepare("UPDATE households SET name = ? WHERE id = ?").bind(name, hh).run();
+    return { ok: true };
+  },
+
+  // Set or remove a household's photo (yours by default). "" removes it.
+  async "POST household/photo"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
+    if (!hh) fail(404, "You're not in a household.");
+    const photo = photoValue(b.photo);
+    await env.DB.prepare("UPDATE households SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, hh).run();
     return { ok: true };
   },
 
@@ -2110,8 +2151,7 @@ const handlers = {
         .run();
     }
     if (b.photo !== undefined) {
-      const photo = b.photo ? String(b.photo) : null;
-      if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
+      const photo = photoValue(b.photo);
       await env.DB.prepare("UPDATE members SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, me.id).run();
     }
     return { ok: true };
@@ -2126,8 +2166,11 @@ const handlers = {
 
   // A profile photo. No sign-in needed (an <img> can't send the token); ids are random and photos aren't private.
   // The app adds the photo's version (?v=photo_at), so a changed photo is a new URL and this one can be cached for good.
+  // ?m= a person, ?g= a circle, ?h= a household.
   async "GET photo"(req, env, url) {
-    const row = await env.DB.prepare("SELECT photo FROM members WHERE id = ?").bind(url.searchParams.get("m") || "").first();
+    const q = url.searchParams;
+    const [table, id] = q.has("g") ? ["groups", q.get("g")] : q.has("h") ? ["households", q.get("h")] : ["members", q.get("m")];
+    const row = await env.DB.prepare(`SELECT photo FROM ${table} WHERE id = ?`).bind(id || "").first();
     const m = row?.photo && PHOTO_RE.exec(row.photo);
     if (!m) return new Response("Not found", { status: 404 });
     const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));

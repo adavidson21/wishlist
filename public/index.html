@@ -334,6 +334,11 @@
   .avatar.huge { width: 88px; height: 88px; font-size: 36px; }
   .photo-row { display: flex; align-items: center; gap: 16px; }
   .photo-row .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* Circles and households get rounded-square pictures, so they don't look like a person. */
+  .avatar.tile { border-radius: 30%; letter-spacing: .02em; }
+  .hh-name .avatar, .fam-label .avatar, .fam .avatar { width: 30px; height: 30px; font-size: 13px; }
+  .fam-label > span:first-child { display: inline-flex; align-items: center; gap: 10px; }
+  .fam .avatar { width: 40px; height: 40px; font-size: 16px; }
   .avatar.big { width: 56px; height: 56px; font-size: 24px; }
   .member .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .member strong { display: block; font-size: 18px; }
@@ -1268,7 +1273,37 @@ const AV_COLORS = ["#7A1B36", "#2F6B4F", "#33407A", "#6A3667", "#A0651A", "#A23B
 // Profile photos: member id -> photo version (when it was last changed). Filled from every API answer that lists people.
 const PHOTOS = new Map();
 function notePhotos(people) { for (const p of people || []) if (p?.id) p.photo ? PHOTOS.set(p.id, p.photo) : PHOTOS.delete(p.id); }
-const photoUrl = (id) => `${API}photo?m=${encodeURIComponent(id)}&v=${encodeURIComponent(PHOTOS.get(id))}`;
+// Keys: a person's id, "g:<id>" for a circle, "h:<id>" for a household.
+const photoUrl = (id) => {
+  const [k, v] = id.startsWith("g:") ? ["g", id.slice(2)] : id.startsWith("h:") ? ["h", id.slice(2)] : ["m", id];
+  return `${API}photo?${k}=${encodeURIComponent(v)}&v=${encodeURIComponent(PHOTOS.get(id))}`;
+};
+// Up to two initials for a circle or household: "Family Christmas" FC, "Alexis & Sam" AS, "Jen's household" J.
+function initials2(n) {
+  const w = String(n || "").replace(/'s household$/i, "").split(/\s+/).filter((x) => x && !/^(&|and|the|\+)$/i.test(x));
+  return (w.slice(0, 2).map((x) => x.charAt(0)).join("") || "?").toUpperCase();
+}
+// Picture for a circle (key "g:<id>") or household ("h:<id>"): its photo, or initials on a rounded square.
+function tileAvatar(name, key, size) {
+  return avatar(name, key, size).replace('class="avatar', 'class="avatar tile').replace(`aria-hidden="true">${esc(initial(name))}`, `aria-hidden="true">${esc(initials2(name))}`);
+}
+// "Add a photo / Remove" row for a circle or household. save(dataUrl) and save("") to remove.
+const photoRowHtml = (name, key) => `<div class="photo-row">${tileAvatar(name, key, "huge")}<div class="btns">
+  <button class="btn small" type="button" data-pick-photo>${CAMERA} ${PHOTOS.has(key) ? "Change photo" : "Add a photo"}</button>
+  ${PHOTOS.has(key) ? '<button class="btn small quiet danger" type="button" data-drop-photo>Remove</button>' : ""}</div>
+  <input type="file" accept="image/*" data-photo-file hidden></div>`;
+function wirePhotoRow(el, save) {
+  const file = el.querySelector("[data-photo-file]"), pick = el.querySelector("[data-pick-photo]");
+  if (!pick) return;
+  pick.onclick = () => file.click();
+  file.onchange = async () => {
+    const f = file.files[0];
+    if (!f) return;
+    pick.disabled = true;
+    try { await save(await squarePhoto(f)); } catch (e) { toast(e.message); pick.disabled = false; }
+  };
+  el.querySelector("[data-drop-photo]")?.addEventListener("click", async () => { try { await save(""); } catch (e) { toast(e.message); } });
+}
 function avatar(name, id, size) {
   const pic = id && PHOTOS.has(id) ? `<img src="${esc(photoUrl(id))}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `<span class="avatar${size === true ? " big" : size ? ` ${size}` : ""}" style="background:${AV_COLORS[hash(id || name) % AV_COLORS.length]}" aria-hidden="true">${esc(initial(name))}${pic}</span>`;
@@ -1630,7 +1665,6 @@ const groupName = (id) => state.groups.find((g) => g.id === id)?.name || "a circ
 // ---------- households ----------
 // Three layers: people, optional households (people who live or gift together), and circles (the
 // groups you share lists with). A circle can hold whole households and single people.
-const HOME_I = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>';
 const householdLabel = (id) => state.households?.[id]?.label || "Household";
 // The automatic name, same as householdLabel() in src/wishlist.js: "Alexis & Sam", "Jen, Mike & Ella", "Jen, Mike & 3 more".
 function householdAuto(names) {
@@ -1651,7 +1685,7 @@ function peopleHtml(people, personBtn) {
     const hh = m.householdId && by.get(m.householdId);
     if (!hh || hh.length < 2) { done.add(m.id); return personBtn(m, i++); }
     hh.forEach((x) => done.add(x.id));
-    return `<div class="hh"><div class="hh-name">${HOME_I} ${esc(householdLabel(m.householdId))}</div>${hh.map((x) => personBtn(x, i++)).join("")}</div>`;
+    return `<div class="hh"><div class="hh-name">${tileAvatar(householdLabel(m.householdId), `h:${m.householdId}`)} ${esc(householdLabel(m.householdId))}</div>${hh.map((x) => personBtn(x, i++)).join("")}</div>`;
   }).join("");
 }
 
@@ -1698,6 +1732,8 @@ async function refreshMe() {
   state.groups = data.groups;
   state.households = data.households || {};
   for (const g of data.groups) notePhotos(g.members);
+  notePhotos(data.groups.map((g) => ({ id: `g:${g.id}`, photo: g.photo })));
+  notePhotos(Object.values(state.households).map((h) => ({ id: `h:${h.id}`, photo: h.photo })));
   notePhotos([data.me]);
   state.today = data.today;
 }
@@ -3043,7 +3079,7 @@ async function renderFamily() {
   // In more than one family: a section per family, each with its own Invite. Someone in two of them shows in both.
   const sections = state.groups.map((fam, n) => {
     const ppl = fam.members.filter((m) => m.id !== state.me.id);
-    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${esc(fam.name)}</span><span class="btns"><button class="btn quiet small" type="button" data-hhs="${esc(fam.id)}">Households</button><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>
+    return `<div class="label fam-label"${n ? "" : ' style="margin-top:0"'}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns"><button class="btn quiet small" type="button" data-hhs="${esc(fam.id)}">Households</button><button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>
       <div class="stack" style="margin-top:12px">${ppl.length ? peopleHtml(ppl, personBtn) : `<p class="footnote" style="margin:0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</div>`;
   }).join("");
   v.innerHTML = multi() ? `${sections}
@@ -3093,7 +3129,7 @@ function openHouseholds(gid) {
   openSheet(`<h3>Households in ${esc(g.name)}${tip(`People who live or gift together, like Mom & Dad. Anyone in ${g.name} can set these up.`)}</h3>
     <div class="err" hidden></div>
     ${[...by].map(([id, ppl]) => `<div class="hh" style="margin-bottom:12px">
-      <div class="hh-name">${HOME_I} ${esc(householdLabel(id))}<button class="btn quiet small" type="button" data-rename="${esc(id)}">Rename</button></div>
+      <div class="hh-name">${tileAvatar(householdLabel(id), `h:${id}`)} ${esc(householdLabel(id))}<button class="btn quiet small" type="button" data-rename="${esc(id)}">Edit</button></div>
       <div style="background:var(--card);border-radius:14px;padding:4px 12px">${ppl.map((m) => row(m, `<button class="btn small quiet danger" type="button" data-out="${esc(m.id)}" data-hh="${esc(id)}">Remove</button>`)).join("")}</div>
       <button class="btn small wide" type="button" data-addto="${esc(id)}" style="margin-top:8px">${PLUS} Add someone</button></div>`).join("")}
     ${by.size ? "" : `<p class="subtle">No households yet.</p>`}
@@ -3112,11 +3148,14 @@ function openHouseholds(gid) {
       const id = b.dataset.rename;
       const h = state.households[id] || {};
       const auto = householdAuto((by.get(id) || []).map((m) => m.name));
-      openSheet(`<h3>Name this household</h3>
+      openSheet(`<h3>Edit household</h3>
+        ${photoRowHtml(householdLabel(id), `h:${id}`)}
+        <hr class="set-div">
         <form id="hhRename" autocomplete="off"><div class="err" hidden></div>
           <label class="field"><span>Household name</span><input class="input" name="name" maxlength="40" value="${esc(h.name || "")}" placeholder="${esc(auto)}"></label>
           <div class="actions"><button class="btn" type="button" id="hhBack">Back</button><button class="btn primary" type="submit">Save</button></div></form>`, (el2) => {
         $("#hhBack", el2).onclick = () => openHouseholds(gid);
+        wirePhotoRow(el2, async (photo) => { await api("household/photo", { householdId: id, photo }); await back(photo ? "Photo saved" : "Photo removed"); });
         wireForm($("#hhRename", el2), async ({ name }) => { await api("household/rename", { householdId: id, name }); await back("Household name saved"); });
       });
     }));
@@ -4687,7 +4726,9 @@ async function renderSettings() {
     <div class="label" id="famSec">${multi() ? "Your circles" : "Your circle"}${tip(multi() ? "Every circle sees the same list. To hide a wish from one, open it and turn that circle off." : "Do gifts with another group too? Join their circle and keep one list for all of them.")}</div>
     <div class="set-card">
       ${state.groups.map((g) => `<div class="fam">
-          <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}</small></span>
+          ${tileAvatar(g.name, `g:${g.id}`)}
+          <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}${g.createdBy && g.createdBy !== state.me.id && g.members.some((m) => m.id === g.createdBy) ? ` · Started by ${esc(personName(g.createdBy))}` : ""}</small></span>
+          ${g.createdBy === state.me.id ? `<button class="btn small quiet" type="button" data-edit-circle="${esc(g.id)}">Edit</button>` : ""}
           <button class="btn small" type="button" data-share="${esc(g.id)}">Invite</button>
           ${multi() ? `<button class="btn small quiet danger" type="button" data-leave="${esc(g.id)}">Leave</button>` : ""}
         </div>`).join("")}
@@ -4766,6 +4807,7 @@ async function renderSettings() {
       reload(`Started ${g.name}. Code: ${g.code}`);
     }));
   wireHousehold(v, reload);
+  v.querySelectorAll("[data-edit-circle]").forEach((b) => (b.onclick = () => openCircleEdit(b.dataset.editCircle, reload)));
   wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
   $("#removePin", v)?.addEventListener("click", async () => {
     try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { toast(e.message); }
@@ -4781,13 +4823,30 @@ async function renderSettings() {
   };
 }
 
+// Edit a circle: its photo and name. Only the person who started it sees the Edit button (the API checks too).
+function openCircleEdit(gid, reload) {
+  const g = state.groups.find((x) => x.id === gid);
+  if (!g) return;
+  openSheet(`<h3>Edit circle</h3>
+    ${photoRowHtml(g.name, `g:${g.id}`)}
+    <hr class="set-div">
+    <form id="circleForm" autocomplete="off"><div class="err" hidden></div>
+      <label class="field"><span>Circle name</span><input class="input" name="name" maxlength="60" value="${esc(g.name)}" required></label>
+      <button class="btn primary wide" type="submit">Save name</button>
+    </form>`, (el) => {
+    wirePhotoRow(el, async (photo) => { await api("family/edit", { groupId: gid, photo }); reload(photo ? "Circle photo saved" : "Circle photo removed"); });
+    wireForm($("#circleForm", el), async ({ name }) => { await api("family/edit", { groupId: gid, name }); reload("Circle renamed"); });
+  });
+}
+
 // Settings > Your household. Optional: people who live or gift together. Turning a circle on puts the
 // whole household in it, including people added later.
 function householdCard() {
   const hh = state.me.household;
   if (!hh) return `<button class="btn wide" type="button" id="hhAdd">${PLUS} Add someone to your household</button>`;
   const auto = householdAuto(hh.members.map((m) => m.name));
-  return `<h4>${HOME_I} ${esc(hh.label)}</h4>
+  return `<div id="hhPhoto">${photoRowHtml(hh.label, `h:${hh.id}`)}</div>
+    <h4 style="margin-top:14px">${esc(hh.label)}</h4>
     <div style="margin-top:6px">${hh.members.map((m) => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}</strong>
       ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}</div>`).join("")}</div>
     <button class="btn wide" type="button" id="hhAdd" style="margin-top:8px">${PLUS} Add someone</button>
@@ -4807,6 +4866,7 @@ function householdCard() {
 
 function wireHousehold(v, reload) {
   const hh = state.me.household;
+  if (hh) wirePhotoRow($("#hhPhoto", v), async (photo) => { await api("household/photo", { photo }); reload(photo ? "Photo saved" : "Photo removed"); });
   $("#hhAdd", v)?.addEventListener("click", () => {
     const mine = new Set((hh?.members || []).map((m) => m.id));
     const ppl = others().filter((m) => !mine.has(m.id));
