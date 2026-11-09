@@ -2736,7 +2736,7 @@ const handlers = {
     return { id };
   },
 
-  // Publish one of your "Maybe" items to your wish list. One way: a published item never goes back to drafts.
+  // Publish one of your "Maybe" items to your wish list. Undo with item/unpublish.
   // created_at is reset so it sorts as a new wish on the list.
   async "POST item/publish"(req, env) {
     const me = await auth(req, env);
@@ -2748,6 +2748,22 @@ const handlers = {
       .bind(t, t, id, me.id)
       .run();
     if (!res.meta.changes) fail(404, "Item not found or already on your list.");
+    return { ok: true };
+  },
+
+  // Move one of your published wishes back to "Maybe" (drafts only you can see) instead of removing it.
+  // Top pick is dropped (it only applies to published wishes). Anyone who already marked it keeps seeing it,
+  // the same as a wish hidden from their circle. Held and received wishes stay where they are.
+  async "POST item/unpublish"(req, env) {
+    const me = await auth(req, env);
+    const { id } = await body(req);
+    const res = await env.DB.prepare(
+      `UPDATE items SET draft = 1, priority = NULL, updated_at = ?
+        WHERE id = ? AND owner_id = ? AND removed_at IS NULL AND draft = 0 AND held_season IS NULL AND received_at IS NULL`,
+    )
+      .bind(now(), String(id || ""), me.id)
+      .run();
+    if (!res.meta.changes) fail(404, "Item not found or already in Maybe.");
     return { ok: true };
   },
 
