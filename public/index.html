@@ -908,6 +908,24 @@
   .pill { font-size: 14px; font-weight: 700; padding: 5px 10px; border-radius: 10px; white-space: nowrap; background: var(--ok-soft); color: var(--ok); }
   .pill.over { background: var(--warn-soft); color: var(--warn); }
   .pill.none { background: var(--panel); color: var(--muted); }
+  .pill.set { background: var(--soft); color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand); cursor: pointer; }
+  .pill.set:active { transform: scale(.96); }
+  .amt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 14px; }
+  .sheet-note { margin: -6px 0 14px; color: var(--muted); font-size: 15px; }
+  .hero-help { margin-left: auto; border: 0; background: rgba(255, 255, 255, .12); color: var(--hero-ink); font: inherit; font-size: 14px; font-weight: 700;
+    padding: 7px 12px; border-radius: 999px; cursor: pointer; }
+  /* Budget walkthrough: a spotlight on one thing at a time with a speech bubble. */
+  .coach { position: fixed; inset: 0; z-index: 900; }
+  .coach-hole { position: fixed; border-radius: 18px; box-shadow: 0 0 0 9999px rgba(30, 8, 16, .62); transition: all .3s ease; pointer-events: none; }
+  .coach-pop { position: fixed; left: 16px; right: 16px; max-width: 380px; margin: 0 auto; background: var(--card); color: var(--ink); border-radius: 18px;
+    padding: 18px 18px 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25); transition: top .3s ease; }
+  .coach-pop h4 { margin: 0 0 6px; font-family: var(--display); font-size: 20px; }
+  .coach-pop p { margin: 0 0 14px; color: var(--muted); font-size: 16px; line-height: 1.45; }
+  .coach-foot { display: flex; align-items: center; gap: 10px; }
+  .coach-dots { display: flex; gap: 6px; margin-right: auto; }
+  .coach-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+  .coach-dots i.on { background: var(--brand); }
+  .coach-skip { border: 0; background: none; color: var(--muted); font: inherit; font-weight: 700; padding: 10px 6px; cursor: pointer; }
   .pcard-avs { display: flex; flex: none; }
   .pcard-avs .avatar { width: 38px !important; height: 38px !important; font-size: 16px !important; box-shadow: 0 0 0 2px var(--card); }
   .pcard-avs .avatar + .avatar { margin-left: -12px; }
@@ -4801,7 +4819,7 @@ const budgetTitle = () => {
   const tipText = names.length
     ? `Budgets and purchases for people outside your household are shared with ${peopleNames(names)}. The people they're for never see them. Ideas, and budgets for your own household, are just for you.`
     : "Just for you. Nobody else can see your budgets, ideas, or purchases.";
-  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h1>Budget</h1>${lockTip(tipText, true)}</div>`;
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h1>Budget</h1>${lockTip(tipText, true)}<button class="hero-help" type="button" id="budgetHelp">How it works</button></div>`;
 };
 
 // Draws the tab strip and the chosen tab, from the tracker already loaded (switching tabs doesn't refetch).
@@ -4859,7 +4877,7 @@ function renderPeopleTab(t, v) {
     <div class="hero-stat">
       <p class="kicker">${hasBudget ? (left < 0 ? `Over budget for ${esc(what)} by` : `Left to spend for ${esc(what)}`) : `Spent so far for ${esc(what)}`}</p>
       <span class="big-num" id="bigNum">${money(shown)}</span>
-      <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : "No budget set"}</p>
+      <p class="hero-sub">${hasBudget ? `of ${money(totalBudget)}, ${money(totalSpent)} spent so far` : shownRows.length ? "Tap Set budget next to someone to start" : "No budget set"}</p>
       ${hasBudget ? `<div class="hero-meter" style="margin-top:12px"><span class="bar"><i style="width:${pct}%"></i></span></div>` : ""}
       ${countdown ? `<p class="hero-sub" style="margin-top:10px;font-weight:700">${esc(countdown)}</p>` : ""}
     </div>`);
@@ -4886,6 +4904,9 @@ function renderPeopleTab(t, v) {
   wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderPeopleTab(t, v); });
   $("#addPurchase").addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
   $("#addIdea").addEventListener("click", () => addThing(null));
+  $("#budgetHelp")?.addEventListener("click", () => budgetTour(true));
+  // First visit with people to plan for: walk through it once.
+  if (shownRows.length && !budgetTourSeen()) setTimeout(() => { if ($("#viewSeg")) budgetTour(); }, 700);
   v.querySelectorAll(".stack > [data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
   v.querySelectorAll("[data-need]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.need)));
   v.querySelectorAll(".pcard[data-person]").forEach((c) => wireTrackerCard(c, t, view));
@@ -5056,7 +5077,9 @@ function wireTrackerCard(card, t, view) {
   if (!card) return;
   const p = t.people.find((x) => x.id === card.dataset.person);
   const o = viewOcc(p, view);
-  card.querySelector("[data-toggle]").onclick = () => {
+  wireSetBudget(card, () => editBudget(p, o));
+  card.querySelector("[data-toggle]").onclick = (e) => {
+    if (e.target.closest("[data-setbudget]")) return;
     const id = card.dataset.person;
     if (state.openPeople.has(id)) state.openPeople.delete(id); else state.openPeople.add(id);
     card.outerHTML = personCard(p, o, view, 0, true);
@@ -5074,7 +5097,7 @@ function personCard(p, o, view, n = 0, still = false) {
   const isOpen = state.openPeople.has(p.id);
   const over = budget != null && o.spent_cents > budget;
   const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
-  const pill = budget == null ? '<span class="pill none">No budget</span>'
+  const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(p.name)}">+ Set budget</span>`
     : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
   const when = view === "birthday" ? `<small class="occ-when">${occDay(o)}, ${inDays(o)}${o.turning ? ` · turning ${o.turning}` : ""}</small>` : "";
   return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-person="${esc(p.id)}">
@@ -5098,6 +5121,72 @@ function personCard(p, o, view, n = 0, still = false) {
   </div>`;
 }
 
+// ---------- budget walkthrough ----------
+// A few spotlight steps the first time someone opens Budget (People tab with people in it), replayable from
+// "How it works" in the hero. Seen state is per device (wishlist-budget-tour).
+const BUDGET_TOUR_KEY = "wishlist-budget-tour";
+function budgetTourSeen() { try { return !!localStorage.getItem(BUDGET_TOUR_KEY); } catch { return true; } }
+function budgetTour(force = false) {
+  if ($(".coach") || (!force && budgetTourSeen())) return;
+  try { localStorage.setItem(BUDGET_TOUR_KEY, "1"); } catch {}
+  const names = sharedNames();
+  const hasHh = !!$(".pcard[data-household]");
+  const steps = [
+    { sel: "#hero .hero-stat", title: "Your gift budget",
+      text: `This adds up what you plan to spend and shows what's left. ${names.length ? `${peopleNames(names)} ${names.length > 1 ? "see" : "sees"} the same numbers, so you plan together.` : "Only you see it."} The people you're shopping for never do.` },
+    { sel: ".pcard [data-setbudget], .pcard", title: "Set a budget for each person",
+      text: `Tap Set budget next to a name and pick how much to spend on them.${hasHh ? " People who live together share one budget at Christmas." : ""}` },
+    { sel: "#viewSeg", title: "Christmas and birthdays", text: "Switch here to plan birthdays. Each birthday gets its own budget." },
+    { sel: "#addPurchase", title: "Bought something?", text: "Add it here. It comes out of their budget, and you can tap a name to see what you got them." },
+  ].filter((x) => $(x.sel));
+  if (!steps.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "coach";
+  wrap.setAttribute("role", "dialog");
+  wrap.setAttribute("aria-modal", "true");
+  wrap.setAttribute("aria-label", "How Budget works");
+  wrap.innerHTML = `<div class="coach-hole"></div><div class="coach-pop" aria-live="polite"></div>`;
+  document.body.append(wrap);
+  const hole = $(".coach-hole", wrap), pop = $(".coach-pop", wrap);
+  pop.addEventListener("click", (e) => e.stopPropagation());
+  let i = 0;
+  const done = () => { wrap.remove(); removeEventListener("resize", place); document.removeEventListener("keydown", onKey); };
+  function place() {
+    const target = $(steps[i].sel);
+    if (!target) return;
+    const r = target.getBoundingClientRect(), pad = 8;
+    Object.assign(hole.style, { top: `${r.top - pad}px`, left: `${r.left - pad}px`, width: `${r.width + pad * 2}px`, height: `${r.height + pad * 2}px` });
+    const below = r.bottom + pad + 14, h = pop.offsetHeight;
+    pop.style.top = `${below + h < innerHeight - 16 ? below : Math.max(16, r.top - pad - 14 - h)}px`;
+  }
+  function show() {
+    const st = steps[i], last = i === steps.length - 1;
+    pop.innerHTML = `<h4>${esc(st.title)}</h4><p>${esc(st.text)}</p>
+      <div class="coach-foot"><span class="coach-dots" aria-label="Step ${i + 1} of ${steps.length}">${steps.map((_, n) => `<i class="${n === i ? "on" : ""}"></i>`).join("")}</span>
+        ${last ? "" : '<button class="coach-skip" type="button" data-skip>Skip</button>'}
+        <button class="btn primary small" type="button" data-next>${last ? "Got it" : "Next"}</button></div>`;
+    $("[data-next]", pop).onclick = () => { if (last) done(); else { i++; show(); } };
+    $("[data-skip]", pop)?.addEventListener("click", done);
+    $(steps[i].sel).scrollIntoView({ block: "center", behavior: document.documentElement.dataset.motion === "off" ? "auto" : "smooth" });
+    place();
+    setTimeout(place, 350);
+    $("[data-next]", pop).focus({ preventScroll: true });
+  }
+  function onKey(e) { if (e.key === "Escape") done(); }
+  addEventListener("resize", place);
+  document.addEventListener("keydown", onKey);
+  wrap.addEventListener("click", () => { if (i === steps.length - 1) done(); else { i++; show(); } });
+  show();
+}
+
+// The "+ Set budget" pill sits inside the card's expand button, so it handles its own tap (and Enter/Space).
+function wireSetBudget(card, open) {
+  const el = card.querySelector("[data-setbudget]");
+  if (!el) return;
+  el.addEventListener("click", (e) => { e.stopPropagation(); open(); });
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); open(); } });
+}
+
 // One Christmas card for a household you plan for as a whole: c = { h, o, members: [{ p, o }] }.
 // The budget and spending cover all of them; purchases list who each is for and who bought it.
 function hhBudgetCard(c, n = 0, still = false) {
@@ -5107,7 +5196,7 @@ function hhBudgetCard(c, n = 0, still = false) {
   const isOpen = state.openPeople.has(key);
   const over = budget != null && o.spent_cents > budget;
   const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
-  const pill = budget == null ? '<span class="pill none">No budget</span>'
+  const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(h.label)}">+ Set budget</span>`
     : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
   const buys = members.flatMap((m) => m.o.purchases.map((x) => ({ x, m })));
   const ideas = members.flatMap((m) => m.p.ideas);
@@ -5135,7 +5224,9 @@ function wireHhBudgetCard(card, c) {
   if (!card || !c) return;
   const key = `hh:${c.h.id}`;
   const buys = c.members.flatMap((m) => m.o.purchases.map((x) => ({ x, m })));
-  card.querySelector("[data-toggle]").onclick = () => {
+  wireSetBudget(card, () => editBudget(c.members[0].p, c.o));
+  card.querySelector("[data-toggle]").onclick = (e) => {
+    if (e.target.closest("[data-setbudget]")) return;
     if (state.openPeople.has(key)) state.openPeople.delete(key); else state.openPeople.add(key);
     card.outerHTML = hhBudgetCard(c, 0, true);
     wireHhBudgetCard($(`.pcard[data-household="${CSS.escape(c.h.id)}"]`), c);
@@ -5146,6 +5237,15 @@ function wireHhBudgetCard(card, c) {
   wireIdeaRows(card, c.members.flatMap((m) => m.p.ideas));
 }
 
+// One plain sentence under the budget sheet's title: what the budget covers and who sees it.
+function budgetNote(p, o) {
+  const h = hhOf(o);
+  const names = p.shared ? sharedNames() : [];
+  const covers = h ? `One budget for everyone in ${h.label}. ` : "";
+  const who = names.length ? `${peopleNames(names)} ${names.length > 1 ? "see" : "sees"} it too, so you can plan together.` : "Only you see it.";
+  return `${covers}${who} ${h ? "They never see it." : `${p.name} never sees it.`}`;
+}
+
 // p: a tracker person, o: the occasion the budget is for (for a household's Christmas, any one of them).
 function editBudget(p, o) {
   const h = hhOf(o);
@@ -5154,13 +5254,16 @@ function editBudget(p, o) {
     <h3>Budget for ${esc(h ? h.label : p.name)}${lockTip(`${budgetPrivacy(p).replace(` ${p.name} never sees it.`, h ? " They never see it." : ` ${p.name} never sees it.`)} Resets after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.`)}</h3>
     <form id="budgetForm" autocomplete="off">
       <div class="err" hidden></div>
+      <p class="sheet-note">${esc(budgetNote(p, o))}</p>
       <label class="field"><span>How much for ${esc(forWhat)}?</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(o.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
+      <div class="amt-chips" role="group" aria-label="Quick amounts">${[25, 50, 100, 200, 500].map((n) => `<button class="chip" type="button" data-amt="${n}">$${n}</button>`).join("")}</div>
       <div class="actions">
         ${o.budget_cents != null ? '<button class="btn danger" type="button" id="clearBudget">Clear</button>' : ""}
         <button class="btn primary" type="submit">Save</button>
       </div>
     </form>`, (el) => {
+      el.querySelectorAll("[data-amt]").forEach((b) => (b.onclick = () => { const i = $("[name=amount]", el); i.value = b.dataset.amt; i.focus(); }));
       wireForm($("#budgetForm", el), async ({ amount }) => { await api("budget", { subjectId: p.id, amount, occasion: o.code }); closeSheet(); toast("Budget saved"); render(); });
       $("#clearBudget", el)?.addEventListener("click", async () => {
         try { await api("budget", { subjectId: p.id, amount: "", occasion: o.code }); closeSheet(); toast("Budget cleared"); render(); } catch (e) { toast(e.message); }
