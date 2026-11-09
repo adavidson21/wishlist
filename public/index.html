@@ -2502,8 +2502,8 @@ function dupeTag(m) {
   const hhDiffers = m.householdId && twins.every((x) => x.householdId !== m.householdId);
   if (hhDiffers) return householdLabel(m.householdId);
   if (m.lastName && twins.every((x) => String(x.lastName || "").toLowerCase() !== m.lastName.toLowerCase())) return m.lastName;
-  // Uncle Freddy is in a household with his wife, cousin Freddy isn't in one: cousin Freddy reads "On their own".
-  if (!m.householdId && twins.every((x) => x.householdId)) return "On their own";
+  // Someone not in a household never gets a tag for that (it would call them out). Their twin's household tag
+  // already tells the two apart.
   return m.lastName || "";
 }
 const dupeHtml = (m) => { const t = dupeTag(m); return t ? `<span class="dupe-tag">${esc(t)}</span>` : ""; };
