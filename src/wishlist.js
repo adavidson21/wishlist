@@ -1379,6 +1379,20 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
   return { ...out, clean };
 }
 
+// ---------- clean up a wish name (the ✨ button) ----------
+
+const NAME_PROMPT = `You tidy up the name of one item on a gift wish list so family can tell at a glance what it is.
+The input is JSON: name (often a long, messy store page title), link (the product URL, may be empty), brand (may be empty),
+and avoid (names the person already saw and didn't want).
+Return title: a short, clear name a shopper would say out loud, ideally 2 to 7 words and under 60 characters, brand first when known.
+- Keep what matters to the gift: brand, product type, model or edition, and a defining variant (scent, flavor, edition).
+- Drop store names, SEO keyword stuffing, marketing words ("Premium", "Best Seller", "2026 New"), pack and size details, emoji, and ALL CAPS.
+- Use normal capitalization (brand names as the brand writes them).
+- If name is empty, work it out from the words in the link. Never invent details that aren't in the input.
+- If avoid has entries, return a noticeably different wording from all of them (shorter, or a different angle), still accurate.
+- If the name is already short and clear and avoid is empty, return it unchanged.`;
+const NAME_SCHEMA = { type: "object", properties: { title: { type: "string" } }, required: ["title"] };
+
 // ---------- photo to suggestions ----------
 
 const IDENTIFY_PROMPT = `You help someone add an item to a gift wish list from a photo they took or uploaded.
@@ -2613,6 +2627,23 @@ const handlers = {
     const { url, hint } = await body(req);
     await rateLimit(env, `preview:${me.id}`, ABUSE.previewPerMember, "That's a lot of links for now. Type the details in, or try again in a bit.");
     return previewLink(env, url, { ai: true, hint: typeof hint === "string" ? hint.slice(0, 150) : "" });
+  },
+
+  // The ✨ button: Gemini rewrites a messy wish name into a short, clear one. Nothing is saved.
+  async "POST name"(req, env) {
+    const me = await auth(req, env);
+    if (!env.GEMINI_API_KEY) fail(500, "AI names aren't set up (missing GEMINI_API_KEY).");
+    const b = await body(req);
+    const str = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
+    const title = str(b.title, LIMITS.title), url = str(b.url, LIMITS.url), brand = str(b.brand, LIMITS.brand);
+    if (!title && !url) fail(400, "Type a name or paste a link first.");
+    const avoid = (Array.isArray(b.avoid) ? b.avoid : []).map((x) => str(x, LIMITS.title)).filter(Boolean).slice(-5);
+    await rateLimit(env, `name:${me.id}`, ABUSE.namePerMember, "That's a lot of new names for now. Try again in a bit, or type it in.");
+    const r = await callGemini(env, NAME_PROMPT, [{ text: JSON.stringify({ name: title, link: url, brand, avoid }) }], NAME_SCHEMA, 15000);
+    if (r.error) return r.error;
+    const out = decode(String(r.data?.title || "")).replace(/\s+/g, " ").trim().slice(0, LIMITS.title);
+    if (!out) fail(502, "Couldn't come up with a name. Try again.");
+    return { title: out };
   },
 
   // Photo to suggestions: Gemini guesses what the item is and finds a store page for each. Nothing is stored.

@@ -33,6 +33,7 @@ export const LIMITS = {
   // Per person, things that fetch store pages or call Gemini.
   previewPerMember: [[80, 3600], [300, 86400]],
   identifyPerMember: [[15, 3600], [40, 86400]],
+  namePerMember: [[30, 3600], [100, 86400]], // the ✨ clean-up-the-name button
   pricesPerMember: [[120, 3600]],
   refreshPerMember: [[120, 3600]],
   imagePerMember: [[400, 3600]],

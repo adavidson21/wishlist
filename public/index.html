@@ -852,6 +852,18 @@
   .linkrow { display: flex; gap: 8px; }
   .linkrow .input { flex: 1; min-width: 0; }
   .linkrow .btn { min-height: 54px; }
+  .inwrap { position: relative; flex: 1; min-width: 0; }
+  .inwrap .input:not(textarea) { padding-right: 50px; }
+  .inwrap input[name="title"]:not(.has-btn) { padding-right: 15px; }
+  .clearx, .namefix { position: absolute; top: 50%; right: 6px; translate: 0 -50%; width: 42px; height: 42px; border: 0; border-radius: 12px;
+    display: grid; place-items: center; background: none; color: var(--muted); }
+  .clearx:active, .namefix:active { background: var(--panel); }
+  .clearx svg { width: 22px; height: 22px; padding: 3px; border-radius: 50%; background: var(--panel); }
+  .namefix { color: var(--brand); }
+  .namefix.busy svg { animation: spin 1s linear infinite; }
+  .clearx[hidden], .namefix[hidden] { display: none; }
+  @keyframes spin { to { rotate: 360deg; } }
+  .gc-hint { text-align: center; margin: 4px 0 8px; }
   .photo-box { margin-bottom: 16px; }
   .photo-btn { background: var(--soft); border-color: transparent; color: var(--soft-ink); min-height: 50px; }
   .photo-status { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 15px; color: var(--muted); }
@@ -1695,6 +1707,7 @@ const LOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 const CAMERA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 const OUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>';
 const PENCIL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const CLEAR_I = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
 const PASTE_I = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>';
 const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 const CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -3318,7 +3331,6 @@ function editItem(item, opts = {}) {
       ${isNew ? "" : linkField(item.url)}
       ${sizeColorRow()}
       ${photoField()}
-      ${isNew && !asId ? `<p class="hint" style="margin-top:-6px"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Gift card instead?</button></p>` : ""}
       ${isNew ? `<details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes)</span></summary>
         <div>${brandField}${priceField}${catField}${qtyField}${notesField}</div>
@@ -3327,6 +3339,7 @@ function editItem(item, opts = {}) {
       ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">${asId ? `On ${esc(asName)}'s list` : "On your list"}</h4>
         <label class="check"><span>Top pick<small>Gold star on ${asId ? "their" : "your"} list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
         ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
+      ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>` : ""}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
       <div class="actions sticky">
         ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
@@ -3393,8 +3406,9 @@ function editItem(item, opts = {}) {
 // first: the new-wish layout, where the link box leads and fills in everything else.
 function linkField(value, first) {
   return `<label class="field"><span${first ? ' class="vh"' : ""}>Link</span>
-    <div class="linkrow"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Paste a link from any store or app" : "Paste a link to fill in the rest"}">
-    <button class="btn small${first ? " primary" : ""}" type="button" data-fill>${value ? "Fill" : `${PASTE_I} Paste`}</button></div>
+    <div class="linkrow"><div class="inwrap"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Paste a link from any store or app" : "Paste a link to fill in the rest"}">
+    <button class="clearx" type="button" data-clear aria-label="Clear link"${value ? "" : " hidden"}>${CLEAR_I}</button></div>
+    <button class="btn small${first ? " primary" : ""}" type="button" data-paste${value ? " hidden" : ""}>${PASTE_I} Paste</button></div>
     <small class="fillmsg" hidden></small></label>`;
 }
 function photoField() {
@@ -3477,6 +3491,7 @@ function wirePhoto(form) {
         const x = suggestions[+b.dataset.i];
         const { url, price } = form.elements;
         form.elements.title.value = x.title;
+        form.elements.title.dispatchEvent(new Event("input", { bubbles: true }));
         if (!url.value.trim() || url.value === filled.url) url.value = filled.url = x.url || "";
         if (price && (!price.value.trim() || price.value === filled.price)) { price.value = filled.price = x.price ? String(x.price) : ""; setAutoPrice(form, price.value); }
         picks.querySelectorAll(".pick").forEach((p) => p.classList.toggle("on", p === b));
@@ -3538,32 +3553,44 @@ function wirePriceSync(form) {
   form.paintPriceSync();
 }
 
-// Pasting a link (or tapping Fill) looks up the product and fills the empty name and price fields.
+// Pasting or typing a link looks up the product and fills in the name, brand, price and photo on its own.
+// What a link filled in follows the link: a new link replaces it and clearing the link removes it.
+// Anything you typed yourself is never overwritten.
+const looksLikeLink = (v) => /^(https?:\/\/)?[\w-]+(\.[\w-]+)+\/\S+/i.test(v) || /^https?:\/\/[\w-]+(\.[\w-]+)+\/?$/i.test(v);
 function wireAutofill(form) {
   wirePhoto(form);
   wirePriceSync(form);
-  const url = form.elements.url, btn = form.querySelector("[data-fill]"), msg = form.querySelector(".fillmsg");
+  const url = form.elements.url, paste = form.querySelector("[data-paste]"), clear = form.querySelector("[data-clear]"), msg = form.querySelector(".fillmsg");
   const title = form.elements.title, price = form.elements.price;
-  const say = (t, ok, img) => {
+  // An AI tidy of a name the link filled in still counts as the link's, so clearing the link clears it too.
+  const auto = { title: "", brand: "" };
+  const name = wireName(form, (prev, next) => { if (prev && prev === auto.title) auto.title = next; });
+  const say = (t, ok, img, action) => {
     msg.textContent = t;
     if (img) { const el = document.createElement("img"); el.src = img; el.alt = ""; el.referrerPolicy = "no-referrer"; el.onerror = () => el.remove(); msg.prepend(el); }
+    if (action) { const b = document.createElement("button"); b.type = "button"; b.className = "linkbtn"; b.textContent = action.label; b.onclick = action.fn; msg.append(" ", b); }
     msg.hidden = !t; msg.classList.toggle("ok", !!ok); msg.classList.toggle("has-img", !!img);
   };
-  // seq: each Fill gets a number, and only the newest one may write to the form (pasting a new link mid-lookup wins).
-  let seq = 0, hint = "", last = "", slow;
+  // seq: each lookup gets a number, and only the newest one may write to the form (a new link mid-lookup wins).
+  // auto: what the current link put in each box, so the next link (or clearing) knows what's safe to replace.
+  let seq = 0, hint = "", last = "", slow, typing;
+  const mineNow = (el, k) => !!el && !!el.value.trim() && el.value !== auto[k];
   // Keep just the link in the box; remember the shared words as a backup name.
   const tidy = (raw) => {
     const s = splitShared(raw);
     if (s.url !== url.value) url.value = s.url;
     if (s.hint) hint = s.hint;
   };
+  const sync = () => { const has = !!url.value.trim(); paste.hidden = has; clear.hidden = !has; name.sync(); };
   async function fill(force) {
+    clearTimeout(typing);
     tidy(url.value);
     const v = url.value.trim();
     if (!v) return;
     const mine = ++seq;
     last = v;
-    btn.disabled = true; say("Looking it up...");
+    sync();
+    say("Looking it up...");
     clearTimeout(slow);
     // Blocked stores get looked up through Google Search, which takes a few seconds. Say so instead of looking stuck.
     slow = setTimeout(() => { if (mine === seq) say("Still looking. Some stores take a few seconds..."); }, 3500);
@@ -3580,53 +3607,124 @@ function wireAutofill(form) {
       if (r.image) { form.dataset.image = r.image; form.dataset.imageFor = url.value.trim(); } else { delete form.dataset.image; }
       // Sizes and colors the store offers (only the wish form listens).
       if (r.sizes?.length || r.colors?.length || r.size || r.color) form.dispatchEvent(Object.assign(new CustomEvent("linkoptions", { detail: r }), { force }));
-      let filled = [];
-      if (r.title && (force || !title.value.trim())) { title.value = r.title; filled.push("name"); }
+      const filled = [], kept = [];
+      if (r.title) { if (force || !mineNow(title, "title")) { name.set(r.title); auto.title = r.title; filled.push("name"); } else kept.push("name"); }
       const brandEl = form.elements.brand;
-      if (brandEl && r.brand && (force || !brandEl.value.trim())) { brandEl.value = r.brand; filled.push("brand"); }
+      if (brandEl && r.brand) { if (force || !mineNow(brandEl, "brand")) { brandEl.value = auto.brand = r.brand; filled.push("brand"); } else kept.push("brand"); }
       // A price still showing what the link gave last time counts as empty, so it follows the new link.
-      if (r.price != null && (force || !price.value.trim() || autoPrice(form))) { price.value = String(r.price); setAutoPrice(form, price.value); filled.push("price"); }
+      if (r.price != null) { if (force || !price.value.trim() || autoPrice(form)) { price.value = String(r.price); setAutoPrice(form, price.value); filled.push("price"); } else kept.push("price"); }
       if (filled.includes("price")) { const d = form.querySelector("details.more"); if (d) d.open = true; }
       if (r.image) filled.push("photo");
-      const list = filled.length > 1 ? `${filled.slice(0, -1).join(", ")} and ${filled.at(-1)}` : filled[0];
+      const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : xs[0]);
+      const replace = kept.length ? { label: `Use the link's ${and(kept)}`, fn: () => fill(true) } : null;
       say(r.guessed && filled.length ? `${r.site} wouldn't let us read that page, so the name is a guess from the link. Fix it up, or snap a photo instead.`
-        : filled.length ? `Filled in the ${list} from ${r.site}. Check it looks right.`
-        : r.title || r.price != null ? "Already filled in. Tap Fill to replace with the link's details."
-        : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0, r.image);
+        : filled.length ? `Filled in the ${and(filled)} from ${r.site}.${kept.length ? ` Kept your ${and(kept)}.` : ""}`
+        : kept.length ? `Kept what you typed.`
+        : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0, r.image, replace);
     } catch (e) { if (mine === seq) say(e.message); }
-    finally { if (mine === seq) { btn.disabled = false; clearTimeout(slow); } }
+    finally { if (mine === seq) clearTimeout(slow); }
   }
-  // Empty box: the button pastes from the clipboard. Something in it: the button looks it up again.
-  const syncBtn = () => { btn.innerHTML = url.value.trim() ? "Fill" : `${PASTE_I} Paste`; };
-  url.addEventListener("input", syncBtn);
-  btn.addEventListener("click", async () => {
-    if (url.value.trim()) return fill(true);
+  // Clear the link and everything it filled in. What you typed yourself stays.
+  clear.addEventListener("click", () => {
+    seq++; clearTimeout(slow); clearTimeout(typing);
+    url.value = ""; hint = ""; last = "";
+    if (title.value && title.value === auto.title) name.set("");
+    const brandEl = form.elements.brand;
+    if (brandEl && brandEl.value && brandEl.value === auto.brand) brandEl.value = "";
+    if (price && autoPrice(form)) { price.value = ""; setAutoPrice(form, ""); }
+    auto.title = auto.brand = "";
+    delete form.dataset.image;
+    say("");
+    sync();
+    url.focus();
+  });
+  // Empty box: the button pastes from the clipboard.
+  paste.addEventListener("click", async () => {
     let raw = "";
     try { raw = await navigator.clipboard.readText(); } catch {}
     if (!raw.trim()) { url.focus(); return say("Nothing to paste yet. Copy a link (Share, then Copy link), or long-press this box and tap Paste."); }
-    hint = ""; tidy(raw); syncBtn(); fill(false);
+    hint = ""; tidy(raw); fill(false);
   });
-  form.fillFromLink = () => { syncBtn(); return fill(false); };
+  form.fillFromLink = () => { sync(); return fill(false); };
   // A link pasted into the name box belongs in the link box.
   title.addEventListener("paste", (e) => {
     const raw = e.clipboardData?.getData("text") || "";
     if (!/https?:\/\/\S+/i.test(raw) || url.value.trim()) return;
-    e.preventDefault(); hint = ""; tidy(raw); syncBtn(); fill(false);
+    e.preventDefault(); hint = ""; tidy(raw); fill(false);
   });
   // Read the raw clipboard: a type=url box drops line breaks, which would glue the words onto the link.
   url.addEventListener("paste", (e) => {
     const raw = e.clipboardData?.getData("text");
     if (raw && splitShared(raw).url !== raw.trim()) { e.preventDefault(); hint = ""; tidy(raw); }
     else hint = "";
-    setTimeout(() => { syncBtn(); fill(false); }, 0);
+    setTimeout(() => fill(false), 0);
   });
-  // A link typed (or edited) by hand fills in when you leave the box, if it's new and the name is still empty.
+  // Typing (or editing) a link: look it up once you pause. Deleting it all works like the clear button.
+  url.addEventListener("input", () => {
+    sync();
+    clearTimeout(typing);
+    const v = url.value.trim();
+    if (!v && last) return clear.click();
+    if (v && v !== last && looksLikeLink(v)) typing = setTimeout(() => { if (url.value.trim() !== last) fill(false); }, 900);
+  });
   url.addEventListener("change", () => {
     tidy(url.value);
     const v = url.value.trim();
-    if (v && v !== last && !title.value.trim() && /^(https?:\/\/)?[\w-]+(\.[\w-]+)+\/\S+/i.test(v)) fill(false);
+    if (v && v !== last && looksLikeLink(v)) fill(false);
   });
   url.addEventListener("blur", () => tidy(url.value));
+  url.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fill(false); } });
+  sync();
+}
+
+// The ✨ button on the name box: Gemini suggests a short, clear name (store titles are often long and messy).
+// Tap again for a different one; Undo puts back what was there before.
+function wireName(form, onRename = () => {}) {
+  const title = form.elements.title, url = form.elements.url;
+  const row = document.createElement("div");
+  row.className = "inwrap";
+  title.replaceWith(row);
+  row.append(title);
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "namefix"; btn.innerHTML = SPARK_I;
+  btn.setAttribute("aria-label", "Clean up the name with AI"); btn.title = "Clean up the name";
+  row.append(btn);
+  const note = document.createElement("small");
+  note.className = "fillmsg"; note.hidden = true;
+  row.after(note);
+  let tried = [], before = null, quiet = false;
+  const sync = () => {
+    const show = title.value.trim().length >= 3 || !!url.value.trim();
+    btn.hidden = !show; title.classList.toggle("has-btn", show);
+  };
+  const reset = () => { tried = []; before = null; note.hidden = true; };
+  // Set the name from code. Fires input so the rest of the form (size row, category) updates.
+  const set = (v) => { quiet = true; title.value = v; title.dispatchEvent(new Event("input", { bubbles: true })); quiet = false; };
+  title.addEventListener("input", () => { if (!quiet) reset(); sync(); });
+  const say = (t, undo) => {
+    note.textContent = t;
+    if (undo) { const b = document.createElement("button"); b.type = "button"; b.className = "linkbtn"; b.textContent = "Undo"; b.onclick = () => { onRename(title.value, before); set(before); reset(); title.focus(); }; note.append(" ", b); }
+    note.hidden = !t;
+  };
+  btn.addEventListener("click", async () => {
+    const cur = title.value.trim();
+    btn.disabled = true; btn.classList.add("busy");
+    try {
+      const r = await api("name", { title: cur, url: url.value.trim(), brand: form.elements.brand?.value.trim() || "", avoid: tried.slice(-5) });
+      if (cur && !tried.includes(cur)) tried.push(cur);
+      if (r.title && r.title !== cur) {
+        if (before == null) before = cur;
+        tried.push(r.title);
+        onRename(title.value, r.title);
+        set(r.title);
+        say("New name. Tap ✨ again for another.", before !== "");
+        buzz();
+      } else say("That name already looks good.");
+    } catch (e) { say(e.message); }
+    finally { btn.disabled = false; btn.classList.remove("busy"); }
+  });
+  sync();
+  return { sync, set };
 }
 
 // Native confirm() is fine here: one tap, rare action.
