@@ -613,7 +613,7 @@
   .two label.field { margin-bottom: 12px; }
   select.input { appearance: none; -webkit-appearance: none; padding-right: 34px;
     background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23887' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; }
-  .bday { display: grid; grid-template-columns: 1.6fr 1fr 1.1fr; gap: 10px; margin-bottom: 16px; }
+  .bday { display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px; margin-bottom: 16px; }
   .flabel { display: block; font-size: 16px; font-weight: 700; margin-bottom: 7px; }
   .flabel em { font-style: normal; font-weight: 500; color: var(--faint); }
   /* "Good to know" card on a list: birthday, sizes, please no */
@@ -1986,7 +1986,7 @@ function householdChip(m) {
 // ---------- occasions ----------
 // Marks and budgets belong to an occasion: Christmas for everyone, plus a person's birthday if they added
 // one. The server sends each person's upcoming occasions, soonest first: { code: YYYYMMDD, date, christmas,
-// birthday, turning }. Things reset the day after an occasion.
+// birthday }. Things reset the day after an occasion.
 const occParts = (o) => o.date.split("-").map(Number);
 const occDay = (o) => { const [, m, d] = occParts(o); return `${MONTHS[m - 1].slice(0, 3)} ${d}`; };
 const daysUntil = (o) => {
@@ -3856,7 +3856,7 @@ async function renderFamily() {
         const wishes = m.itemCount ? plural(m.itemCount, "wish", "wishes") : "No wishes yet";
         const real = m.fullName && m.fullName !== m.name ? ` · ${esc(m.fullName)}` : "";
         const bday = (m.occasions || []).find((o) => o.birthday);
-        const soon = bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}${bday.turning ? `, turning ${bday.turning}` : ""}</span>` : "";
+        const soon = bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}</span>` : "";
         const looked = m.managedBy ? ` · ${m.managedBy === state.me.id ? "you look after" : m.canManage ? "your household looks after" : `looked after by ${esc(personName(m.managedBy))}`}` : "";
         // One wrapping row: what's on their list, then the household chip (other households only) and birthday.
         return `<button class="member slide" style="animation-delay:${Math.min(i, 12) * 0.05}s" type="button" data-id="${esc(m.id)}">
@@ -5218,7 +5218,7 @@ function personCard(p, o, view, n = 0, still = false) {
   const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
   const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(p.name)}">+ Set budget</span>`
     : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
-  const when = view === "birthday" ? `<small class="occ-when">${occDay(o)}, ${inDays(o)}${o.turning ? ` · turning ${o.turning}` : ""}</small>` : "";
+  const when = view === "birthday" ? `<small class="occ-when">${occDay(o)}, ${inDays(o)}</small>` : "";
   return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-person="${esc(p.id)}">
     <button class="pcard-head" type="button" data-toggle="${esc(p.id)}" aria-expanded="${isOpen}">
       <span class="pcard-top">${avatar(p.name, p.id)}
@@ -5878,9 +5878,8 @@ function hintsCard(p) {
 function birthdayPill(p) {
   if (!p.birthday) return "";
   const n = bdayIn(p.birthday);
-  const turning = p.birthYear ? new Date(Date.now() + n * 86400000).getFullYear() - p.birthYear : null;
   const soon = n === 0 ? "today!" : n === 1 ? "tomorrow" : n <= 45 ? `in ${n} days` : "";
-  return `<span class="pf-pill${soon ? " gold" : ""}"><span aria-hidden="true">🎂</span>${esc(bdayText(p.birthday))}${turning ? `, turning ${turning}` : ""}${soon ? ` · ${soon}` : ""}</span>`;
+  return `<span class="pf-pill${soon ? " gold" : ""}"><span aria-hidden="true">🎂</span>${esc(bdayText(p.birthday))}${soon ? ` · ${soon}` : ""}</span>`;
 }
 // Sizes, brands, gift style and colors. Used on your profile and on other people's pages.
 function detailsHtml(p) {
@@ -5984,7 +5983,6 @@ async function renderProfileEdit() {
       <div class="bday">
         <select class="input" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${bm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
         <select class="input" name="bday" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, k) => `<option value="${k + 1}"${bd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select>
-        <input class="input" name="byear" inputmode="numeric" maxlength="4" placeholder="Year" aria-label="Birth year (optional)" value="${esc(prof.birthYear || "")}">
       </div>
     </div>
 
@@ -6168,7 +6166,6 @@ async function renderProfileEdit() {
       lastName: f.lastName,
       bio: f.bio,
       birthday: f.bmonth ? `${pad(f.bmonth)}-${pad(f.bday)}` : "",
-      birthYear: f.bmonth ? f.byear.trim() : "",
       sizes: Object.fromEntries(SIZE_LABELS.map(([k]) => [k, f[`size_${k}`]])),
       avoid: f.avoid,
       brands,

@@ -73,31 +73,30 @@ const daysIn = (m, y = 2024) => [31, isLeap(y) ? 29 : 28, 31, 30, 31, 30, 31, 31
 const birthdayCode = (y, m, d) => dateCode(y, m, m === 2 && d === 29 && !isLeap(y) ? 28 : d);
 const isoOf = (code) => `${Math.floor(code / 10000)}-${String(Math.floor(code / 100) % 100).padStart(2, "0")}-${String(code % 100).padStart(2, "0")}`;
 
-// A member row's birthday (members.birthday "MM-DD", birth_year optional) as numbers, or null.
+// A member row's birthday (members.birthday "MM-DD", no year: Hints never shows ages) as numbers, or null.
 function bdayOf(m) {
   const x = typeof m?.birthday === "string" && m.birthday.match(/^(\d{2})-(\d{2})$/);
-  return x ? { month: +x[1], day: +x[2], year: m.birth_year || null } : null;
+  return x ? { month: +x[1], day: +x[2] } : null;
 }
-// Upcoming occasions for a member row (birthday, birth_year), soonest first.
-// Each: { code, date, christmas, birthday, turning }. A Dec 25 birthday is one occasion that's both.
+// Upcoming occasions for a member row (birthday), soonest first.
+// Each: { code, date, christmas, birthday }. A Dec 25 birthday is one occasion that's both.
 function occasionsFor(m, now = today()) {
   const y = Math.floor(now / 10000);
   const xmas = dateCode(y, 12, 25) >= now ? dateCode(y, 12, 25) : dateCode(y + 1, 12, 25);
-  const list = [{ code: xmas, christmas: true, birthday: false, turning: null }];
+  const list = [{ code: xmas, christmas: true, birthday: false }];
   const b = bdayOf(m);
   if (b) {
     let code = birthdayCode(y, b.month, b.day);
     if (code < now) code = birthdayCode(y + 1, b.month, b.day);
-    const turning = b.year ? Math.floor(code / 10000) - b.year : null;
     const same = list.find((o) => o.code === code);
-    if (same) Object.assign(same, { birthday: true, turning });
-    else list.push({ code, christmas: false, birthday: true, turning });
+    if (same) same.birthday = true;
+    else list.push({ code, christmas: false, birthday: true });
   }
   return list.sort((a, b) => a.code - b.code).map((o) => ({ ...o, date: isoOf(o.code) }));
 }
 
 async function memberOccasions(env, memberId) {
-  const m = await env.DB.prepare("SELECT birthday, birth_year FROM members WHERE id = ?").bind(memberId).first();
+  const m = await env.DB.prepare("SELECT birthday FROM members WHERE id = ?").bind(memberId).first();
   return occasionsFor(m);
 }
 // The occasion to file a mark or budget under: the one asked for if it's one of the person's upcoming
@@ -343,7 +342,6 @@ function profileOut(row) {
   try { sizes = JSON.parse(row?.sizes || "{}") || {}; } catch {}
   return {
     birthday: row?.birthday || null,
-    birthYear: row?.birthday ? row?.birth_year || null : null,
     sizes: Object.fromEntries(SIZE_KEYS.map((k) => [k, typeof sizes[k] === "string" ? sizes[k] : ""])),
     avoid: row?.avoid || "",
     brands: brandsOut(row?.brands),
@@ -1677,7 +1675,7 @@ const isSkipped = (skips, p) => skips.has(`m:${p.id}`) || (!!p.household_id && s
 
 async function circlePeople(env, memberId) {
   const { results } = await env.DB.prepare(
-    `SELECT DISTINCT m.id, m.name, m.birthday, m.birth_year, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id
+    `SELECT DISTINCT m.id, m.name, m.birthday, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id
       WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ?`,
   ).bind(memberId, memberId).all();
   return results;
@@ -1751,7 +1749,7 @@ async function reminders(env, budget) {
       if (!(await onceOnly(env, `bday:${r.id}:${p.id}:${bday.code}:${n}`))) continue;
       const has = await hasGiftFor(env, r.id, p.id, bday.code);
       sent += await deliver(env, r.id, {
-        title: `${nm(p)}'s birthday is ${n === 14 ? "in 2 weeks" : weekdayOf(bday.code)}${bday.turning ? ` (turning ${bday.turning})` : ""}`,
+        title: `${nm(p)}'s birthday is ${n === 14 ? "in 2 weeks" : weekdayOf(bday.code)}`,
         body: has ? "You've already got something lined up." : "You haven't picked a gift yet. Peek at their list?",
         url: `/#person/${p.id}`, tag: `bday:${p.id}`,
       }, budget);
@@ -1975,7 +1973,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.last_name, m.photo_at, m.birthday, m.birth_year, m.household_id, m.dislikes, m.managed_by, m.claim_expires, m.pin_hash IS NOT NULL AS has_pin,
+      `SELECT gm.group_id, m.id, m.name, m.last_name, m.photo_at, m.birthday, m.household_id, m.dislikes, m.managed_by, m.claim_expires, m.pin_hash IS NOT NULL AS has_pin,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -2800,7 +2798,7 @@ const handlers = {
     const inTeam = teamIds.map(() => "?").join(",");
     const [people, budgets, shared, itemBuys, ideaBuys, ideas, cardGifts] = await Promise.all([
       env.DB.prepare(
-        `SELECT DISTINCT m.id, m.name, m.photo_at, m.birthday, m.birth_year, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id
+        `SELECT DISTINCT m.id, m.name, m.photo_at, m.birthday, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id
           WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?) AND m.id != ?
           ORDER BY m.name COLLATE NOCASE`,
       ).bind(me.id, me.id).all(),
@@ -2904,7 +2902,7 @@ const handlers = {
         for (const code of new Set([...(shares ? sharedCodes : mine(budgets.results).map((b) => b.season)), ...mine(purchases).map((x) => x.occasion)])) {
           if (!occasions.some((o) => o.code === code)) {
             const xmas = isXmasCode(code);
-            occasions.push({ code, date: isoOf(code), christmas: xmas, birthday: !xmas, turning: null });
+            occasions.push({ code, date: isoOf(code), christmas: xmas, birthday: !xmas });
           }
         }
         occasions.sort((a, b) => a.code - b.code);
@@ -3509,7 +3507,7 @@ const handlers = {
 
   // Change your name, PIN, photo and/or profile. pin: "1234" sets it, "" removes it, absent leaves it alone.
   // photo: a small JPEG data URL (the app resizes it to a square first), "" removes it, absent leaves it alone.
-  // birthday: "MM-DD" or "" to clear. birthYear: optional, "" to clear. sizes: { shirt, pants, shoe, ring }. avoid: free text.
+  // birthday: "MM-DD" or "" to clear (no year; ages are never kept). sizes: { shirt, pants, shoe, ring }. avoid: free text.
   // brands: favorite brand names (free text). giftStyle, colors: up to 3 keys each. loves: short free text (old).
   // likes, dislikes: lists of short tags (Loves and Nopes). bio: one short line.
   // as: someone you look after (everything but the PIN). Absent = unchanged.
@@ -3532,20 +3530,14 @@ const handlers = {
       if (clash) fail(409, `Someone named ${fullNameOf(first, last)} is already in ${clash.name}.`);
       await env.DB.prepare("UPDATE members SET name = ?, last_name = ? WHERE id = ?").bind(first, last, who).run();
     }
-    if (b.birthday !== undefined || b.birthYear !== undefined) {
-      const before = await env.DB.prepare("SELECT birthday, birth_year FROM members WHERE id = ?").bind(who).first();
-      const birthday = b.birthday !== undefined ? birthdayValue(b.birthday) : before?.birthday || null;
-      let year = b.birthYear !== undefined ? b.birthYear : before?.birth_year;
-      year = birthday && year !== null && year !== undefined && year !== "" ? Number(year) : null;
-      if (year !== null) {
-        if (!Number.isInteger(year) || year < 1900 || year > Math.floor(today() / 10000)) fail(400, "That birth year doesn't look right.");
-        if (birthday === "02-29" && !isLeap(year)) fail(400, `${year} didn't have a February 29.`);
-      }
-      const after = { birthday, birth_year: year };
+    if (b.birthday !== undefined) {
+      const before = await env.DB.prepare("SELECT birthday FROM members WHERE id = ?").bind(who).first();
+      const birthday = birthdayValue(b.birthday);
+      const after = { birthday };
       const oldBday = occasionsFor(before).find((o) => o.birthday && !o.christmas)?.code;
       const next = occasionsFor(after);
       const newCode = (next.find((o) => o.birthday) || next.find((o) => o.christmas)).code;
-      const rows = [env.DB.prepare("UPDATE members SET birthday = ?, birth_year = ? WHERE id = ?").bind(birthday, year, who)];
+      const rows = [env.DB.prepare("UPDATE members SET birthday = ? WHERE id = ?").bind(birthday, who)];
       // Budgets and marks family filed for your upcoming birthday follow it to the new date (or to Christmas
       // if you removed it). You never see them; this just keeps their plans together.
       if (oldBday && oldBday !== newCode) {
