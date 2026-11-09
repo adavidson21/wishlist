@@ -1134,6 +1134,12 @@
   /* "New version" pill: top of the screen so it never fights the regular toast, and it stays until tapped. */
   #update { top: calc(env(safe-area-inset-top, 0px) + 12px); bottom: auto; padding-left: calc(14px * var(--z)); }
   #update svg { color: var(--gold); }
+  .hint a { color: var(--brand); font-weight: 700; }
+  .req-row { display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow, 0 1px 3px #2a1a1f14); }
+  .req-row .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .req-row .who small { color: var(--muted); }
+  .req-btns { display: flex; gap: 6px; flex: none; }
+  .req-stack { margin-bottom: 18px; }
   .offline { background: var(--panel); color: var(--muted); border-radius: 12px; padding: 10px 14px; font-size: 14px; margin-bottom: 16px; }
   .loading { color: var(--faint); text-align: center; padding: 50px 0; }
   .picker { display: grid; gap: 10px; margin-bottom: 14px; }
@@ -2289,13 +2295,19 @@ const heroTitle = (kicker, title) => `${kicker ? `<p class="kicker">${esc(kicker
 // ---------- sheet (bottom drawer) ----------
 const sheet = $("#sheet");
 function openSheet(html, onReady) {
+  if (sheet.dataset.locked) return; // the "Pick a PIN" sheet stays until it's done
   $("#sheetBody").innerHTML = '<div class="grab"></div><button class="iconbtn sheet-close" type="button" aria-label="Close">&times;</button>' + html;
   $("#sheetBody .sheet-close").onclick = closeSheet;
   if (!sheet.open) sheet.showModal();
   onReady?.($("#sheetBody"));
 }
-function closeSheet() { if (sheet.open) sheet.close(); }
+function closeSheet() { if (sheet.open && !sheet.dataset.locked) sheet.close(); }
 sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
+sheet.addEventListener("cancel", (e) => { if (sheet.dataset.locked) e.preventDefault(); });
+
+// A 4-digit PIN box. Everyone has a PIN: it's what stops someone with the circle link from signing in as you.
+const pinField = (label = "Pick a 4-digit PIN", hint = "You'll use it to sign in on a new phone. Nobody else ever sees it.") =>
+  `<label class="field"><span>${esc(label)}</span><input class="input pin-in" name="pin" type="tel" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" required></label>${hint ? `<p class="hint" style="margin-top:-4px">${esc(hint)}</p>` : ""}`;
 
 // ---------- confirm (in-app, replaces window.confirm) ----------
 // ask("Remove Sam? They'll leave the circle.", { yes: "Remove", danger: true }) resolves true or false.
@@ -2507,6 +2519,7 @@ async function refreshMe() {
   state.me = data.me;
   state.me.owner = data.owner || null; // whoever runs Hints (Settings > Questions or problems, and their Inbox)
   state.groups = data.groups;
+  state.pending = data.pending || []; // circles you asked to join (Ask to join) and are waiting on
   state.households = data.households || {};
   state.pets = data.pets || {};
   for (const g of data.groups) notePhotos(g.members);
@@ -2566,6 +2579,9 @@ async function render() {
   try {
     // Stale: refetch, but keep the old copy in place meanwhile so a tap during the reload still knows who you are.
     if (!state.me || state.stale) { const first = !state.me; state.stale = false; await refreshMe(); if (first) setTimeout(refreshDetails, 1500); }
+    // Asked to join a circle with Ask to join on, and not in any circle yet: nothing to show but the wait.
+    if (!state.groups.length && state.pending.length) return renderWaiting();
+    $("#tabs").hidden = false;
     fillNavMe();
     // Your own list always opens on My list, which is the only place Maybe wishes show.
     if (state.person && state.person === state.me?.id) { state.person = null; state.tab = "mine"; }
@@ -2580,6 +2596,7 @@ async function render() {
     lastViewKey = state.person || (state.household && `h:${state.household}`) || state.tab;
     lastDrawAt = Date.now();
     if (!state.me.onboarded && !state.toured) openTour();
+    else if (!state.me.hasPin) requirePin();
     else openPendingShare();
     if (changed) enter($("#view"), $("#hero"));
   } catch (e) {
@@ -2698,27 +2715,27 @@ async function renderWelcome(step = "code", info = {}) {
       setHero(heroTitle("Hints", `Welcome back, ${res.name}!`));
       v.innerHTML = `<form class="card slide" id="backForm" autocomplete="off">
         <div class="err" hidden></div>
-        <p class="lead" style="margin-top:0">This is your personal link. ${res.pin ? "Enter your PIN to sign in on this device." : "Tap below to sign in on this device."}</p>
-        ${res.pin ? `<label class="field"><span>Your PIN</span><input class="input" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" required style="text-align:center;letter-spacing:.4em;font-size:22px"></label>` : ""}
+        <p class="lead" style="margin-top:0">This is your personal link. ${res.pin ? "Enter your PIN to sign in on this device." : "Pick a PIN to sign in on this device."}</p>
+        ${res.pin ? `<label class="field"><span>Your PIN</span><input class="input" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" required style="text-align:center;letter-spacing:.4em;font-size:22px"></label>` : pinField()}
         <button class="btn primary wide" type="submit">Sign in as ${esc(res.name)}</button>
         <p style="text-align:center;margin:12px 0 0"><button class="btn quiet" type="button" id="notMe">Not ${esc(res.name)}?</button></p>
       </form>`;
-      if (res.pin) setTimeout(() => $("#backForm").elements.pin.focus(), 300);
+      setTimeout(() => $("#backForm").elements.pin.focus(), 300);
       wireForm($("#backForm"), async (d) => finishJoin(await api("invite/claim", { token: invite.hi, pin: d.pin })));
       $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
       return;
     }
     setHero(envelope() + heroTitle(res.by ? `${res.by} invited you` : "You're invited", `Hi ${res.name}!`));
     v.innerHTML = `
-      <p class="lead" style="text-align:center">${res.by ? `${esc(res.by)} set up` : "Someone set up"} your wish list${circle ? ` in <strong>${esc(circle)}</strong>` : ""}.${res.wishes ? ` It already has ${plural(res.wishes, "wish", "wishes")} on it.` : ""} Tap below and it's yours.</p>
+      <p class="lead" style="text-align:center">${res.by ? `${esc(res.by)} set up` : "Someone set up"} your wish list${circle ? ` in <strong>${esc(circle)}</strong>` : ""}.${res.wishes ? ` It already has ${plural(res.wishes, "wish", "wishes")} on it.` : ""} Pick a PIN and it's yours.</p>
       ${perks()}
-      <button class="add big shine slide" style="animation-delay:1.65s" type="button" id="claimBtn">I'm ${esc(res.name)}, let's go</button>
+      <form class="card slide" id="claimForm" autocomplete="off" style="animation-delay:1.65s">
+        <div class="err" hidden></div>
+        ${pinField()}
+        <button class="add big shine" type="submit">I'm ${esc(res.name)}, let's go</button>
+      </form>
       <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="notMe">Not ${esc(res.name)}?</button></p>`;
-    $("#claimBtn").onclick = async (e) => {
-      e.currentTarget.disabled = true;
-      try { finishJoin(await api("invite/claim", { token: invite.hi }), { joined: circle || "" }); }
-      catch (err) { oops(err.message); invite.hi = ""; renderWelcome("invite"); }
-    };
+    wireForm($("#claimForm"), async ({ pin }) => finishJoin(await api("invite/claim", { token: invite.hi, pin }), { joined: circle || "" }));
     $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
     return;
   }
@@ -2794,8 +2811,13 @@ async function renderWelcome(step = "code", info = {}) {
       const m = info.members.find((x) => x.id === b.dataset.id);
       if (m.waiting) return renderWelcome("mine", { ...info, member: m });
       if (m.hasPin) return renderWelcome("pin", { ...info, member: m });
+      // No PIN yet: the server says whether they can pick one here (428) or are signed in somewhere else (423).
       try { finishJoin(await api("join", { code: info.code, memberId: m.id }), { returning: true }); }
-      catch (e) { oops(e.message); }
+      catch (e) {
+        if (e.status === 428) return renderWelcome("firstpin", { ...info, member: m });
+        if (e.status === 423) return renderWelcome("elsewhere", { ...info, member: m, message: e.message });
+        oops(e.message);
+      }
     }));
     return;
   }
@@ -2805,17 +2827,48 @@ async function renderWelcome(step = "code", info = {}) {
     const m = info.member;
     setHero(backBtn + envelope() + heroTitle(info.group.name, `Hi ${m.name}!`));
     v.innerHTML = `
-      <p class="lead" style="text-align:center">${m.by ? `${esc(m.by)} set up` : "Someone set up"} your wish list. Tap below and it's yours. You can add a PIN next, so only you can sign in as you.</p>
+      <p class="lead" style="text-align:center">${m.by ? `${esc(m.by)} set up` : "Someone set up"} your wish list. Pick a PIN and it's yours. The PIN makes sure only you can sign in as you.</p>
       ${perks()}
-      <button class="add big shine slide" type="button" id="mineBtn">I'm ${esc(m.name)}, let's go</button>
+      <form class="card slide" id="mineForm" autocomplete="off">
+        <div class="err" hidden></div>
+        ${pinField()}
+        <button class="add big shine" type="submit">I'm ${esc(m.name)}, let's go</button>
+      </form>
       <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="notMine">Not ${esc(m.name)}?</button></p>`;
     $("#backBtn").onclick = () => renderWelcome("who", info);
     $("#notMine").onclick = () => renderWelcome("who", info);
-    $("#mineBtn").onclick = async (e) => {
-      e.currentTarget.disabled = true;
-      try { finishJoin(await api("join", { code: info.code, memberId: m.id }), { joined: info.group.name }); }
-      catch (err) { oops(err.message); renderWelcome("who", info); }
-    };
+    wireForm($("#mineForm"), async ({ pin }) => finishJoin(await api("join", { code: info.code, memberId: m.id, pin }), { joined: info.group.name }));
+    return;
+  }
+
+  // Someone with no PIN yet who isn't signed in anywhere (or whose PIN was cleared): they pick one now.
+  if (step === "firstpin") {
+    const m = info.member;
+    setHero(backBtn + heroTitle(info.group.name, `Hi ${m.name}`));
+    v.innerHTML = `
+      <form class="card slide" id="firstPinForm" autocomplete="off">
+        <div class="err" hidden></div>
+        <p class="lead" style="margin-top:0">Hints asks everyone for a 4-digit PIN now, so nobody else can sign in as you and peek at your surprises.</p>
+        ${pinField()}
+        <button class="btn primary wide" type="submit">Sign in as ${esc(m.name)}</button>
+        <p style="text-align:center;margin:12px 0 0"><button class="btn quiet" type="button" id="notMine">Not ${esc(m.name)}?</button></p>
+      </form>`;
+    setTimeout(() => $("#firstPinForm").elements.pin.focus(), 300);
+    $("#backBtn").onclick = $("#notMine").onclick = () => renderWelcome("who", info);
+    wireForm($("#firstPinForm"), async ({ pin }) => finishJoin(await api("join", { code: info.code, memberId: m.id, pin }), { returning: true }));
+    return;
+  }
+
+  // No PIN, but already signed in on another device: they set a PIN there first.
+  if (step === "elsewhere") {
+    const m = info.member;
+    setHero(backBtn + heroTitle(info.group.name, `Hi ${m.name}`));
+    v.innerHTML = `<div class="card slide">
+        <p class="lead" style="margin-top:0">${esc(info.message)}</p>
+        <p class="subtle">Not ${esc(m.name)}? Go back and tap your own name, or add yourself.</p>
+        <button class="btn primary wide" type="button" id="elseBack">Back</button>
+      </div>`;
+    $("#backBtn").onclick = $("#elseBack").onclick = () => renderWelcome("who", info);
     return;
   }
 
@@ -2836,7 +2889,7 @@ async function renderWelcome(step = "code", info = {}) {
     return;
   }
 
-  // Your name, with your avatar updating as you type. The PIN comes later, in the welcome tour.
+  // Your name (with your avatar updating as you type) and a PIN.
   if (step === "new" || step === "start") {
     const starting = step === "start";
     setHero(backBtn + heroTitle(starting ? "Free, and takes a minute" : `Join ${info.group.name}`, starting ? "Start a new circle" : "Nice to meet you"));
@@ -2849,7 +2902,10 @@ async function renderWelcome(step = "code", info = {}) {
         ${starting ? `<label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>` : ""}
         ${nameFields("Your")}
         <p class="hint" style="margin-top:-4px">Only needed if someone here has the same first name.</p>
-        <button class="btn primary wide" type="submit">${starting ? "Create circle" : `Join ${esc(info.group.name)}`}</button>
+        ${pinField()}
+        ${!starting && info.group.askToJoin ? `<p class="hint">${info.group.admin ? esc(info.group.admin) : "The circle's admin"} lets new people in, so you'll see everyone's lists once they say yes.</p>` : ""}
+        <button class="btn primary wide" type="submit">${starting ? "Create circle" : info.group.askToJoin ? "Ask to join" : `Join ${esc(info.group.name)}`}</button>
+        <p class="hint" style="text-align:center;margin:10px 0 0"><a href="/privacy" target="_blank" rel="noopener">How Hints keeps your info private</a></p>
       </form>`;
     const nameIn = $("#newForm").elements.name;
     let last = "?";
@@ -2863,7 +2919,7 @@ async function renderWelcome(step = "code", info = {}) {
     $("#backBtn").onclick = () => (starting ? renderWelcome(invite ? "invite" : "code") : renderWelcome("who", info));
     wireForm($("#newForm"), async (d) => {
       if (starting) finishJoin(await api("start", d), { started: d.groupName.trim() });
-      else finishJoin(await api("join", { code: info.code, name: d.name, lastName: d.lastName }), { joined: info.group.name });
+      else finishJoin(await api("join", { code: info.code, name: d.name, lastName: d.lastName, pin: d.pin }), { joined: info.group.name });
     });
   }
 }
@@ -2898,7 +2954,7 @@ function renderLanding() {
 
     <div class="land-cta">
       ${start("startTop", "Start a circle")}
-      <p class="land-fine">Free, no ads, nothing to download. Takes about a minute.</p>
+      <p class="land-fine">Free, no ads, nothing to download. Takes about a minute. <a href="/privacy">Privacy</a></p>
     </div>
 
     <h2 class="land-h">No more "what do you want this year?" texts</h2>
@@ -2915,7 +2971,7 @@ function renderLanding() {
     <ol class="land-steps">
       <li><b>1</b><span>Start a circle<small>Give it a name, like "Family Christmas", and add your name.</small></span></li>
       <li><b>2</b><span>Drop a few hints<small>Add things you'd love. You can even start lists for the people you shop for.</small></span></li>
-      <li><b>3</b><span>Send one link<small>Everyone taps it, picks their name, and they're in. No passwords to remember.</small></span></li>
+      <li><b>3</b><span>Send one link<small>Everyone taps it, picks their name and a 4-digit PIN, and they're in. No passwords or emails.</small></span></li>
     </ol>
 
     <div class="land-cta">${start("startBottom", "Start your circle")}</div>
@@ -2934,6 +2990,69 @@ function renderLanding() {
     renderWelcome("who", { code, ...res });
   });
   $("#startTop").onclick = $("#startBottom").onclick = () => { scrollTo(0, 0); renderWelcome("start"); };
+}
+
+// Everyone needs a PIN. People from before PINs were required (or whose PIN someone cleared) get this sheet, which
+// can't be closed until they pick one.
+let pinAsked = false;
+function requirePin() {
+  if (pinAsked || state.me.hasPin || tourEl.open) return;
+  pinAsked = true;
+  const pc = state.me.pinCleared;
+  closeSheet();
+  openSheet(`<form id="needPin" autocomplete="off">
+      <h3>${pc ? "Pick a new PIN" : "Pick a PIN"}</h3>
+      <p>${pc ? `${esc(pc.by)} cleared your old one so you could sign in. ` : ""}Hints now asks everyone for a 4-digit PIN. It stops anyone else with your circle's link from signing in as you and seeing your surprises.</p>
+      <div class="err" hidden></div>
+      ${pinField("Your PIN")}
+      <button class="btn primary wide" type="submit">Save PIN</button>
+    </form>`, (el) => {
+    el.querySelector(".sheet-close")?.remove();
+    sheet.dataset.locked = "1";
+    setTimeout(() => $("#needPin", el).elements.pin.focus(), 300);
+    wireForm($("#needPin", el), async ({ pin }) => {
+      await api("profile", { pin });
+      delete sheet.dataset.locked;
+      state.me.hasPin = true;
+      state.me.pinCleared = null;
+      closeSheet();
+      toast("PIN saved");
+    });
+  });
+}
+
+// Waiting for a circle's admin to let you in (Ask to join).
+function renderWaiting() {
+  $("#tabs").hidden = true;
+  $("#navMe") && ($("#navMe").hidden = true);
+  const p = state.pending[0];
+  setHero(envelope() + heroTitle(p.name, "Almost in"));
+  $("#view").innerHTML = `<div class="card slide" style="text-align:center">
+      <p class="lead" style="margin-top:0">${p.admin ? esc(p.admin) : "The circle's admin"} lets new people into <strong>${esc(p.name)}</strong>. You'll see everyone's lists as soon as they say yes.</p>
+      <button class="btn primary wide" type="button" id="waitCheck">Check again</button>
+      <button class="btn quiet wide" type="button" id="waitCancel" style="margin-top:8px">Cancel my request</button>
+    </div>`;
+  $("#waitCheck").onclick = async (e) => {
+    e.currentTarget.disabled = true;
+    state.stale = true;
+    await render();
+    if (!state.groups.length) toast("Still waiting");
+  };
+  $("#waitCancel").onclick = async () => {
+    if (!(await ask(`Cancel your request to join ${p.name}?`, { yes: "Cancel request", no: "Keep waiting", danger: true }))) return;
+    try { await api("join/cancel", {}); } catch {}
+    signOutHere();
+  };
+}
+
+// Forget this device's sign-in and go back to the start.
+function signOutHere() {
+  setToken(null);
+  try { localStorage.removeItem(CACHE_KEY); } catch {}
+  state.me = null;
+  state.tab = "mine";
+  history.replaceState(null, "", location.pathname);
+  render();
 }
 
 // Signed in: clean up the URL, then the welcome tour (for new people) plays over My list.
@@ -2995,8 +3114,9 @@ async function offerJoin(inv) {
     $("#yesJoin", el).onclick = async (e) => {
       e.currentTarget.disabled = true;
       try {
-        await api("family/join", { code: inv.code });
+        const r = await api("family/join", { code: inv.code });
         closeSheet();
+        if (r.pending) { toast(`Asked to join ${name}. You're in once the admin says yes.`); return; }
         party();
         toast(`You joined ${name}`);
         state.stale = true;
@@ -3575,16 +3695,12 @@ async function renderMine() {
       <p>${drafts.length ? `You have ${plural(drafts.length, "maybe", "maybes")}. Publish one when you're ready for your circles to see it.` : "Drop a hint about something you'd love."}</p>
       ${drafts.length ? `<button class="add" type="button" data-mview="maybe">${LOCK} See my maybes</button>` : `<button class="add" type="button" id="listAdd">${PLUS} Drop a hint</button>`}
     </div>`;
-  const pc = state.me.pinCleared;
-  const pinNotice = pc ? `<div class="starter slide" id="pinNotice" style="margin:0 0 14px"><strong>Your PIN was cleared</strong>
-      <p>${esc(pc.by)} cleared it on ${new Date(pc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, so you could sign in again. Set a new one to keep your notes yours.</p>
-      <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pinNoticeOk">Not now</button><button class="btn primary" type="button" id="pinNoticeSet">Set a PIN</button></div></div>` : "";
   const nameTwin = !state.me.lastName && everyone().some((x) => x.id !== state.me.id && x.name.toLowerCase() === state.me.name.toLowerCase());
   const lastNotice = !nameTwin ? "" : `<form class="starter slide" id="lastNotice" style="margin:0 0 14px" autocomplete="off"><strong>Add your last name</strong>
       <p>So your people can tell you apart from anyone else named ${esc(state.me.name)}.</p><div class="err" hidden></div>
       <label class="field"><span>Last name</span><input class="input" name="lastName" maxlength="40" required></label>
       <div class="actions" style="margin:0"><button class="btn primary" type="submit">Save</button></div></form>`;
-  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards) + receivedSection(data.received) + shareRow()) + "</div>" : `
+  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards) + receivedSection(data.received) + shareRow()) + "</div>" : `
     <div class="empty">
       ${giftBox("Drop your first hint")}
       <strong>Let's start your list</strong>
@@ -3608,16 +3724,12 @@ async function renderMine() {
     $(`[data-mview="${state.mineView}"]`, v)?.focus();
   });
   $("#bdayAdd")?.addEventListener("click", quickBirthday);
-  const dropPinNotice = () => { state.me.pinCleared = null; $("#pinNotice")?.remove(); api("pin/seen", {}).catch(() => {}); };
-  $("#pinNoticeOk")?.addEventListener("click", dropPinNotice);
   if ($("#lastNotice")) wireForm($("#lastNotice"), async ({ lastName }) => {
     await api("profile", { lastName });
     state.me.lastName = lastName.trim();
     $("#lastNotice")?.remove();
     toast("Last name saved");
   });
-  // Setting the PIN clears the notice on the server too.
-  $("#pinNoticeSet")?.addEventListener("click", () => { state.setSec = "app"; setTab("settings"); });
   $("#staleAdd")?.addEventListener("click", () => addThing());
   $("#staleOk")?.addEventListener("click", () => {
     try { localStorage.setItem(STALE_NUDGE_KEY, `${state.me.id}:${Math.floor((state.today || 0) / 10000)}`); } catch {}
@@ -4798,6 +4910,13 @@ async function renderFamily() {
   };
   const head = (fam, first) => `<div class="label fam-label"${first ? ' style="margin-top:0"' : ""}><span>${tileAvatar(fam.name, `g:${fam.id}`)}${esc(fam.name)}</span><span class="btns">${isAdmin(fam) ? `<button class="btn quiet small" type="button" data-manage="${esc(fam.id)}">Manage</button>` : ""}<button class="btn quiet small" type="button" data-share="${esc(fam.id)}">Invite</button></span></div>`;
   const addRow = `<button class="add soft c-add" type="button" data-add-managed>${PLUS} Add someone who doesn't use the app</button>`;
+  // Ask to join: people waiting on you (circles you run).
+  const reqs = state.groups.filter(isAdmin).flatMap((fam) => (fam.requests || []).map((r) => ({ ...r, g: fam })));
+  const requestsHtml = reqs.length ? `<div class="label" style="margin-top:0">Waiting to join</div>
+    <div class="stack req-stack">${reqs.map((r) => `<div class="req-row slide">${avatar(r.name, r.id)}
+      <span class="who"><strong>${esc(r.name)}${r.lastName ? ` ${esc(r.lastName)}` : ""}</strong><small>Wants to join ${esc(r.g.name)}</small></span>
+      <span class="req-btns"><button class="btn small quiet" type="button" data-req="${esc(r.g.id)}:${esc(r.id)}" data-allow="">Decline</button>
+      <button class="btn small primary" type="button" data-req="${esc(r.g.id)}:${esc(r.id)}" data-allow="1">Let in</button></span></div>`).join("")}</div>` : "";
 
   if (multi()) {
     // In more than one circle: a section per circle. Someone in two of them shows in both.
@@ -4808,10 +4927,10 @@ async function renderFamily() {
       return `<section class="csection">${head(fam, !n && !catchUpHtml && !controls)}
         ${ppl.length ? groupsHtml(ppl) : `<p class="footnote" style="margin:12px 0 0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</section>`;
     }).join("");
-    v.innerHTML = `${catchUpHtml}${controls ? `<div class="c-top${catchUpHtml ? "" : " first"}">${controls}</div>` : ""}${sections}
+    v.innerHTML = `${requestsHtml}${catchUpHtml}${controls ? `<div class="c-top${catchUpHtml ? "" : " first"}">${controls}</div>` : ""}${sections}
       <p class="footnote c-nomatch" hidden>No one by that name.</p>${addRow}`;
   } else {
-    v.innerHTML = `${catchUpHtml}${g ? head(g, !catchUpHtml) : ""}
+    v.innerHTML = `${requestsHtml}${catchUpHtml}${g ? head(g, !catchUpHtml && !requestsHtml) : ""}
       ${people.length ? `${controls}<div class="csection">${groupsHtml(people)}</div><p class="footnote c-nomatch" hidden>No one by that name.</p>` : `
         <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Their lists show up here once they join.</p></div>
         <div style="margin-top:12px">${g ? inviteCard(g) : ""}</div>`}
@@ -4824,6 +4943,15 @@ async function renderFamily() {
     setTab("family", b.dataset.cu);
   }));
   v.querySelectorAll("[data-add-managed]").forEach((b) => (b.onclick = addManaged));
+  v.querySelectorAll("[data-req]").forEach((b) => (b.onclick = async () => {
+    const [groupId, memberId] = b.dataset.req.split(":");
+    const allow = !!b.dataset.allow;
+    const who = reqs.find((r) => r.id === memberId)?.name || "them";
+    if (!allow && !(await ask(`Turn ${who} away? They won't be able to see ${groupName(groupId)}.`, { yes: "Decline", danger: true }))) return;
+    b.disabled = true;
+    try { await api("family/request", { groupId, memberId, allow }); toast(allow ? `${who} is in ${groupName(groupId)}` : "Request declined"); state.stale = true; render(); }
+    catch (e) { oops(e.message); b.disabled = false; }
+  }));
   v.querySelectorAll("[data-open-hh]").forEach((b) => (b.onclick = () => openHousehold(b.dataset.openHh)));
   v.querySelectorAll("[data-cf]").forEach((b) => (b.onclick = () => { state.circleFilter = b.dataset.cf; renderFamily(); }));
   v.querySelectorAll("[data-who-change]").forEach((b) => (b.onclick = () => t && openBudgetWho(t, () => renderFamily())));
@@ -8020,13 +8148,12 @@ async function renderSettings() {
 
     <div class="label">Sign-in PIN${tip("Stops anyone else signing in as you and seeing your notes.")}</div>
     <div class="set-card">
-      <p class="sub">${state.me.hasPin ? "PIN is on." : "No PIN yet."}</p>
+      <p class="sub">You'll need it to sign in on a new phone or computer.</p>
       <form id="pinForm" autocomplete="off">
         <div class="err" hidden></div>
-        <label class="field"><span>${state.me.hasPin ? "New PIN" : "PIN"}</span><input class="input pin-in" name="pin" inputmode="numeric" pattern="\\d{4}" maxlength="4" required></label>
+        <label class="field"><span>New PIN</span><input class="input pin-in" name="pin" type="tel" inputmode="numeric" pattern="\\d{4}" maxlength="4" required></label>
         <div class="actions">
-          ${state.me.hasPin ? '<button class="btn danger" type="button" id="removePin">Remove PIN</button>' : ""}
-          <button class="btn" type="submit">${state.me.hasPin ? "Change PIN" : "Set PIN"}</button>
+          <button class="btn" type="submit">Change PIN</button>
         </div>
       </form>
     </div>
@@ -8065,8 +8192,14 @@ async function renderSettings() {
       </div>
     </div>
 
-    <div class="set-card" style="margin-top:26px">
+    <div class="label">Your account</div>
+    <div class="set-card">
+      <button class="btn wide" type="button" id="signOutOthers">Sign out everywhere else</button>
+      <p class="sub" style="margin:6px 0 12px">Lost a phone, or signed in on someone else's? This signs out every other phone and computer.</p>
       <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
+      <hr class="set-div">
+      <a class="btn wide quiet" href="/privacy" target="_blank" rel="noopener">Privacy: what Hints keeps and who sees it</a>
+      <button class="btn wide quiet danger" type="button" id="deleteMe" style="margin-top:8px">Delete my Hints</button>
     </div>
 `,
     circles: `
@@ -8166,21 +8299,34 @@ async function renderSettings() {
       toast(`Sent to ${to}. Thank you!`);
     });
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
-    $("#removePin", v)?.addEventListener("click", async () => {
-      try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { oops(e.message); }
-    });
     $("#signOut", v).onclick = async () => {
       // The server drops this device's notifications with the sign-in; the browser forgets its subscription too,
       // so whoever signs in next starts with notifications off.
       await dropBrowserPush();
       try { await api("signout", {}); } catch {}
-      setToken(null);
-      try { localStorage.removeItem(CACHE_KEY); } catch {}
-      state.me = null;
-      state.tab = "mine";
-      history.replaceState(null, "", location.pathname);
-      render();
+      signOutHere();
     };
+    $("#signOutOthers", v).onclick = async (e) => {
+      if (!(await ask("Sign out everywhere else? Every other phone and computer signed in as you will need your PIN to sign in again. This one stays signed in.", { yes: "Sign them out" }))) return;
+      e.currentTarget.disabled = true;
+      try { const { signedOut } = await api("signout/others", {}); toast(signedOut ? `Signed out ${plural(signedOut, "other device", "other devices")}` : "You weren't signed in anywhere else"); }
+      catch (err) { oops(err.message); }
+      e.currentTarget.disabled = false;
+    };
+    $("#deleteMe", v).onclick = () => openSheet(`<form id="delForm" autocomplete="off">
+        <h3>Delete my Hints?</h3>
+        <p>This deletes your profile, your wish list, your gift ideas, budgets and purchases, your chat messages and your photos, for good. Your circles won't see your list anymore, and it can't be undone.</p>
+        <p class="subtle">Circles you run get a new admin. A circle that's just you is deleted too.</p>
+        <div class="err" hidden></div>
+        ${pinField("Enter your PIN to confirm", "")}
+        <button class="btn danger wide" type="submit">Delete everything</button>
+      </form>`, (el) => wireForm($("#delForm", el), async ({ pin }) => {
+        await api("account/delete", { pin });
+        await dropBrowserPush();
+        closeSheet();
+        signOutHere();
+        toast("Your Hints is deleted");
+      }));
   }
   if (sec === "circles") {
     v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((g) => g.id === b.dataset.share))));
@@ -8190,7 +8336,10 @@ async function renderSettings() {
       if (!(await ask(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.${admin}`, { yes: "Leave", danger: true }))) return;
       try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { oops(e.message); }
     }));
-    wireForm($("#joinForm", v), async ({ code }) => { const { group: g } = await api("family/join", { code }); reload(`Joined ${g.name}`); });
+    wireForm($("#joinForm", v), async ({ code }) => {
+      const { group: g, pending } = await api("family/join", { code });
+      reload(pending ? `Asked to join ${g.name}. You're in once the admin says yes.` : `Joined ${g.name}`);
+    });
     $("#startFam", v).onclick = () => openSheet(`
       <h3>Start a new circle</h3>
       <form id="startForm" autocomplete="off">
@@ -8248,6 +8397,13 @@ async function paintInbox(box) {
   }));
 }
 
+// A new invite link for a circle (admin). Old links and the old code stop working.
+async function resetInvite(g, reload) {
+  if (!(await ask(`Reset ${g.name}'s invite link? Old links and the old code stop working right away. Everyone already in stays in, and personal links keep working.`, { yes: "Reset link" }))) return;
+  try { await api("family/code", { groupId: g.id }); await reload("New invite link ready. Send it with Invite."); }
+  catch (e) { oops(e.message); }
+}
+
 // Manage a circle (Circles tab, admin only; the API checks too): photo, name, its households, and who's admin.
 const isAdmin = (g) => !!g && g.createdBy === state.me.id;
 // "Clear PIN" buttons (circle Manage, Settings > Household): for someone who forgot theirs. They'll see who cleared it.
@@ -8273,6 +8429,10 @@ function openCircleManage(gid) {
       <button class="btn wide" type="submit">Save name</button>
     </form>
     <hr class="set-div">
+    <h4>Who can join${tip("Anyone with the invite link can join. Turn on Ask to join and new people wait until you let them in. Resetting the link stops old links and the old code from working.")}</h4>
+    ${swRow("askJoin", "Ask to join", "New people wait until you let them in", !!g.askToJoin)}
+    <button class="btn wide" type="button" id="cmReset" style="margin-top:8px">Reset invite link</button>
+    <hr class="set-div">
     <h4>Households${tip("People who live or gift together, like Mom & Dad. Everyone can manage their own; you can manage any of them here.")}</h4>
     <button class="btn wide" type="button" id="cmHh" style="margin-top:8px">Manage households</button>
     <hr class="set-div">
@@ -8297,13 +8457,25 @@ function openCircleManage(gid) {
     wirePhotoRow(el, async (photo) => { await api("family/edit", { groupId: gid, photo }); await reload(photo ? "Circle photo saved" : "Circle photo removed"); });
     wireForm($("#circleForm", el), async ({ name }) => { await api("family/edit", { groupId: gid, name }); await reload("Circle renamed"); });
     $("#cmHh", el).onclick = () => openHouseholds(gid);
+    $("#askJoin", el).onclick = async (e) => {
+      const on = e.currentTarget.getAttribute("aria-checked") !== "true";
+      e.currentTarget.disabled = true;
+      try { await api("family/edit", { groupId: gid, askToJoin: on }); await reload(on ? "New people will ask to join" : "Anyone with the link can join"); }
+      catch (err) { oops(err.message); e.currentTarget.disabled = false; }
+    };
+    $("#cmReset", el).onclick = () => resetInvite(g, reload);
     wireClearPin(el, reload);
     el.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = async () => {
       const who = personName(b.dataset.kick);
-      if (!(await ask(`Take ${who} out of ${g.name}? They won't see anyone's lists here, and nobody here will see theirs. They can rejoin with the invite code.`, { yes: "Take out", danger: true }))) return;
+      if (!(await ask(`Take ${who} out of ${g.name}? They won't see anyone's lists here, and nobody here will see theirs.`, { yes: "Take out", danger: true }))) return;
       b.disabled = true;
-      try { await api("family/remove", { groupId: gid, memberId: b.dataset.kick }); await reload(`${who} is out of ${g.name}`); }
-      catch (e) { oops(e.message); b.disabled = false; }
+      try { await api("family/remove", { groupId: gid, memberId: b.dataset.kick }); }
+      catch (e) { oops(e.message); b.disabled = false; return; }
+      // The old link would let them straight back in.
+      if (await ask(`Reset the invite link too? ${who} could rejoin with the old one. Everyone else stays in; new people will need the new link.`, { yes: "Reset link", no: "Not now" })) {
+        try { await api("family/code", { groupId: gid }); return reload(`${who} is out, and ${g.name} has a new invite link`); } catch (e) { oops(e.message); }
+      }
+      await reload(`${who} is out of ${g.name}`);
     }));
     const af = $("#adminForm", el);
     if (af) wireForm(af, async ({ memberId }) => {

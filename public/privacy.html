@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Privacy · Hints</title>
+<meta name="description" content="What Hints keeps, who can see it, and how to delete it.">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+  :root { --brand: #7A1E3A; --ink: #2A1A1F; --muted: #6B5E62; --bg: #FBF7F2; --card: #fff; --line: #EFE6E1; --gold: #D9A94A; --gold-soft: #FBF1DC; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #F3E9EC; --muted: #B9A9AE; --bg: #1B1416; --card: #261D20; --line: #3A2D31; --gold-soft: #3A2F1C; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 Figtree, system-ui, sans-serif; }
+  header { background: var(--brand); color: #fff; padding: 32px 20px 28px; }
+  header .in, main { max-width: 720px; margin: 0 auto; }
+  header a { color: #fff; font-weight: 700; text-decoration: none; opacity: .85; }
+  h1, h2 { font-family: "Bricolage Grotesque", Figtree, sans-serif; line-height: 1.15; }
+  h1 { font-size: 34px; margin: 10px 0 4px; }
+  header p { margin: 0; opacity: .9; }
+  main { padding: 8px 18px 60px; }
+  h2 { font-size: 22px; margin: 34px 0 10px; padding-left: 10px; border-left: 4px solid var(--gold); }
+  .card { background: var(--card); border-radius: 16px; padding: 14px 18px; box-shadow: 0 1px 3px #2a1a1f14; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 800; }
+  tr:last-child td { border-bottom: 0; }
+  ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  .note { background: var(--gold-soft); border-radius: 14px; padding: 12px 16px; margin-top: 14px; }
+  a { color: var(--brand); }
+  @media (prefers-color-scheme: dark) { a { color: #E8A5B5; } }
+  footer { text-align: center; color: var(--muted); font-size: 14px; padding: 0 16px 40px; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <a href="/">&larr; Hints</a>
+  <h1>Your privacy</h1>
+  <p>What Hints keeps, who can see it, and how to delete it. Updated November 2026.</p>
+</div></header>
+<main>
+  <h2>The short version</h2>
+  <ul>
+    <li>Hints is free, has no ads, and never sells or shares your information.</li>
+    <li>Only people in your circles see your list and profile. Nothing is public unless you make a share link.</li>
+    <li>The person a gift is for never sees who's getting it. Hints doesn't just hide it on screen: it never sends it to them.</li>
+    <li>Your face, profile and personal details are never sent to any AI.</li>
+    <li>You can delete everything yourself, any time, in Settings.</li>
+  </ul>
+
+  <h2>Who sees what</h2>
+  <div class="card"><table>
+    <tr><th>What</th><th>Who sees it</th></tr>
+    <tr><td>Wishes on your list</td><td>You and your circles (you can hide a wish from a circle)</td></tr>
+    <tr><td>Wishes in Maybe</td><td>Only you</td></tr>
+    <tr><td>Your profile: photo, birthday (no year), sizes, loves, nopes, allergies, pets</td><td>You and your circles</td></tr>
+    <tr><td>What you're getting someone</td><td>You and your circle see it's taken. The person it's for never does.</td></tr>
+    <tr><td>Private gift ideas, budgets, purchases</td><td>Only you (shared with your household for people outside it)</td></tr>
+    <tr><td>Chat about someone</td><td>Their circle, never the person it's about</td></tr>
+    <tr><td>Your share link (if you make one)</td><td>Anyone with the link, read only, without purchases or private notes</td></tr>
+  </table></div>
+
+  <h2>What Hints keeps</h2>
+  <ul>
+    <li>What you type in: your name, wishes, profile, ideas, budgets and chat messages.</li>
+    <li>Photos you add, shrunk down and kept in Hints' own database. Product photos come from the store's link and aren't copied.</li>
+    <li>Your 4-digit PIN, kept only as a scrambled code (a hash). Nobody can read it back, not even the person who runs Hints.</li>
+    <li>A sign-in token on each phone or computer you use, kept in that browser so you stay signed in.</li>
+    <li>If you turn on notifications, the address your browser gives Hints for sending them.</li>
+    <li>If the app hits an error, a short report (what went wrong, which screen, which browser) goes to the person who runs Hints so they can fix it.</li>
+  </ul>
+  <p>Hints has no analytics, no tracking pixels and no ad cookies.</p>
+
+  <h2>Where it lives</h2>
+  <ul>
+    <li>Hints runs on Cloudflare. Their terms say they don't use what's stored there to train AI.</li>
+    <li>Everything is backed up so a mistake can be undone. Weekly backups are encrypted.</li>
+    <li>Like the owner of any app, the person who runs Hints can get to the database to fix things.</li>
+  </ul>
+
+  <h2>AI, only to find products</h2>
+  <p>Some helpers use Google's Gemini to work out what a product is from its link, guess a price, tidy a name, or match a photo you take of a product. Only things about the gift are sent (the link, the product's name, brand, size or color, or your product photo). Never who it's for, and never anything about you.</p>
+  <p>Hints pays for Gemini, and under Google's paid terms what's sent isn't used to train their AI. Google keeps it only briefly to catch abuse.</p>
+  <div class="note">Your profile photo, name, birthday, sizes, loves, allergies and pet or household photos are never sent to any AI.</div>
+
+  <h2>Signing in</h2>
+  <p>Everyone has a 4-digit PIN. A circle's invite link plus your name isn't enough to sign in as you: it also takes your PIN, or your own personal sign-in link. Lost a phone? Settings &gt; Sign out everywhere else. Forgot your PIN? Someone in your household or your circle's admin can clear it so you can pick a new one, and you'll see who did.</p>
+
+  <h2>Deleting your information</h2>
+  <ul>
+    <li><b>Everything:</b> Settings &gt; Delete my Hints. Your profile, list, ideas, budgets, purchases, chat messages, photos and sign-ins are deleted for good. Circles you run get a new admin.</li>
+    <li><b>One thing:</b> remove a wish, idea, photo or message any time. Chat messages are deleted after 6 months anyway.</li>
+    <li><b>Leaving a circle:</b> Settings &gt; Circle &gt; Leave. That circle stops seeing your list.</li>
+  </ul>
+
+  <h2>Questions</h2>
+  <p>Signed in? Use Settings &gt; Questions or problems. It goes straight to the person who runs Hints.</p>
+</main>
+<footer><a href="/">Back to Hints</a></footer>
+</body>
+</html>

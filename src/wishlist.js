@@ -200,6 +200,28 @@ async function checkPin(env, request, member, pin) {
   if ((await hashPin(member.id, String(pin))) !== member.pin_hash) fail(403, "Wrong PIN.");
 }
 
+// Signing in as someone with no PIN yet (their name on the circle link, or their personal link). Allowed only when
+// nobody is signed in as them anywhere, or someone they trust cleared their forgotten PIN; either way they pick a
+// PIN now. Otherwise anyone holding the link could become them.
+async function setFirstPin(env, request, member, pinIn) {
+  const elsewhere = await env.DB.prepare("SELECT 1 FROM devices WHERE member_id = ? LIMIT 1").bind(member.id).first();
+  if (elsewhere && !member.pin_cleared_at) {
+    fail(423, `${member.name} is already signed in on another phone or computer. Open Hints there and set a PIN (Hints asks for one), then come back and tap your name.`);
+  }
+  const pin = pinValue(pinIn);
+  if (!pin) fail(428, "Pick a 4-digit PIN so only you can sign in as you.");
+  await rateLimit(env, `pin:m:${member.id}`, ABUSE.pinTriesPerMember, "Too many PIN tries. Wait a while and try again.");
+  await env.DB.prepare("UPDATE members SET pin_hash = ?, pin_cleared_by = NULL, pin_cleared_at = NULL WHERE id = ? AND pin_hash IS NULL")
+    .bind(await hashPin(member.id, pin), member.id).run();
+}
+// Someone asked to join a circle with Ask to join on: tell its admin.
+async function askedToJoin(env, group, name) {
+  const admin = await adminOf(env, group.id);
+  if (!admin) return;
+  await pushTo(env, admin, { title: `${name} wants to join ${group.name}`, body: "Tap to let them in.", url: "/#family", tag: `join:${group.id}` })
+    .catch((err) => console.error("join push", err));
+}
+
 function text(value, max, field, required = false) {
   const s = typeof value === "string" ? value.trim() : "";
   if (required && !s) fail(400, `${field} is required.`);
@@ -901,7 +923,7 @@ async function claimFor(env, token) {
   const tk = String(token || "");
   if (!/^[A-Za-z0-9]{20,64}$/.test(tk)) fail(404, "That link didn't work.");
   const row = await env.DB.prepare(
-    "SELECT id, name, managed_by, claim_expires, pin_hash FROM members WHERE claim_hash = ?",
+    "SELECT id, name, managed_by, claim_expires, pin_hash, pin_cleared_at FROM members WHERE claim_hash = ?",
   ).bind(await sha256(tk)).first();
   if (!row || (row.claim_expires && row.claim_expires < now())) fail(404, "That link isn't active anymore. Ask for a new one.");
   return row;
@@ -934,6 +956,86 @@ async function adminOf(env, groupId) {
   return id;
 }
 
+// Signs out (on every device) someone who's in no circle and waiting on no request: there's nothing to show them.
+async function signOutIfNowhere(env, memberId) {
+  const inOne = await env.DB.prepare("SELECT 1 FROM group_members WHERE member_id = ? UNION ALL SELECT 1 FROM join_requests WHERE member_id = ? LIMIT 1").bind(memberId, memberId).first();
+  if (inOne) return;
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM push_subs WHERE member_id = ?").bind(memberId),
+    env.DB.prepare("DELETE FROM devices WHERE member_id = ?").bind(memberId),
+  ]);
+}
+
+// Removes a person and everything that is theirs or about them (account/delete).
+async function deleteMember(env, id) {
+  // People they look after go to someone else who can manage them: a household mate, else a circle's admin.
+  const { results: kids } = await env.DB.prepare("SELECT id, name FROM members WHERE managed_by = ?").bind(id).all();
+  const stuck = [];
+  for (const k of kids) {
+    const myHh = await householdOf(env, id);
+    let next = myHh && (await env.DB.prepare("SELECT id FROM members WHERE household_id = ? AND id != ? AND managed_by IS NULL ORDER BY created_at LIMIT 1").bind(myHh, id).first())?.id;
+    if (!next) {
+      const { results } = await env.DB.prepare("SELECT group_id FROM group_members WHERE member_id = ?").bind(k.id).all();
+      for (const r of results) {
+        const a = await adminOf(env, r.group_id);
+        if (a && a !== id) { next = a; break; }
+      }
+    }
+    if (next) await env.DB.prepare("UPDATE members SET managed_by = ? WHERE id = ?").bind(next, k.id).run();
+    else stuck.push(k.name);
+  }
+  if (stuck.length) fail(409, `Nobody else can look after ${stuck.join(" and ")}. Tap Let them sign in or Remove on their page first.`);
+  await leaveHousehold(env, id);
+  const { results: circles } = await env.DB.prepare(
+    "SELECT gm.group_id, (SELECT COUNT(*) FROM group_members x JOIN members m ON m.id = x.member_id WHERE x.group_id = gm.group_id AND x.member_id != ?1 AND m.managed_by IS NULL) AS others FROM group_members gm WHERE gm.member_id = ?1",
+  ).bind(id).all();
+  const rows = [];
+  // A circle nobody else uses goes too (with anyone in it who was only ever set up, never signed in, left as is).
+  for (const c of circles.filter((c) => !c.others)) {
+    rows.push(
+      env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ?").bind(c.group_id),
+      env.DB.prepare("DELETE FROM chat_reads WHERE group_id = ?").bind(c.group_id),
+      env.DB.prepare("DELETE FROM chat_messages WHERE group_id = ?").bind(c.group_id),
+      env.DB.prepare("DELETE FROM group_households WHERE group_id = ?").bind(c.group_id),
+      env.DB.prepare("DELETE FROM join_requests WHERE group_id = ?").bind(c.group_id),
+      env.DB.prepare("DELETE FROM group_members WHERE group_id = ?").bind(c.group_id),
+      env.DB.prepare("DELETE FROM groups WHERE id = ?").bind(c.group_id),
+    );
+  }
+  const q = (sql) => rows.push(env.DB.prepare(sql).bind(id));
+  q("DELETE FROM idea_claims WHERE buyer_id = ?1 OR idea_id IN (SELECT id FROM private_ideas WHERE author_id = ?1 OR subject_id = ?1)");
+  q("DELETE FROM private_ideas WHERE author_id = ?1 OR subject_id = ?1");
+  q("DELETE FROM claims WHERE buyer_id = ?1 OR item_id IN (SELECT id FROM items WHERE owner_id = ?1)");
+  q("DELETE FROM item_hidden WHERE item_id IN (SELECT id FROM items WHERE owner_id = ?1)");
+  q("DELETE FROM items WHERE owner_id = ?1");
+  q("DELETE FROM budgets WHERE author_id = ?1 OR subject_id = ?1");
+  q("DELETE FROM nicknames WHERE author_id = ?1 OR subject_id = ?1");
+  q("DELETE FROM gift_card_gifts WHERE member_id = ?1 OR buyer_id = ?1");
+  q("DELETE FROM gift_cards WHERE member_id = ?1");
+  q("DELETE FROM chat_messages WHERE author_id = ?1 OR subject_id = ?1");
+  q("DELETE FROM chat_reads WHERE member_id = ?1 OR subject_id = ?1");
+  q("DELETE FROM push_subs WHERE member_id = ?1");
+  q("DELETE FROM push_later WHERE member_id = ?1");
+  q("DELETE FROM list_seen WHERE viewer_id = ?1 OR owner_id = ?1");
+  q("DELETE FROM household_budgets WHERE target = 'm:' || ?1");
+  q("UPDATE household_budgets SET updated_by = NULL WHERE updated_by = ?1");
+  q("DELETE FROM budget_skips WHERE author_id = ?1 OR target = 'm:' || ?1");
+  q("DELETE FROM gift_history WHERE buyer_id = ?1 OR subject_id = ?1");
+  q("DELETE FROM pets WHERE member_id = ?1");
+  q("UPDATE reports SET member_id = NULL WHERE member_id = ?1");
+  q("UPDATE members SET pin_cleared_by = NULL WHERE pin_cleared_by = ?1");
+  q("DELETE FROM join_requests WHERE member_id = ?1");
+  q("DELETE FROM group_members WHERE member_id = ?1");
+  q("DELETE FROM devices WHERE member_id = ?1");
+  await env.DB.batch(rows);
+  // Circles they ran get the next admin (adminOf picks whoever has been in longest); then the person goes.
+  for (const c of circles.filter((c) => c.others)) await adminOf(env, c.group_id);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE groups SET created_by = NULL WHERE created_by = ?").bind(id),
+    env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id),
+  ]);
+}
+
 async function newUniqueJoinCode(env) {
   for (let i = 0; i < 5; i++) {
     const c = newJoinCode();
@@ -945,7 +1047,7 @@ async function newUniqueJoinCode(env) {
 async function groupByCode(env, code) {
   const c = String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!c) fail(400, "Enter your invite code.");
-  const group = await env.DB.prepare("SELECT id, name, join_code FROM groups WHERE join_code = ?").bind(c).first();
+  const group = await env.DB.prepare("SELECT id, name, join_code, ask_to_join FROM groups WHERE join_code = ?").bind(c).first();
   if (!group) fail(404, "No circle found with that code. Check it and try again.");
   return group;
 }
@@ -2314,7 +2416,7 @@ const handlers = {
       hhTag.set(m.household_id, householdLabel(h?.name, ppl.map((p) => p.name)));
     }
     return {
-      group: { name: group.name, admin: results.find((m) => m.id === adminId)?.name || null },
+      group: { name: group.name, admin: results.find((m) => m.id === adminId)?.name || null, askToJoin: !!group.ask_to_join },
       inviter: info?.inviter || null,
       members: results.map((m) => ({
         id: m.id, name: m.name, hasPin: !!m.pin_hash && !m.managed_by, photo: m.photo_at || null,
@@ -2326,62 +2428,71 @@ const handlers = {
     };
   },
 
-  // Step 2: sign in as an existing member (memberId, plus PIN if they set one) or add yourself (name).
+  // Step 2: sign in as an existing member (memberId + PIN) or add yourself (name + a new PIN).
+  // Every person who signs in has a PIN, so the circle link alone never signs anyone in as someone else:
+  // - Someone with a PIN: their PIN.
+  // - A list set up for you ("Ready for you"), or someone whose PIN was cleared or who has never signed in: pick a
+  //   new PIN now (428 until one is sent).
+  // - Someone with no PIN who is already signed in somewhere else: refused (423). They set a PIN on that device
+  //   first (the app asks everyone without one), or use their personal sign-in link.
+  // A circle with Ask to join on puts new people on its admin's waiting list instead of straight in.
   async "POST join"(req, env) {
     const b = await body(req);
     await rateLimit(env, `join:ip:${ipOf(req)}`, ABUSE.joinPerIp, "Too many sign-in tries. Wait a bit and try again.");
     const group = await groupByCode(env, b.code);
-    let member;
     if (b.memberId) {
-      member = await env.DB.prepare(
-        "SELECT m.id, m.name, m.pin_hash, m.managed_by, m.is_kid FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
+      const member = await env.DB.prepare(
+        "SELECT m.id, m.name, m.pin_hash, m.pin_cleared_at, m.managed_by, m.is_kid FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND m.id = ?",
       )
         .bind(group.id, b.memberId)
         .first();
       if (!member) fail(404, "That person isn't in this circle.");
-      // A list someone set up for you, opened from the circle link: it becomes yours (like a personal link),
-      // and the welcome tour offers a PIN. Kids someone looks after can't be taken over this way.
+      // A list someone set up for you, opened from the circle link: it becomes yours (like a personal link), with
+      // the PIN you pick now. Kids someone looks after can't be taken over this way.
       if (member.managed_by && !member.is_kid) {
-        const done = await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL WHERE id = ? AND managed_by IS NOT NULL")
-          .bind(member.id).run();
+        const pin = pinValue(b.pin);
+        if (!pin) fail(428, "Pick a 4-digit PIN so only you can sign in as you.");
+        const done = await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL, pin_hash = ? WHERE id = ? AND managed_by IS NOT NULL")
+          .bind(await hashPin(member.id, pin), member.id).run();
         if (!done.meta?.changes) fail(409, `${member.name} just joined. Go back and tap your name again.`);
         return { token: await signIn(env, member.id), claimed: true };
       }
       await notManaged(env, member);
-    } else {
-      const name = text(b.name, LIMITS.name, "First name", true);
-      const lastName = lastNameOf(b.lastName);
-      // "Yes, add me" always makes someone new. Typing a name that's taken never signs you in as them: returning
-      // people tap their name instead, and a different person with the same name adds a last name.
-      const taken = await env.DB.prepare(
-        `SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_NAME}`,
-      )
-        .bind(group.id, name, lastName)
-        .first();
-      if (taken) {
-        fail(409, lastName
-          ? `${name} ${lastName} is already in ${group.name}. If that's you, go back and tap your name.`
-          : `Someone named ${name} is already in ${group.name}. If that's you, go back and tap your name. If not, add your last name.`);
+      if (member.pin_hash) {
+        await checkPin(env, req, member, b.pin);
+        return { token: await signIn(env, member.id) };
       }
-      const pin = pinValue(b.pin);
-      await circleRoom(env, group.id);
-      await newMemberAllowed(env, req);
-      const id = newId();
-      const t = now();
-      await env.DB.batch([
-        env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)").bind(
-          id,
-          name,
-          lastName,
-          pin ? await hashPin(id, pin) : null,
-          t,
-        ),
-        env.DB.prepare(JOIN_DIRECT).bind(group.id, id, t),
-      ]);
-      return { token: await signIn(env, id) };
+      await setFirstPin(env, req, member, b.pin);
+      return { token: await signIn(env, member.id) };
     }
-    if (member.pin_hash) await checkPin(env, req, member, b.pin);
-    return { token: await signIn(env, member.id) };
+    const name = text(b.name, LIMITS.name, "First name", true);
+    const lastName = lastNameOf(b.lastName);
+    // "Yes, add me" always makes someone new. Typing a name that's taken never signs you in as them: returning
+    // people tap their name instead, and a different person with the same name adds a last name.
+    const taken = await env.DB.prepare(
+      `SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_NAME}`,
+    )
+      .bind(group.id, name, lastName)
+      .first();
+    if (taken) {
+      fail(409, lastName
+        ? `${name} ${lastName} is already in ${group.name}. If that's you, go back and tap your name.`
+        : `Someone named ${name} is already in ${group.name}. If that's you, go back and tap your name. If not, add your last name.`);
+    }
+    const pin = pinValue(b.pin);
+    if (!pin) fail(428, "Pick a 4-digit PIN. You'll use it to sign in on a new phone.");
+    await circleRoom(env, group.id);
+    await newMemberAllowed(env, req);
+    const id = newId();
+    const t = now();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, name, lastName, await hashPin(id, pin), t),
+      group.ask_to_join
+        ? env.DB.prepare("INSERT INTO join_requests (group_id, member_id, created_at) VALUES (?, ?, ?)").bind(group.id, id, t)
+        : env.DB.prepare(JOIN_DIRECT).bind(group.id, id, t),
+    ]);
+    if (group.ask_to_join) await askedToJoin(env, group, name);
+    return { token: await signIn(env, id), pending: !!group.ask_to_join };
   },
 
   // Start a new family: creates the group, its join code, and you as its first member.
@@ -2391,6 +2502,7 @@ const handlers = {
     const name = text(b.name, LIMITS.name, "Your first name", true);
     const lastName = lastNameOf(b.lastName);
     const pin = pinValue(b.pin);
+    if (!pin) fail(428, "Pick a 4-digit PIN. You'll use it to sign in on a new phone.");
     await rateLimit(env, `start:ip:${ipOf(req)}`, ABUSE.startPerIp, "Too many new circles from here today. Try again tomorrow.");
     if ((await hit(env, "newcircle:all", 86400)) > ABUSE.newCirclesPerDay) fail(429, "Hints isn't taking new circles right now. Try again tomorrow.");
     await newMemberAllowed(env, req);
@@ -2404,7 +2516,7 @@ const handlers = {
         memberId,
         name,
         lastName,
-        pin ? await hashPin(memberId, pin) : null,
+        await hashPin(memberId, pin),
         t,
       ),
       env.DB.prepare(JOIN_DIRECT).bind(groupId, memberId, t),
@@ -2417,7 +2529,7 @@ const handlers = {
   async "GET me"(req, env) {
     const me = await auth(req, env);
     const { results: groups } = await env.DB.prepare(
-      "SELECT g.id, g.name, g.join_code, g.created_by, g.photo_at FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = ? ORDER BY gm.joined_at",
+      "SELECT g.id, g.name, g.join_code, g.created_by, g.photo_at, g.ask_to_join FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = ? ORDER BY gm.joined_at",
     )
       .bind(me.id)
       .all();
@@ -2519,6 +2631,23 @@ const handlers = {
       : 0;
     const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, claim_hash IS NOT NULL AS has_link, add_key_hash IS NOT NULL AS has_add_key FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
+    // Circles you asked to join and are waiting on, and (for circles you run) who's waiting on you.
+    const { results: pendingRows } = await env.DB.prepare(
+      "SELECT g.id, g.name, g.created_by FROM join_requests r JOIN groups g ON g.id = r.group_id WHERE r.member_id = ? ORDER BY r.created_at",
+    ).bind(me.id).all();
+    const pending = [];
+    for (const g of pendingRows) {
+      const a = await adminOf(env, g.id);
+      const admin = a && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(a).first());
+      pending.push({ id: g.id, name: g.name, admin: admin?.name || null });
+    }
+    const runIds = groups.filter((g) => g.created_by === me.id).map((g) => g.id);
+    const { results: reqRows } = runIds.length
+      ? await env.DB.prepare(
+        `SELECT r.group_id, r.created_at, m.id, m.name, m.last_name FROM join_requests r JOIN members m ON m.id = r.member_id
+          WHERE r.group_id IN (${runIds.map(() => "?").join(",")}) ORDER BY r.created_at`,
+      ).bind(...runIds).all()
+      : { results: [] };
     if (me.pinClearedAt) {
       const by = me.pinClearedBy && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(me.pinClearedBy).first());
       pinCleared = { by: (by && (nicks.get(me.pinClearedBy) || by.name)) || "Someone", at: me.pinClearedAt };
@@ -2552,8 +2681,12 @@ const handlers = {
         code: g.join_code,
         createdBy: g.created_by || null, // the circle's admin
         photo: g.photo_at || null,
+        askToJoin: !!g.ask_to_join,
+        // People waiting to be let in (only for the circle's admin).
+        requests: reqRows.filter((r) => r.group_id === g.id).map((r) => ({ id: r.id, name: r.name, lastName: r.last_name || null, at: r.created_at })),
         members: people.filter((p) => p.group_id === g.id).map(person).sort(byName),
       })),
+      pending,
     };
   },
 
@@ -3637,6 +3770,11 @@ const handlers = {
     if (clash) fail(409, me.lastName ? `${me.name} ${me.lastName} is already in ${group.name}.` : `Someone named ${me.name} is already in ${group.name}. Add your last name in Profile, then join.`);
     await circleSlot(env, me.id);
     await circleRoom(env, group.id);
+    if (group.ask_to_join) {
+      await env.DB.prepare("INSERT OR IGNORE INTO join_requests (group_id, member_id, created_at) VALUES (?, ?, ?)").bind(group.id, me.id, now()).run();
+      await askedToJoin(env, group, me.name);
+      return { group: { id: group.id, name: group.name }, pending: true };
+    }
     await env.DB.prepare(JOIN_DIRECT).bind(group.id, me.id, now()).run();
     return { group: { id: group.id, name: group.name } };
   },
@@ -3674,6 +3812,7 @@ const handlers = {
       const photo = photoValue(b.photo);
       rows.push(env.DB.prepare("UPDATE groups SET photo = ?, photo_at = ? WHERE id = ?").bind(photo, photo ? now() : null, g.id));
     }
+    if (b.askToJoin !== undefined) rows.push(env.DB.prepare("UPDATE groups SET ask_to_join = ? WHERE id = ?").bind(b.askToJoin ? 1 : 0, g.id));
     if (rows.length) await env.DB.batch(rows);
     return { ok: true };
   },
@@ -3956,7 +4095,7 @@ const handlers = {
     ).bind(them.id).all();
     // returning: they've used their link before, so this signs them in again (pin: asks for their PIN first).
     const returning = !them.managed_by;
-    return { id: them.id, name: them.name, by: by?.name || null, wishes: wishes[0]?.n || 0, circles: circles.map((c) => c.name), returning, pin: returning && !!them.pin_hash };
+    return { id: them.id, name: them.name, by: by?.name || null, wishes: wishes[0]?.n || 0, circles: circles.map((c) => c.name), returning, pin: returning && !!them.pin_hash, needPin: !them.pin_hash };
   },
 
   // Use a personal link. The first time, the list becomes theirs and they get the welcome tour (which offers a
@@ -3967,11 +4106,16 @@ const handlers = {
     await rateLimit(env, `join:ip:${ipOf(req)}`, ABUSE.joinPerIp, "Too many sign-in tries. Wait a bit and try again.");
     const them = await claimFor(env, b.token);
     if (them.managed_by) {
-      await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL WHERE id = ? AND managed_by IS NOT NULL")
-        .bind(them.id).run();
+      // Handing the list over: they pick their PIN here.
+      const pin = pinValue(b.pin);
+      if (!pin) fail(428, "Pick a 4-digit PIN so only you can sign in as you.");
+      const done = await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL, pin_hash = ? WHERE id = ? AND managed_by IS NOT NULL")
+        .bind(await hashPin(them.id, pin), them.id).run();
+      if (!done.meta?.changes) fail(409, `${them.name} just signed in. Open the link again.`);
       return { token: await signIn(env, them.id), name: them.name, returning: false };
     }
     if (them.pin_hash) await checkPin(env, req, them, b.pin);
+    else await setFirstPin(env, req, them, b.pin);
     return { token: await signIn(env, them.id), name: them.name, returning: true };
   },
 
@@ -4345,6 +4489,8 @@ const handlers = {
     }
     if (b.pin !== undefined) {
       const pin = pinValue(b.pin);
+      // Everyone keeps a PIN (it's what stops the circle link signing anyone in as you). It can be changed, not removed.
+      if (!pin) fail(400, "Your PIN can be changed, but not turned off.");
       await env.DB.prepare("UPDATE members SET pin_hash = ?, pin_cleared_by = NULL, pin_cleared_at = NULL WHERE id = ?")
         .bind(pin ? await hashPin(who, pin) : null, who)
         .run();
@@ -4511,6 +4657,83 @@ const handlers = {
     await ownerOnly(env, me);
     const b = await body(req);
     await env.DB.prepare("DELETE FROM reports WHERE id = ?").bind(String(b.id || "")).run();
+    return { ok: true };
+  },
+
+  // ---------- keeping a circle closed ----------
+  // A new invite link for a circle (the admin only). Old links and the old code stop working at once, so a
+  // forwarded link or someone who was taken out can't use it to come back. Personal links keep working.
+  async "POST family/code"(req, env) {
+    const me = await auth(req, env);
+    const { groupId } = await body(req);
+    if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can reset its invite link.");
+    await rateLimit(env, `code:m:${me.id}`, ABUSE.invitesPerMemberDay, "That's a lot of new links today. Try again tomorrow.");
+    const code = await newUniqueJoinCode(env);
+    await env.DB.prepare("UPDATE groups SET join_code = ? WHERE id = ?").bind(code, groupId).run();
+    return { code };
+  },
+
+  // Let someone who asked to join in (allow: true), or turn them away. The admin only.
+  async "POST family/request"(req, env) {
+    const me = await auth(req, env);
+    const { groupId, memberId, allow } = await body(req);
+    if (!(await myGroupIds(env, me.id)).includes(groupId)) fail(404, "Circle not found.");
+    if ((await adminOf(env, groupId)) !== me.id) fail(403, "Only the circle's admin can let people in.");
+    const r = await env.DB.prepare("SELECT r.member_id, m.name, g.name AS group_name FROM join_requests r JOIN members m ON m.id = r.member_id JOIN groups g ON g.id = r.group_id WHERE r.group_id = ? AND r.member_id = ?")
+      .bind(groupId, String(memberId || "")).first();
+    if (!r) fail(404, "That request is gone. Someone may have answered it already.");
+    if (allow) {
+      const clash = await env.DB.prepare(
+        `SELECT 1 FROM group_members gm JOIN members m ON m.id = gm.member_id WHERE gm.group_id = ? AND ${SAME_SLOT}`,
+      ).bind(groupId, r.name, (await env.DB.prepare("SELECT last_name FROM members WHERE id = ?").bind(r.member_id).first())?.last_name || null, await householdOf(env, r.member_id)).first();
+      if (clash) fail(409, `Someone named ${r.name} is already in ${r.group_name}. Ask them to add a last name, then let them in.`);
+      await circleSlot(env, r.member_id);
+      await circleRoom(env, groupId);
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM join_requests WHERE group_id = ? AND member_id = ?").bind(groupId, r.member_id),
+        env.DB.prepare(JOIN_DIRECT).bind(groupId, r.member_id, now()),
+      ]);
+      await pushTo(env, r.member_id, { title: `You're in ${r.group_name}!`, body: "Tap to see everyone's lists.", url: "/#family", tag: `joined:${groupId}` })
+        .catch((err) => console.error("join push", err));
+      return { ok: true };
+    }
+    await env.DB.prepare("DELETE FROM join_requests WHERE group_id = ? AND member_id = ?").bind(groupId, r.member_id).run();
+    await signOutIfNowhere(env, r.member_id);
+    return { ok: true };
+  },
+
+  // Take back your own request to join (all of them without groupId). Someone in no circle is signed out.
+  async "POST join/cancel"(req, env) {
+    const me = await auth(req, env);
+    const { groupId } = await body(req);
+    await env.DB.prepare(groupId ? "DELETE FROM join_requests WHERE member_id = ? AND group_id = ?" : "DELETE FROM join_requests WHERE member_id = ?")
+      .bind(...(groupId ? [me.id, groupId] : [me.id])).run();
+    await signOutIfNowhere(env, me.id);
+    return { ok: true };
+  },
+
+  // ---------- your account ----------
+  // Sign out every other phone and computer (this one stays signed in), with their notifications.
+  async "POST signout/others"(req, env) {
+    const me = await auth(req, env);
+    const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM devices WHERE member_id = ? AND token != ?").bind(me.id, me.token).first();
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM push_subs WHERE member_id = ? AND (device_token IS NULL OR device_token != ?)").bind(me.id, me.token),
+      env.DB.prepare("DELETE FROM devices WHERE member_id = ? AND token != ?").bind(me.id, me.token),
+    ]);
+    return { ok: true, signedOut: n };
+  },
+
+  // Delete my Hints: your profile, list, ideas, budgets, purchases, chat messages, photos and sign-ins, for good.
+  // Asks for your PIN. The people you look after go to someone else who can (your household, else a circle admin).
+  // A circle you're alone in goes with you; any other circle gets a new admin.
+  async "POST account/delete"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const row = await env.DB.prepare("SELECT id, name, pin_hash FROM members WHERE id = ?").bind(me.id).first();
+    if (row.pin_hash) await checkPin(env, req, row, b.pin);
+    await deleteMember(env, me.id);
     return { ok: true };
   },
 

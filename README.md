@@ -100,12 +100,12 @@ Hints pays Google for this, and under Google's paid terms, **what we send isn't 
 
 ### Good to know
 
-- 🔢 **Set a PIN.** Signing in is simple on purpose: tap your name. Without a PIN, someone with your circle's invite link could sign in as you. A 4-digit PIN (in Settings) stops that.
+- 🔢 **Everyone has a PIN.** Signing in is simple on purpose: tap your name and enter your 4-digit PIN. The PIN is what stops someone with your circle's invite link from signing in as you. Lost a phone? **Settings > Sign out everywhere else**.
 - ☁️ **Where it's stored.** Hints runs on Cloudflare, a large internet company that millions of websites use. Their terms say they don't use what's stored there to train AI.
 - 👩‍💻 **Who runs it.** Alexis built and runs Hints. Like the owner of any app, she can get to the database to fix things.
 - 🛠️ **When something breaks.** If Hints hits an error, it tells Alexis what went wrong (the error message, which screen, and what kind of phone or browser), so she can fix it. Never what you typed, your wishes or anything private.
 - 💾 **Backups.** Everything is backed up so a mistake can be undone. Weekly backups are encrypted before they're stored.
-- 🗑️ **Want your info deleted?** Ask Alexis and she'll remove you and everything you added.
+- 🗑️ **Want your info deleted?** **Settings > Delete my Hints** removes you and everything you added, for good. The same details are on the in-app [Privacy page](https://hints.alexisdavidson.org/privacy).
 
 ---
 
@@ -115,7 +115,7 @@ Hints pays Google for this, and under Google's paid terms, **what we send isn't 
 No. The person a gift is for never sees who's getting what, or that anything is taken.
 
 **Do I need a password or an email?**
-No. You join from an invite link and tap your name. A PIN is optional (but a good idea).
+No. You join from an invite link, tap your name, and pick a 4-digit PIN.
 
 **Does it cost anything?**
 No. It's free for everyone, with no ads.
