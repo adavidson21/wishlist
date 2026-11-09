@@ -1061,6 +1061,18 @@
   .buys li > button > span:first-child { flex: 1; min-width: 0; }
   .buys li > button:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; border-radius: 8px; }
   /* Budget tabs: People / Purchases / Ideas */
+  /* Gift history: Budget > History, and "You've given" on someone's page. */
+  .hist-year { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 0 6px; }
+  .hist-year h3 { margin: 0; font-size: 22px; }
+  .hist-year span { color: var(--muted); font-weight: 700; }
+  .hist-occ { margin: 14px 0 4px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .hist-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .hist-row .t { flex: 1; min-width: 0; }
+  .hist-row .t strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-row .t a { color: inherit; }
+  .hist-row .t small { color: var(--muted); font-weight: 600; }
+  .hist-row b { white-space: nowrap; }
+  .given-card .hist-row:first-of-type { border-top: 0; }
   .btabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--line); margin: 0 0 16px; overflow-x: auto; scrollbar-width: none; }
   .btabs button { flex: 1; min-height: 48px; border: 0; background: none; font-weight: 700; font-size: 16px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 7px;
     border-bottom: 3px solid transparent; margin-bottom: -1.5px; white-space: nowrap; padding: 0 8px; }
@@ -4636,6 +4648,7 @@ async function renderPerson(id) {
       </div>`}
     ${theirGiftCards(list.giftCards, name, id)}
     ${manage ? receivedSection(list.received, id) : ""}
+    <div id="givenSlot"></div>
     ${sugg.length ? `<div class="label">Ideas from others${tip(`Hidden from ${name}.`)}</div>
       <div class="stack">${sugg.map((i, n) => personRow(i, "idea", n)).join("")}</div>` : ""}
     <div class="label">Your ideas for ${esc(name)}${tip("Only you see these, unless you share one.")}</div>
@@ -4655,6 +4668,7 @@ async function renderPerson(id) {
   }));
   $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
   if (manage) { wireManageCard(v, list, name, id); wireReceived(v, id); }
+  paintGivenCard($("#givenSlot", v), id, name);
   wireGiftBox(v, () => addThing(id));
   const redo = () => render();
   v.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { view.cat = b.dataset.cat; redo(); }));
@@ -5291,7 +5305,7 @@ const BUDGET_VIEW_KEY = "wishlist-budget-view";
 const BUDGET_TAB_KEY = "wishlist-budget-tab";
 function budgetView() { try { return localStorage.getItem(BUDGET_VIEW_KEY) === "birthday" ? "birthday" : "christmas"; } catch { return "christmas"; } }
 function setBudgetView(v) { try { v === "birthday" ? localStorage.setItem(BUDGET_VIEW_KEY, v) : localStorage.removeItem(BUDGET_VIEW_KEY); } catch {} }
-function budgetTab() { try { const v = localStorage.getItem(BUDGET_TAB_KEY); return v === "gifts" || v === "ideas" ? v : "people"; } catch { return "people"; } }
+function budgetTab() { try { const v = localStorage.getItem(BUDGET_TAB_KEY); return v === "gifts" || v === "ideas" || v === "history" ? v : "people"; } catch { return "people"; } }
 function setBudgetTab(v) { try { v === "people" ? localStorage.removeItem(BUDGET_TAB_KEY) : localStorage.setItem(BUDGET_TAB_KEY, v); } catch {} }
 // The occasion a person's card shows in a view (null: no birthday yet).
 const viewOcc = (p, view) => p.occasions.find((o) => (view === "birthday" ? o.birthday : o.christmas)) || null;
@@ -5337,7 +5351,7 @@ function renderBudgetTab(t) {
   const tab = budgetTab();
   const buys = allBuys(t);
   const ideaCount = t.people.reduce((n, p) => n + p.ideas.length, 0);
-  const tabs = [["people", "People", ""], ["gifts", "Purchases", buys.length], ["ideas", "Ideas", ideaCount]];
+  const tabs = [["people", "People", ""], ["gifts", "Purchases", buys.length], ["ideas", "Ideas", ideaCount], ["history", "History", ""]];
   const v = $("#view");
   v.innerHTML = `<div class="btabs" role="tablist" aria-label="Budget sections">${tabs.map(([k, l, n]) =>
     `<button type="button" role="tab" data-btab="${k}" aria-selected="${k === tab}">${l}${n ? `<span class="chip-n">${n}</span>` : ""}</button>`).join("")}</div>
@@ -5352,6 +5366,7 @@ function renderBudgetTab(t) {
   const body = $("#btabBody");
   if (tab === "gifts") renderGiftsTab(t, body, buys);
   else if (tab === "ideas") renderIdeasTab(t, body);
+  else if (tab === "history") renderHistoryTab(body);
   else renderPeopleTab(t, body);
 }
 
@@ -5614,6 +5629,61 @@ function setPurchase(x, p, o, on, price) {
 }
 
 // Ideas: every open idea you have, by person, plus a quick way to add one for people with none.
+// ---------- gift history ----------
+// "Christmas 2025" or "Sam's birthday 2025" for a past occasion.
+const histOcc = (g) => (g.season % 10000 === 1225 ? `Christmas ${Math.floor(g.season / 10000)}` : `${g.subjectName}'s birthday ${Math.floor(g.season / 10000)}`);
+function histRow(g, showWho = true, when = "") {
+  const what = [showWho ? esc(g.subjectName) : "", when ? esc(when) : "", g.by ? `from ${esc(g.by)}` : "", g.chipIn ? "group gift share" : "", g.qty > 1 ? `×${g.qty}` : ""].filter(Boolean).join(" · ");
+  return `<div class="hist-row"><span class="t"><strong>${g.url ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.title)}</a>` : esc(g.title)}</strong>${what ? `<small>${what}</small>` : ""}</span>${g.spent_cents ? `<b>${money(g.spent_cents)}</b>` : ""}</div>`;
+}
+// Budget > History: everything given for occasions that have passed, by year then occasion. Searchable.
+async function renderHistoryTab(v) {
+  setHero(`${budgetTitle()}<div class="hero-stat"><p class="kicker">Gifts you've given</p><span class="big-num" id="histNum">…</span><p class="hero-sub" id="histSub"></p></div>`);
+  v.innerHTML = `<p class="subtle" style="margin:0 0 10px">Loading…</p>`;
+  let gifts;
+  try { ({ gifts } = await api("history")); } catch (e) { v.innerHTML = `<p class="subtle">${esc(e.message)}</p>`; return; }
+  if (budgetTab() !== "history" || !v.isConnected) return;
+  $("#histNum") && ($("#histNum").textContent = gifts.length);
+  const total = gifts.reduce((n, g) => n + (g.spent_cents || 0), 0);
+  if ($("#histSub")) $("#histSub").textContent = gifts.length ? `${money(total)} across ${new Set(gifts.map((g) => Math.floor(g.season / 10000))).size === 1 ? "one year" : `${new Set(gifts.map((g) => Math.floor(g.season / 10000))).size} years`}` : "";
+  if (!gifts.length) {
+    v.innerHTML = `<div class="empty"><strong>Nothing here yet</strong><p>After each Christmas and birthday, what you gave shows up here, so you never repeat a gift.</p></div>`;
+    return;
+  }
+  v.innerHTML = `<input class="input" type="search" id="histQ" placeholder="Search by name or gift" aria-label="Search gift history" value="${esc(state.histQ || "")}" style="margin-bottom:4px"><div id="histList"></div>`;
+  const paint = () => {
+    const q = (state.histQ || "").trim().toLowerCase();
+    const shown = q ? gifts.filter((g) => `${g.title} ${g.subjectName} ${g.by || ""}`.toLowerCase().includes(q)) : gifts;
+    let html = "", year = null, occ = null;
+    for (const g of shown) {
+      const y = Math.floor(g.season / 10000);
+      if (y !== year) {
+        year = y; occ = null;
+        const yt = shown.filter((x) => Math.floor(x.season / 10000) === y).reduce((n, x) => n + (x.spent_cents || 0), 0);
+        html += `<div class="hist-year"><h3>${y}</h3><span>${yt ? money(yt) : ""}</span></div>`;
+      }
+      const o = histOcc(g);
+      if (o !== occ) { occ = o; html += `<div class="hist-occ">${esc(o)}</div>`; }
+      html += histRow(g, true);
+    }
+    $("#histList", v).innerHTML = html || `<p class="subtle" style="margin-top:14px">No gifts match.</p>`;
+  };
+  paint();
+  $("#histQ", v).oninput = (e) => { state.histQ = e.target.value; paint(); };
+}
+// On someone's page: what you (and your household) gave them before. Painted after the page loads.
+async function paintGivenCard(slot, id, name) {
+  if (!slot) return;
+  let gifts = [];
+  try { ({ gifts } = await api(`history?member=${encodeURIComponent(id)}`)); } catch { return; }
+  if (!gifts.length || !slot.isConnected) return;
+  const recent = gifts.slice(0, 5);
+  slot.innerHTML = `<div class="label">You've given ${esc(name)}${tip("Gifts for past Christmases and birthdays. Only you (and your household) see this.")}</div>
+    <div class="set-card given-card">${recent.map((g) => histRow(g, false, g.season % 10000 === 1225 ? `Christmas ${Math.floor(g.season / 10000)}` : `Birthday ${Math.floor(g.season / 10000)}`)).join("")}
+    ${gifts.length > recent.length ? `<button class="linkbtn" type="button" id="givenAll" style="padding:8px 0 0">See all ${gifts.length}</button>` : ""}</div>`;
+  $("#givenAll", slot)?.addEventListener("click", () => { state.histQ = name; setBudgetTab("history"); setTab("notes"); });
+}
+
 function renderIdeasTab(t, v) {
   const withIdeas = t.people.filter((p) => p.ideas.length);
   const without = t.people.filter((p) => !p.ideas.length);
