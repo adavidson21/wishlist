@@ -604,6 +604,12 @@
   .err { background: var(--err-bg); color: var(--err); border-radius: 12px; padding: 12px 14px; font-size: 15px; margin-bottom: 16px; font-weight: 600; }
   .hint { color: var(--muted); font-size: 14px; margin: -8px 0 16px; }
   .price-sync { display: block; margin-top: 6px; font-size: 13px; color: var(--muted); }
+  /* An estimated price (another currency, or not read from the store page): caution color, owner asked to check it. */
+  .price-sync.guess { color: var(--warn); font-weight: 600; }
+  .price-sync .btn { margin: 6px 6px 0 0; }
+  .side-price.guess, .gprice.guess, .wd-price.guess, .dchip.price.guess, .row-price.guess { color: var(--warn); }
+  .side-price.guess { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--warn) 55%, transparent); background: none; }
+  .price-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: var(--warn); margin-top: 2px; }
   /* Help button: a small round "?" that reveals one line of guidance under its heading. */
   .tip { display: inline-grid; place-items: center; position: relative; width: 20px; height: 20px; padding: 0; margin-left: 6px; flex: none; vertical-align: 2px;
     border: 1.5px solid var(--faint); border-radius: 50%; background: none; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
@@ -2042,7 +2048,11 @@ function tile(i, kind) {
 // fills in when the store price or the guess comes back. cents: the price to show (your own price paid, say).
 const estFound = new Map(); // guesses that came back this session, so redrawn cards keep them
 const estTag = (c, extra = "") => `<span class="side-price est"${extra} title="Estimated price">~${money(Math.max(100, Math.round(c / 100) * 100))}</span>`;
+// A saved price that's only an estimate (converted from another currency, or found by search, not on the page).
+const isGuess = (i, cents = i.price_cents) => !!i.price_guess && cents === i.price_cents;
+const GUESS_TITLE = "Estimated price. The store's exact price couldn't be read.";
 function sidePrice(i, kind, cents = i.price_cents) {
+  if (cents != null && isGuess(i, cents)) return `<span class="side-price est guess" title="${GUESS_TITLE}">~${money(cents)}</span>`;
   if (cents != null) return `<span class="side-price">${money(cents)}</span>`;
   const key = kind ? `${kind}:${i.id}` : "";
   const lookingUp = !!(kind && i.url && !i.price_checked);
@@ -2067,6 +2077,8 @@ function liveLine(r, listed, short = false) {
   if (r.price == null) return r.inStock ? ["ok", `In stock ${at}`.trim()] : null;
   if (r.odd) return ["odd", short ? "Price may have changed" : `Price may have changed. Check ${esc(r.site)}`];
   const cents = Math.round(r.price * 100);
+  // Converted from another currency (or otherwise not exact): an estimate, never "Now $X".
+  if (r.guess) return ["est", short ? `About ${money(cents)} right now` : `About ${money(cents)} right now ${at}`.trim()];
   if (listed != null && Math.abs(cents - listed) >= 100) return cents < listed ? ["down", `↓ Now ${money(cents)} ${at}`.trim()] : ["up", `Now ${money(cents)} ${at}`.trim()];
   return ["ok", short ? "✓ Price checked just now" : `✓ ${money(cents)} right now ${at}`];
 }
@@ -4042,6 +4054,7 @@ function itemRow(i, n = 0) {
     <div class="row-main">
       ${nameBlock(i)}
       ${detailChips(i, { store: true })}
+      ${i.price_cents != null && isGuess(i) ? `<span class="price-check">⚠ Estimated price. Tap to check it</span>` : ""}
       ${i.notes ? `<span class="row-notes clamp">${esc(i.notes)}</span>` : ""}
       ${i.draft ? "" : hiddenTag(i)}
     </div>
@@ -4063,7 +4076,7 @@ function galleryCard(i, n = 0) {
   const sub = [i.size, i.color].filter(Boolean).map(esc).join(" · ");
   return `<div class="row gcard${i.draft ? " draft" : ""}${top && !i.draft ? " is-top" : ""}${anim}" style="${anim === " slide" ? `animation-delay:${Math.min(n, 12) * 0.03}s` : ""}" role="button" tabindex="0" data-id="${esc(i.id)}" aria-label="Edit ${esc(i.title)}">
     <div class="gimg">${tile(i, "item")}
-      ${i.price_cents != null ? `<span class="gprice">${money(i.price_cents)}</span>`
+      ${i.price_cents != null ? (isGuess(i) ? `<span class="gprice guess" title="${GUESS_TITLE}">~${money(i.price_cents)}</span>` : `<span class="gprice">${money(i.price_cents)}</span>`)
         : i.price_est || estFound.get(`item:${i.id}`) ? `<span class="gprice est" title="Estimated price">~${money(Math.max(100, Math.round((i.price_est || estFound.get(`item:${i.id}`)) / 100) * 100))}</span>` : ""}
       ${i.draft ? "" : starBtn(i)}
       ${linkBadge(i)}
@@ -4138,7 +4151,7 @@ async function toggleTopPick(item, btn) {
   btn.querySelectorAll(".spark").forEach((s) => s.remove());
   if (next) btn.insertAdjacentHTML("beforeend", SPARKS);
   try {
-    await api("item/save", { id: item.id, title: item.title, url: item.url, price: priceIn(item.price_cents), priceAuto: item.price_auto, notes: item.notes, priority: next });
+    await api("item/save", { id: item.id, title: item.title, url: item.url, price: priceIn(item.price_cents), priceAuto: item.price_auto && item.price_guess ? "guess" : item.price_auto, notes: item.notes, priority: next });
   } catch (e) {
     item.priority = next ? null : "must";
     btn.setAttribute("aria-pressed", String(!next));
@@ -4268,7 +4281,7 @@ function nameBlock(i) {
 // Size, color, category and (optionally) the store as small chips under a wish's name.
 function detailChips(i, { store = false, price = false, links = true, who = "" } = {}) {
   const out = [];
-  if (price && i.price_cents != null) out.push(`<span class="dchip price">${money(i.price_cents)}</span>`);
+  if (price && i.price_cents != null) out.push(isGuess(i) ? `<span class="dchip price guess" title="${GUESS_TITLE}">~${money(i.price_cents)}</span>` : `<span class="dchip price">${money(i.price_cents)}</span>`);
   if (i.size) out.push(`<span class="dchip var"><small>Size</small>${esc(i.size)}</span>`);
   if (i.color) {
     const sw = swatchOf(i.color);
@@ -4417,7 +4430,7 @@ function editItem(item, opts = {}) {
   const isNew = !item?.id;
   const c = opts.carry;
   const asId = opts.as || null, asName = asId ? personName(asId) : "";
-  item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, notes: c.notes } : {};
+  item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: !!c.priceAuto, price_guess: c.priceAuto === "guess", notes: c.notes } : {};
   const draft = !asId && (isNew || !!item.draft);
   // Your own published wish can go back to Maybe (Remove offers it too).
   const canMaybe = !asId && !isNew && !draft && !item.held && !item.received_at;
@@ -4452,7 +4465,7 @@ function editItem(item, opts = {}) {
     <h3>${asId ? (isNew ? `Add a wish for ${esc(asName)}` : `Edit ${esc(asName)}'s wish`) : isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser && !asId ? whoChips(state.me.id) : ""}
     ${draft && !isNew ? MAYBE_NOTE : ""}
-    <form id="itemForm" autocomplete="off"${isNew ? "" : ' data-editing="1"'}${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}>
+    <form id="itemForm" autocomplete="off"${isNew ? "" : ' data-editing="1"'}${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}${item.price_auto && item.price_guess ? ' data-price-guess="1"' : ""}>
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "What is it?"))}" required></label>
@@ -4846,15 +4859,38 @@ const imageFor = (form) => (form.dataset.image && form.dataset.imageFor === form
 
 // A price filled in from the link stays in sync with the store (the server updates it on live checks) until
 // you type over it. form.dataset.priceAuto holds the price the link gave us.
-const autoPrice = (form) => { const v = form.elements.price?.value.trim(); return !!v && form.dataset.priceAuto === v; };
-function setAutoPrice(form, v) {
+// form.dataset.priceGuess marks that price as an estimate (another currency, or not read from the page); autoPrice
+// then returns "guess" and the form asks you to check it.
+const autoPrice = (form) => {
+  const v = form.elements.price?.value.trim();
+  return !!v && form.dataset.priceAuto === v ? (form.dataset.priceGuess ? "guess" : true) : false;
+};
+function setAutoPrice(form, v, guess = false) {
   if (v) form.dataset.priceAuto = v; else delete form.dataset.priceAuto;
+  if (v && guess) form.dataset.priceGuess = "1"; else delete form.dataset.priceGuess;
   form.paintPriceSync?.();
 }
+const SYNC_NOTE = "Synced with the store. Type your own price to stop syncing.";
 function wirePriceSync(form) {
   const price = form.elements.price, note = form.querySelector(".price-sync");
   if (!price || !note) return;
-  form.paintPriceSync = () => { note.hidden = !autoPrice(form); };
+  form.paintPriceSync = () => {
+    const a = autoPrice(form);
+    note.hidden = !a;
+    note.classList.toggle("guess", a === "guess");
+    note.innerHTML = a === "guess"
+      ? `⚠ This is an estimate. The store's exact price couldn't be read. Check it and type the real price, or:<br>
+        <button type="button" class="btn small quiet" data-price-ok>It's right</button><button type="button" class="btn small quiet" data-price-clear>Remove price</button>`
+      : SYNC_NOTE;
+  };
+  // Buttons inside the note: "It's right" keeps the price as exact; "Remove price" clears it.
+  note.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    e.preventDefault();
+    if (b.matches("[data-price-ok]")) setAutoPrice(form, price.value.trim());
+    else if (b.matches("[data-price-clear]")) { price.value = ""; setAutoPrice(form, ""); price.dispatchEvent(new Event("input", { bubbles: true })); }
+  });
   price.addEventListener("input", form.paintPriceSync);
   form.paintPriceSync();
 }
@@ -4952,7 +4988,7 @@ function wireAutofill(form) {
       const brandEl = form.elements.brand;
       if (brandEl && r.brand) { if (force || !mineNow(brandEl, "brand")) { brandEl.value = auto.brand = r.brand; filled.push("brand"); } else kept.push("brand"); }
       // A price still showing what the link gave last time counts as empty, so it follows the new link.
-      if (r.price != null) { if (force || !price.value.trim() || autoPrice(form)) { price.value = String(r.price); setAutoPrice(form, price.value); filled.push("price"); } else kept.push("price"); }
+      if (r.price != null) { if (force || !price.value.trim() || autoPrice(form)) { price.value = String(r.price); setAutoPrice(form, price.value, !!r.priceGuess); filled.push("price"); } else kept.push("price"); }
       if (filled.includes("price")) { const d = form.querySelector("details.more"); if (d) d.open = true; }
       if (r.image) filled.push("photo");
       const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : xs[0]);
@@ -4965,7 +5001,7 @@ function wireAutofill(form) {
           : failed.offline ? `You're offline, so we named it from the link. ${later}`
           : `Couldn't look that up right now, so we named it from the link. ${later}`)
         : r.guessed && filled.length ? `${r.site} wouldn't let us read that page, so the name is a guess from the link. Fix it up, or snap a photo instead.`
-        : filled.length ? `Filled in the ${and(filled)} from ${r.site}.${kept.length ? ` Kept your ${and(kept)}.` : ""}`
+        : filled.length ? `Filled in the ${and(filled)} from ${r.site}.${kept.length ? ` Kept your ${and(kept)}.` : ""}${filled.includes("price") && r.priceGuess ? " The price is an estimate, so check it." : ""}`
         : kept.length ? `Kept what you typed.`
         : `Couldn't read details from ${r.site}. Type them in instead.`, filled.length > 0, r.image, replace);
     } catch (e) { if (mine === seq) say(e.message); }
@@ -6458,7 +6494,8 @@ function wishDetails(card, kind, i, name) {
   const est = i.price_est ?? estFound.get(key);
   const live = i.url && !i.claim && !i.removed ? `<span class="live" data-live="${esc(key)}" data-listed="${i.price_cents ?? ""}" data-short hidden></span>` : "";
   // One row for everything about cost and where to buy it: price (or an estimate), the live check, the store link.
-  const cost = paid != null ? `<span class="wd-price">${money(paid)}</span>`
+  const cost = paid != null && isGuess(i, paid) ? `<span class="wd-price est guess">~${money(paid)}</span><small>Estimated. Check the price at the store.</small>`
+    : paid != null ? `<span class="wd-price">${money(paid)}</span>`
     : est ? `<span class="wd-price est">~${money(Math.max(100, Math.round(est / 100) * 100))}</span><small>Estimated</small>`
     : i.url ? `<span class="wd-noprice">No price listed</span>` : "";
   const buy = cost || i.url ? `<div class="wd-buy">
@@ -7214,7 +7251,8 @@ function ideaRow(i) {
   return `<div class="row${bought ? (i.claim.mine ? " mine" : " taken") : ""}" role="button" tabindex="0" data-idea="${esc(i.id)}" aria-label="Edit idea ${esc(i.title)}">
     <div class="row-top">${tile(i, "idea")}
       <div class="row-main">
-        <div class="row-head"><span class="row-title">${esc(i.title)}</span>${i.price_cents != null ? `<span class="row-price">${money(i.price_cents)}</span>` : ""}</div>
+        <div class="row-head"><span class="row-title">${esc(i.title)}</span>${i.price_cents != null ? `<span class="row-price${isGuess(i) ? " guess" : ""}"${isGuess(i) ? ` title="${GUESS_TITLE}"` : ""}>${isGuess(i) ? "~" : ""}${money(i.price_cents)}</span>` : ""}</div>
+        ${i.price_cents != null && isGuess(i) ? `<span class="price-check">⚠ Estimated price. Tap to check it</span>` : ""}
         ${i.note ? `<span class="row-notes">${esc(i.note)}</span>` : ""}
         <span class="from">${esc(status)}${i.url ? ` · <a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(host(i.url))}</a>` : ""}</span>
       </div>
@@ -7257,7 +7295,7 @@ function editIdea(idea, subjectId, opts = {}) {
   const isNew = !idea;
   const purchase = isNew && opts.purchase;
   const c = opts.carry;
-  idea ||= { subject_id: subjectId, ...(c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, note: c.notes } : {}) };
+  idea ||= { subject_id: subjectId, ...(c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: !!c.priceAuto, price_guess: c.priceAuto === "guess", note: c.notes } : {}) };
   const chips = isNew && opts.chooser && !purchase ? whoChips(subjectId) : "";
   const people = others();
   const boughtByOther = idea.claim && !idea.claim.mine;
@@ -7265,7 +7303,7 @@ function editIdea(idea, subjectId, opts = {}) {
     <h3>${purchase ? "Add a purchase" : isNew ? "Gift idea" : "Edit idea"}</h3>
     ${chips}
     ${isNew && !purchase && subjectId && canManageId(subjectId) ? `<p class="hint" style="margin-top:0">You look after ${esc(personName(subjectId))}'s list. <button class="linkbtn" type="button" id="toTheirList">Add it to their wish list instead</button></p>` : ""}
-    <form id="ideaForm" autocomplete="off"${idea.price_auto ? ` data-price-auto="${esc(priceIn(idea.price_cents))}"` : ""}>
+    <form id="ideaForm" autocomplete="off"${idea.price_auto ? ` data-price-auto="${esc(priceIn(idea.price_cents))}"` : ""}${idea.price_auto && idea.price_guess ? ' data-price-guess="1"' : ""}>
       <div class="err" hidden></div>
       ${chips ? "" : isNew && !subjectId ? `<label class="field"><span>Who's it for?</span><select class="input" name="subjectId" required>
           <option value="">Choose someone</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`
