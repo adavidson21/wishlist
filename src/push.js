@@ -55,13 +55,21 @@ export async function vapidKeys(env) {
   return cached;
 }
 
+// One signed token per push service (origin), reused for an hour (it's valid for 12), so a run that sends many
+// notifications signs once per service instead of once per notification. Saves CPU on the free plan.
+const tokens = new Map();
 async function vapidHeader(env, endpoint) {
   const { key, pub } = await vapidKeys(env);
+  const aud = new URL(endpoint).origin;
+  const hit = tokens.get(aud);
+  if (hit && hit.pub === pub && hit.until > Date.now()) return hit.header;
   const part = (o) => b64u(enc.encode(JSON.stringify(o)));
-  const unsigned = `${part({ typ: "JWT", alg: "ES256" })}.${part({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: SUBJECT })}`;
+  const unsigned = `${part({ typ: "JWT", alg: "ES256" })}.${part({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: SUBJECT })}`;
   // WebCrypto's ECDSA signature is already r || s, which is what a JWT wants.
   const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(unsigned));
-  return `vapid t=${unsigned}.${b64u(sig)}, k=${pub}`;
+  const header = `vapid t=${unsigned}.${b64u(sig)}, k=${pub}`;
+  tokens.set(aud, { header, pub, until: Date.now() + 3600_000 });
+  return header;
 }
 
 async function hkdf(salt, ikm, info, bytes) {

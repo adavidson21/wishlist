@@ -1027,6 +1027,7 @@
   .mock .res .tile { width: 46px; height: 46px; font-size: 20px; border-radius: 12px; }
   .mock .res strong { display: block; font-size: 15px; } .mock .res .price-tag { margin-top: 4px; height: 24px; font-size: 13px; }
   .slide-card.on .mock .res { animation: drop .7s cubic-bezier(.2, .8, .3, 1) 1.7s both; }
+  .slide-card.on .mock.ping .res { animation-delay: .35s; } /* the notification slide has no typing first */
   .slide-card.on .mock .res .price-tag { animation: swing 1s ease 2.2s both; }
   .mock .sparkle { position: absolute; right: -10px; top: -12px; color: var(--gold); }
   .slide-card.on .mock .sparkle { animation: twinkle 1.6s ease 2s infinite; }
@@ -1725,7 +1726,7 @@ async function api(path, data) {
   try { res = await fetch(API + path, opts); }
   catch { const e = new Error("You're offline. Try again when you have a connection."); e.offline = true; throw e; }
   const out = await res.json().catch(() => ({}));
-  if (res.status === 401 && t) { setToken(null); state.me = null; render(); }
+  if (res.status === 401 && t) { setToken(null); state.me = null; dropBrowserPush(); render(); }
   if (!res.ok) { const e = new Error(out.error || "Something went wrong."); e.status = res.status; e.detail = out.detail; throw e; }
   return out;
 }
@@ -1955,6 +1956,10 @@ async function refreshMe() {
   notePhotos(Object.values(state.households).map((h) => ({ id: `h:${h.id}`, photo: h.photo })));
   notePhotos([data.me]);
   state.today = data.today;
+  state.seen = data.seen || {};
+  copySeenOnce();
+  updateAppBadge();
+  syncPush();
 }
 
 // Older wishes and ideas get their link details (photo, price, brand, size, color) refreshed once on the server,
@@ -2466,6 +2471,11 @@ const privateScene = () => `<div class="scene"><span class="blob"></span><div cl
 const pinScene = () => `<div class="scene" style="height:180px"><span class="blob"></span><div style="position:relative">
     <span class="lockbadge" style="width:66px;height:66px;margin:0 auto 18px">${LOCK_BIG}</span>
     <div class="pin-dots" id="pinDots"><i></i><i></i><i></i><i></i></div></div></div>`;
+// A pretend lock screen notification.
+const notifyScene = () => `<div class="scene"><span class="blob"></span><div class="mock ping">
+    <div class="res" style="margin:0;align-items:flex-start"><img src="/icons/icon-192.png" alt="" width="38" height="38" style="border-radius:10px;flex:none">
+      <span style="font-size:13px;line-height:1.35"><small style="color:var(--muted)">Hints · now</small><br><strong>Sam added 3 wishes</strong><br>See what's new on Sam's list.</span></div>
+  </div></div>`;
 const installScene = () => `<div class="scene"><span class="blob"></span><div class="phone"><div class="grid">
     ${Array.from({ length: 9 }, (_, i) => (i === 4 ? `<span class="app ours">${GIFT_W}</span>` : '<span class="app"></span>')).join("")}</div></div></div>`;
 
@@ -2489,6 +2499,10 @@ function openTour() {
       extra: iOS ? steps([`Tap Share ${SHARE_IOS} in Safari (on newer iPhones, it's in the ${DOTS} menu)`, `Choose <strong>Add to Home Screen</strong> ${ADD_HOME}`])
         : installPrompt ? '<button class="btn primary" type="button" id="installBtn" style="margin-top:18px">Add to home screen</button>'
         : steps(["Open your browser's menu (the three dots)", "Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>"]) },
+    // Only where notifications can be turned on from right here (so not in an iPhone Safari tab).
+    pushSupported() && Notification.permission === "default" && { id: "notify", scene: notifyScene(), title: "Hear about new wishes",
+      text: "Get a heads up when someone adds to their list or a birthday is coming up. Never between 9 pm and 8 am. You can change this in Settings.",
+      extra: '<button class="btn primary" type="button" id="tourPush" style="margin-top:18px">Turn on notifications</button>' },
     w.started && group() && { id: "invite", scene: "", title: "Now invite your people", text: "Send them this link. It opens right to your circle.",
       extra: `<div class="tour-invite">${inviteCard(group())}</div>` },
   ].filter(Boolean);
@@ -2534,6 +2548,14 @@ function openTour() {
     try { installPrompt.prompt(); const r = await installPrompt.userChoice; installPrompt = null; if (r.outcome === "accepted") { party(); go(idx + 1 < slides.length ? idx + 1 : idx); } } catch {}
   });
   if (w.started && group()) wireInviteCard(tourEl, group());
+  $("#tourPush", tourEl)?.addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      if (await enablePush()) { b.textContent = "Notifications are on"; party(); go(idx + 1 < slides.length ? idx + 1 : idx); }
+      else { b.textContent = "Okay, maybe later"; }
+    } catch (err) { toast(err.message || "That didn't work. Try again."); b.disabled = false; }
+  });
 
   next.onclick = async () => {
     const sl = slides[idx];
@@ -2579,13 +2601,15 @@ const STARTER_KEY = "wishlist-starter";
 // A one-time "add your birthday" card on My list, until you add one or tap Not now.
 const BDAY_NUDGE_KEY = "wishlist-bday-nudge";
 // In November, a "Your list hasn't changed since last year" card on My list when no published wish was added
-// or edited this year. "Looks good" hides it until next November (per device and person).
+// or edited this year. "Looks good" hides it until next November on every device (members.stale_ok_year), and also
+// skips that year's Nov 15 reminder notification.
 const STALE_NUDGE_KEY = "wishlist-stale-nudge";
 function showStaleNudge(live) {
   const t = state.today || 0, year = Math.floor(t / 10000);
   if (Math.floor(t / 100) % 100 !== 11 || !live.length) return false;
   const latest = live.reduce((a, i) => [a, i.created_at || "", i.updated_at || ""].sort().pop(), "");
   if (latest >= `${year}-01-01`) return false;
+  if (state.me.staleOk === year) return false;
   try { return localStorage.getItem(STALE_NUDGE_KEY) !== `${state.me.id}:${year}`; } catch { return false; }
 }
 const showBdayNudge = () => { if (state.me?.profile?.birthday) return false; try { return localStorage.getItem(BDAY_NUDGE_KEY) !== state.me.id; } catch { return false; } };
@@ -2832,7 +2856,7 @@ async function renderMine() {
   const pinNotice = pc ? `<div class="starter slide" id="pinNotice" style="margin:0 0 14px"><strong>Your PIN was cleared</strong>
       <p>${esc(pc.by)} cleared it on ${new Date(pc.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, so you could sign in again. Set a new one to keep your notes yours.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pinNoticeOk">Not now</button><button class="btn primary" type="button" id="pinNoticeSet">Set a PIN</button></div></div>` : "";
-  v.innerHTML = '<div id="installSlot"></div>' + pinNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
+  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
     <div class="empty">
       ${giftBox("Drop your first hint")}
       <strong>Let's start your list</strong>
@@ -2843,6 +2867,7 @@ async function renderMine() {
     </div>
     ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`);
   paintInstallCard();
+  paintPushNudge();
   $("#addFirst")?.addEventListener("click", () => addThing());
   $("#listAdd")?.addEventListener("click", () => addThing());
   $("#maybeAdd")?.addEventListener("click", () => addThing());
@@ -2861,6 +2886,8 @@ async function renderMine() {
   $("#staleAdd")?.addEventListener("click", () => addThing());
   $("#staleOk")?.addEventListener("click", () => {
     try { localStorage.setItem(STALE_NUDGE_KEY, `${state.me.id}:${Math.floor((state.today || 0) / 10000)}`); } catch {}
+    state.me.staleOk = Math.floor((state.today || 0) / 10000);
+    api("stale/ok", {}).catch(() => {});
     $("#staleNudge")?.remove();
     toast("Great. Your list is ready for the holidays.");
   });
@@ -3574,14 +3601,43 @@ function wireAutofill(form) {
 const confirmRemove = () => window.confirm("Remove this from your list?");
 
 // ---------- family ----------
-// "2 new" on a Family row: wishes added since you last opened that person's list (remembered on this device).
+// "2 new" on a Family row: wishes added since you last opened that person's list. Kept on the server (GET me
+// "seen", POST seen) so it's the same on every device. This device's old local copy is sent up once
+// (copySeenOnce) so nobody's badges reset, and still fills in for anyone the server doesn't have yet.
 const SEEN_KEY = "wishlist-seen";
-function readSeen() { try { return JSON.parse(localStorage.getItem(SEEN_KEY)) || {}; } catch { return {}; } }
-function markSeen(id, count) { try { const s = readSeen(); s[id] = count; localStorage.setItem(SEEN_KEY, JSON.stringify(s)); } catch {} }
+const SEEN_SYNC_KEY = "wishlist-seen-synced";
+function readLocalSeen() { try { return JSON.parse(localStorage.getItem(SEEN_KEY)) || {}; } catch { return {}; } }
+const readSeen = () => ({ ...readLocalSeen(), ...(state.seen || {}) });
+function markSeen(id, count) {
+  try { const s = readLocalSeen(); s[id] = count; localStorage.setItem(SEEN_KEY, JSON.stringify(s)); } catch {}
+  if (state.seen?.[id] === count) return;
+  state.seen = { ...(state.seen || {}), [id]: count };
+  api("seen", { ownerId: id, count }).catch(() => {});
+  updateAppBadge();
+}
+function copySeenOnce() {
+  try {
+    if (localStorage.getItem(SEEN_SYNC_KEY) === state.me.id) return;
+    const local = readLocalSeen();
+    const missing = Object.fromEntries(Object.entries(local).filter(([id, n]) => state.seen[id] == null && Number.isInteger(n)));
+    localStorage.setItem(SEEN_SYNC_KEY, state.me.id);
+    if (!Object.keys(missing).length) return;
+    state.seen = { ...missing, ...state.seen };
+    api("seen", { seen: missing, merge: true }).catch(() => {});
+  } catch {}
+}
+const newCount = (m) => { const seen = readSeen()[m.id]; return seen == null ? 0 : Math.max(0, (m.itemCount || 0) - seen); };
 function newBadge(m) {
-  const seen = readSeen()[m.id];
-  const n = seen == null ? 0 : (m.itemCount || 0) - seen;
+  const n = newCount(m);
   return n > 0 ? `<span class="new-badge">${n} new</span>` : "";
+}
+// The number on the home screen icon (installed app, where the phone supports it): new wishes across everyone.
+function updateAppBadge() {
+  if (!("setAppBadge" in navigator) || !state.groups) return;
+  const best = new Map();
+  for (const g of state.groups) for (const m of g.members) if (m.id !== state.me?.id) best.set(m.id, Math.max(best.get(m.id) || 0, newCount(m)));
+  const total = [...best.values()].reduce((a, b) => a + b, 0);
+  (total ? navigator.setAppBadge(total) : navigator.clearAppBadge()).catch(() => {});
 }
 
 async function renderFamily() {
@@ -5574,10 +5630,12 @@ function setMotion(on) {
 
 // ---------- notifications ----------
 // Web Push, per device. iPhones only allow it from the home screen app (iOS 16.4+). The server side is src/push.js.
+// A device's notifications belong to its sign-in: signing out ends them (here and on the server).
 const PUSH_KINDS = [["wishes", "New wishes", "When someone adds to their list (at most once an hour)"],
-  ["birthdays", "Birthdays and Christmas", "Two weeks and three days before, and in December if you still need gifts"],
+  ["birthdays", "Birthdays and Christmas", "Two weeks and two days before, and in December if you still need gifts"],
   ["groupGifts", "Group gifts", "When someone starts one you can chip in on"],
-  ["chat", "Chats", "New messages in a chat about someone (once until you read it)"]];
+  ["chat", "Chats", "New messages in a chat about someone (once until you read it)"],
+  ["reminders", "Your list", "Once in November if your list hasn't changed since last year"]];
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 function keyBytes(b64) {
   const t = b64.replace(/-/g, "+").replace(/_/g, "/");
@@ -5587,6 +5645,73 @@ async function pushSub() {
   const reg = await navigator.serviceWorker.ready;
   return { reg, sub: await reg.pushManager.getSubscription() };
 }
+// Asks for permission (must come from a tap) and turns notifications on for this device. True when it worked.
+async function enablePush() {
+  if ((await Notification.requestPermission()) !== "granted") return false;
+  const { reg } = await pushSub();
+  const { key } = await api("push/key");
+  const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+  await api("push/subscribe", { subscription: s.toJSON() });
+  buzz();
+  return true;
+}
+// On every start: re-register this device's subscription with the server (push services rotate them, and a
+// subscription only counts for the sign-in that sent it). Once per page load.
+let pushSynced = false;
+async function syncPush() {
+  if (pushSynced || !pushSupported() || Notification.permission !== "granted") return;
+  pushSynced = true;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) await api("push/subscribe", { subscription: sub.toJSON() });
+  } catch {}
+}
+// Forget this browser's subscription (signing out, or signed out by the server).
+async function dropBrowserPush() {
+  pushSynced = false;
+  try {
+    if (!pushSupported()) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+  } catch {}
+}
+
+// "Want a heads up when your people add wishes?" on My list. Only where turning them on works from right here
+// (not in an iPhone Safari tab; the install card covers that), once you share a circle with someone, never at
+// the same time as the install card or during the tour. Not now: 7 days, then 30, then it stops.
+const PUSH_NUDGE_KEY = "wishlist-push-nudge";
+function readPushNudge() { try { return JSON.parse(localStorage.getItem(PUSH_NUDGE_KEY)) || {}; } catch { return {}; } }
+function pushNudgeDue() {
+  if (!pushSupported() || Notification.permission !== "default" || installDue() || state.toured || !state.me?.onboarded) return false;
+  const st = readPushNudge();
+  return !st.off && Date.now() > (st.until || 0) && everyone().some((m) => m.id !== state.me.id);
+}
+function paintPushNudge() {
+  const slot = $("#pushSlot");
+  if (!slot) return;
+  if (!pushNudgeDue()) { slot.innerHTML = ""; return; }
+  slot.innerHTML = `<div class="starter slide" id="pushNudge" style="margin:0 0 14px"><strong>Want a heads up when your people add wishes?</strong>
+    <p>Hints can tell you when someone adds to their list or a birthday is coming up. Never between 9 pm and 8 am.</p>
+    <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pushLater">Not now</button><button class="btn primary" type="button" id="pushYes">Turn on</button></div></div>`;
+  $("#pushYes", slot).onclick = async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const ok = await enablePush();
+      slot.innerHTML = "";
+      if (ok) toast("Notifications are on. Change them anytime in Settings.");
+      else { try { localStorage.setItem(PUSH_NUDGE_KEY, JSON.stringify({ off: true })); } catch {} toast("No problem. You can turn them on in Settings."); }
+    } catch (err) { toast(err.message || "That didn't work. Try again."); e.currentTarget.disabled = false; }
+  };
+  $("#pushLater", slot).onclick = () => {
+    const st = readPushNudge(), snoozes = (st.snoozes || 0) + 1;
+    try { localStorage.setItem(PUSH_NUDGE_KEY, JSON.stringify({ snoozes, until: Date.now() + (snoozes === 1 ? 7 : 30) * 864e5, off: snoozes >= 3 })); } catch {}
+    slot.innerHTML = "";
+    toast(snoozes >= 3 ? "Okay, I'll stop asking. It's in Settings anytime." : "No problem. It's also in Settings.");
+  };
+}
+
 async function paintPush(card) {
   if (!card) return;
   const iOS = isAppleMobile();
@@ -5602,21 +5727,16 @@ async function paintPush(card) {
     card.innerHTML = `<p class="sub">Notifications are blocked for Hints on this device. Turn them on in your ${iOS ? "iPhone's Settings > Notifications > Hints" : "browser or phone settings"}, then come back.</p>`;
     return;
   }
-  let sub = null, reg = null;
-  try { ({ reg, sub } = await pushSub()); } catch {}
+  let sub = null;
+  try { ({ sub } = await pushSub()); } catch {}
   if (!sub) {
-    card.innerHTML = `<p class="sub">Get a heads up when someone adds wishes, a birthday is coming, or a group gift starts.</p>
+    card.innerHTML = `<p class="sub">Get a heads up when someone adds wishes, a birthday is coming, or a group gift starts. Nothing between 9 pm and 8 am.</p>
       <button class="btn primary wide" type="button" id="pushOn">Turn on notifications</button>`;
     $("#pushOn", card).onclick = async (e) => {
       const b = e.currentTarget;
       b.disabled = true;
       try {
-        if ((await Notification.requestPermission()) !== "granted") { paintPush(card); return; }
-        const { key } = await api("push/key");
-        const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
-        await api("push/subscribe", { subscription: s.toJSON() });
-        buzz();
-        toast("Notifications are on");
+        if (await enablePush()) toast("Notifications are on");
         paintPush(card);
       } catch (err) { toast(err.message || "That didn't work. Try again."); b.disabled = false; }
     };
@@ -5625,7 +5745,7 @@ async function paintPush(card) {
   // Keep the server's copy current (it drops ones the push service says are gone).
   api("push/subscribe", { subscription: sub.toJSON() }).catch(() => {});
   const prefs = state.me.notify || {};
-  card.innerHTML = `<p class="sub">On for this device.</p>
+  card.innerHTML = `<p class="sub">On for this device. Nothing comes between 9 pm and 8 am; anything that came up overnight arrives in the morning.</p>
     ${PUSH_KINDS.map(([k, t, d]) => swRow(`push_${k}`, t, d, prefs[k] !== false).replace('type="button"', `type="button" data-push-kind="${k}"`)).join("")}
     <div class="actions"><button class="btn" type="button" id="pushTest">Send a test</button><button class="btn quiet danger" type="button" id="pushOff">Turn off here</button></div>`;
   card.querySelectorAll("[data-push-kind]").forEach((b) => (b.onclick = async () => {
@@ -5797,6 +5917,9 @@ async function renderSettings() {
       try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { toast(e.message); }
     });
     $("#signOut", v).onclick = async () => {
+      // The server drops this device's notifications with the sign-in; the browser forgets its subscription too,
+      // so whoever signs in next starts with notifications off.
+      await dropBrowserPush();
       try { await api("signout", {}); } catch {}
       setToken(null);
       try { localStorage.removeItem(CACHE_KEY); } catch {}

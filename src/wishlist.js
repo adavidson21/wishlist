@@ -1452,40 +1452,85 @@ async function refreshRow(env, table, row) {
 // ---------- handlers ----------
 
 // ---------- notifications ----------
-// Web Push (src/push.js), turned on per device in Settings. Three kinds, each with its own switch
-// (members.notify, NULL = all on): new wishes (hourly digest), birthday and Christmas reminders (9am New York),
-// and group gifts (sent when one starts). Everything follows the privacy rules: only people you share a circle
-// with, only wishes you can see, never anything about your own gifts.
-const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts", "chat"];
+// Web Push (src/push.js), turned on per device in Settings. Kinds, each with its own switch (members.notify,
+// NULL = all on): new wishes (hourly digest), birthday and Christmas reminders, group gifts (when one starts),
+// chat messages, and a once-a-year reminder about your own list. Everything follows the privacy rules: only people
+// you share a circle with, only wishes you can see, never anything about your own gifts.
+// Quiet hours: nothing is sent between 9 pm and 8 am New York time. Instant ones (group gifts, chat) wait in
+// push_later and go out with the 8 am run; the wish digest just waits for the morning.
+const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts", "chat", "reminders"];
 function notifyPrefs(v) {
   let o = {};
   try { o = JSON.parse(v || "{}") || {}; } catch {}
   return Object.fromEntries(NOTIFY_KINDS.map((k) => [k, o[k] !== false]));
 }
-// Everyone with at least one device that has notifications on and this kind switched on.
+// A subscription (alias s) only counts while the device that turned it on is still signed in as that person.
+// Signing out, being bumped by the device cap, or being removed ends it, so the next person on that phone never
+// gets the last person's notifications.
+const LIVE_SUB = "s.device_token IS NOT NULL AND EXISTS (SELECT 1 FROM devices d WHERE d.token = s.device_token AND d.member_id = s.member_id)";
+const QUIET_FROM = 21, QUIET_UNTIL = 8;
+// The hour in New York (0-23). PUSH_DEV_HOUR: local testing only (.dev.vars).
+function nyHour(env) {
+  if (env?.PUSH_DEV_HOUR !== undefined && env.PUSH_DEV_HOUR !== "") return +env.PUSH_DEV_HOUR;
+  return +new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(new Date());
+}
+const isQuiet = (h) => h >= QUIET_FROM || h < QUIET_UNTIL;
+// Today as YYYYMMDD for reminders. PUSH_DEV_TODAY: local testing only.
+const pushToday = (env) => (env?.PUSH_DEV_TODAY ? +env.PUSH_DEV_TODAY : today());
+// Most notifications one scheduled run sends. Every one is an outgoing request and the free plan allows 50 a run.
+const RUN_BUDGET = 35;
+
+// Everyone with at least one live device and this kind switched on.
 async function pushRecipients(env, kind) {
   const { results } = await env.DB.prepare(
-    "SELECT DISTINCT m.id, m.name, m.notify FROM push_subs s JOIN members m ON m.id = s.member_id",
+    `SELECT DISTINCT m.id, m.name, m.notify, m.stale_ok_year FROM push_subs s JOIN members m ON m.id = s.member_id WHERE ${LIVE_SUB}`,
   ).all();
   return results.filter((m) => notifyPrefs(m.notify)[kind]);
 }
-// Sends to every device a person turned on. Gone subscriptions (404/410) are deleted. Returns how many got it.
-async function pushTo(env, memberId, payload) {
-  const { results } = await env.DB.prepare("SELECT endpoint, p256dh, auth FROM push_subs WHERE member_id = ?").bind(memberId).all();
+// Sends to every live device of one person now. Gone subscriptions (404/410) are deleted. budget: { left } in
+// scheduled runs. Returns how many devices got it.
+async function deliver(env, memberId, payload, budget) {
+  const { results } = await env.DB.prepare(`SELECT s.endpoint, s.p256dh, s.auth FROM push_subs s WHERE s.member_id = ? AND ${LIVE_SUB}`).bind(memberId).all();
   let sent = 0;
   for (const sub of results) {
+    if (budget) budget.left--;
     const status = await sendPush(env, sub, payload).catch((err) => (console.error("push", err), 0));
     if (status === 404 || status === 410) await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(sub.endpoint).run();
     else if (status >= 200 && status < 300) sent++;
   }
   return sent;
 }
-// A reminder goes out once per key, even if a run is retried.
+// Instant notifications (group gifts, chat): sent now, or held until 8 am during quiet hours. Held ones keep only
+// the newest per tag. anyTime: send even during quiet hours (the test button).
+async function pushTo(env, memberId, payload, { anyTime = false } = {}) {
+  if (!anyTime && isQuiet(nyHour(env))) {
+    await env.DB.prepare(
+      `INSERT INTO push_later (member_id, tag, payload, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (member_id, tag) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
+    ).bind(memberId, String(payload.tag || "hints"), JSON.stringify(payload), now()).run();
+    return 0;
+  }
+  return deliver(env, memberId, payload);
+}
+// The morning run: sends what quiet hours held. Anything older than a day is dropped (it's old news).
+async function flushLater(env, budget) {
+  await env.DB.prepare("DELETE FROM push_later WHERE created_at < ?").bind(new Date(Date.now() - 86_400_000).toISOString()).run();
+  const { results } = await env.DB.prepare("SELECT member_id, tag, payload FROM push_later ORDER BY created_at LIMIT 100").all();
+  let sent = 0;
+  for (const row of results) {
+    if (budget.left <= 0) break;
+    await env.DB.prepare("DELETE FROM push_later WHERE member_id = ? AND tag = ?").bind(row.member_id, row.tag).run();
+    sent += await deliver(env, row.member_id, JSON.parse(row.payload), budget);
+  }
+  return sent;
+}
+// A notification goes out once per key, even if a run is retried.
 async function onceOnly(env, key) {
   const res = await env.DB.prepare("INSERT OR IGNORE INTO push_sent (key, sent_at) VALUES (?, ?)").bind(key, now()).run();
   return !!res.meta.changes;
 }
 const daysBetween = (a, b) => Math.round((Date.UTC(Math.floor(b / 10000), Math.floor(b / 100) % 100 - 1, b % 100) - Date.UTC(Math.floor(a / 10000), Math.floor(a / 100) % 100 - 1, a % 100)) / 86400000);
+const weekdayOf = (code) => new Date(Date.UTC(Math.floor(code / 10000), Math.floor(code / 100) % 100 - 1, code % 100)).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
 // Has `buyerId` got anything for `subjectId` for this occasion yet (a wish, an idea, or a gift card)?
 async function hasGiftFor(env, buyerId, subjectId, code) {
   const row = await env.DB.prepare(
@@ -1503,16 +1548,29 @@ async function circlePeople(env, memberId) {
   ).bind(memberId, memberId).all();
   return results;
 }
+// How many wishes are new for a viewer across everyone, the same count as the "N new" badges (list_seen). Sent with
+// the wish digest so the app icon's badge updates while the app is closed.
+async function newWishTotal(env, viewerId) {
+  const { results } = await env.DB.prepare(
+    `SELECT ls.seen_count AS seen, (SELECT COUNT(*) FROM items i WHERE i.owner_id = ls.owner_id AND i.removed_at IS NULL AND ${ITEM_VISIBLE}) AS n
+       FROM list_seen ls WHERE ls.viewer_id = ?`,
+  ).bind(viewerId, viewerId).all();
+  return results.reduce((t, r) => t + Math.max(0, r.n - r.seen), 0);
+}
 
-// Hourly: "Sam added 2 wishes" for wishes published since the last run, to everyone who can see them.
-// Skips people you look after (you added those wishes yourself).
-async function wishDigest(env) {
+// Hourly outside quiet hours: "Sam added 2 wishes" for wishes published since the last digest, to everyone who can
+// see them. Skips people you look after (you added those wishes yourself). The cursor only moves once everyone has
+// been handled, and each person's digest has its own once-only key, so a run that stops early never loses or
+// repeats one. Overnight wishes go out in the first morning run.
+async function wishDigest(env, budget, hour) {
   const t = now();
   const cur = await env.DB.prepare("SELECT value FROM app_keys WHERE name = 'wishes_cursor'").first();
-  await env.DB.prepare("INSERT INTO app_keys (name, value) VALUES ('wishes_cursor', ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value").bind(t).run();
-  if (!cur) return 0; // First run: start counting from now.
-  let sent = 0;
+  const moveCursor = () => env.DB.prepare("INSERT INTO app_keys (name, value) VALUES ('wishes_cursor', ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value").bind(t).run();
+  if (!cur) { await moveCursor(); return 0; } // First run: start counting from now.
+  if (isQuiet(hour)) return 0;
+  let sent = 0, finished = true;
   for (const r of await pushRecipients(env, "wishes")) {
+    if (budget.left <= 0) { finished = false; break; }
     const { results } = await env.DB.prepare(
       `SELECT i.owner_id, m.name, COUNT(*) AS n FROM items i JOIN members m ON m.id = i.owner_id
         WHERE i.created_at > ? AND i.created_at <= ? AND i.removed_at IS NULL AND i.owner_id != ? AND ${ITEM_VISIBLE.replace("?", "?4")}
@@ -1521,20 +1579,28 @@ async function wishDigest(env) {
     const rows = [];
     for (const x of results) if (!(await canManage(env, r.id, x.owner_id))) rows.push(x);
     if (!rows.length) continue;
+    if (!(await onceOnly(env, `wishes:${r.id}:${cur.value}`))) continue;
     const nicks = await nicknamesFor(env, r.id);
     const nm = (x) => nicks.get(x.owner_id) || x.name;
     const wishes = (n) => (n === 1 ? "a wish" : `${n} wishes`);
+    const badge = await newWishTotal(env, r.id).catch(() => undefined);
     const payload = rows.length === 1
-      ? { title: `${nm(rows[0])} added ${wishes(rows[0].n)}`, body: `See what's new on ${nm(rows[0])}'s list.`, url: `/#person/${rows[0].owner_id}`, tag: `wishes:${rows[0].owner_id}` }
-      : { title: "New wishes", body: `${peopleList(rows.map((x) => `${nm(x)} added ${rows.length > 3 ? x.n : wishes(x.n)}`))}.`, url: "/#family", tag: "wishes" };
-    sent += await pushTo(env, r.id, payload);
+      ? { title: `${nm(rows[0])} added ${wishes(rows[0].n)}`, body: `See what's new on ${nm(rows[0])}'s list.`, url: `/#person/${rows[0].owner_id}`, tag: `wishes:${rows[0].owner_id}`, badge }
+      : { title: "New wishes", body: `${peopleList(rows.map((x) => `${nm(x)} added ${rows.length > 3 ? x.n : wishes(x.n)}`))}.`, url: "/#family", tag: "wishes", badge };
+    sent += await deliver(env, r.id, payload, budget);
   }
+  if (finished) await moveCursor();
   return sent;
 }
 
-// Daily at 9am New York: birthdays 14 and 3 days out, and Christmas on Dec 1 and Dec 18 when you still need gifts.
-async function reminders(env) {
-  const d = today();
+// Once a day, from the 9 am run on (later runs pick up where a run that ran out of budget stopped):
+// - birthdays 14 and 2 days out, to everyone who shares a circle with the birthday person (never to them),
+// - Christmas on Dec 1 and Dec 18, only if you still need gifts,
+// - from Nov 15, "Your list hasn't changed since last year" to the list's owner (once a year, not after Looks good).
+async function reminders(env, budget) {
+  const d = pushToday(env);
+  const done = await env.DB.prepare("SELECT value FROM app_keys WHERE name = 'reminders_done'").first();
+  if (done?.value === String(d) && !env.PUSH_DEV_REMIND) return 0;
   const xmas = occasionsFor({}, d).find((o) => o.christmas).code;
   const xmasIn = daysBetween(d, xmas);
   let sent = 0;
@@ -1545,26 +1611,47 @@ async function reminders(env) {
     for (const p of people) {
       const bday = occasionsFor(p, d).find((o) => o.birthday);
       const n = bday ? daysBetween(d, bday.code) : -1;
-      if (n !== 14 && n !== 3) continue;
+      if (n !== 14 && n !== 2) continue;
+      if (budget.left <= 0) return sent;
       if (!(await onceOnly(env, `bday:${r.id}:${p.id}:${bday.code}:${n}`))) continue;
       const has = await hasGiftFor(env, r.id, p.id, bday.code);
-      sent += await pushTo(env, r.id, {
-        title: `${nm(p)}'s birthday is ${n === 14 ? "in 2 weeks" : "in 3 days"}${bday.turning ? ` (turning ${bday.turning})` : ""}`,
+      sent += await deliver(env, r.id, {
+        title: `${nm(p)}'s birthday is ${n === 14 ? "in 2 weeks" : weekdayOf(bday.code)}${bday.turning ? ` (turning ${bday.turning})` : ""}`,
         body: has ? "You've already got something lined up." : "You haven't picked a gift yet. Peek at their list?",
         url: `/#person/${p.id}`, tag: `bday:${p.id}`,
-      });
+      }, budget);
     }
     if (xmasIn === 24 || xmasIn === 7) {
       const need = [];
       for (const p of people) if (!(await hasGiftFor(env, r.id, p.id, xmas))) need.push(nm(p));
-      if (need.length && (await onceOnly(env, `xmas:${r.id}:${xmas}:${xmasIn}`))) {
-        sent += await pushTo(env, r.id, {
-          title: `Christmas is ${xmasIn === 7 ? "a week away" : `in ${xmasIn} days`}`,
-          body: `Still need a gift for ${peopleList(need.sort())}.`, url: "/#budget", tag: "xmas",
-        });
+      if (need.length) {
+        if (budget.left <= 0) return sent;
+        if (await onceOnly(env, `xmas:${r.id}:${xmas}:${xmasIn}`)) {
+          sent += await deliver(env, r.id, {
+            title: `Christmas is ${xmasIn === 7 ? "a week away" : `in ${xmasIn} days`}`,
+            body: `Still need a gift for ${peopleList(need.sort())}.`, url: "/#budget", tag: "xmas",
+          }, budget);
+        }
       }
     }
   }
+  const month = Math.floor(d / 100) % 100, year = Math.floor(d / 10000);
+  if (month === 11 && d % 100 >= 15) {
+    for (const r of await pushRecipients(env, "reminders")) {
+      if (r.stale_ok_year === year) continue;
+      const row = await env.DB.prepare(
+        "SELECT COUNT(*) AS n, MAX(MAX(created_at, updated_at)) AS latest FROM items WHERE owner_id = ? AND draft = 0 AND removed_at IS NULL",
+      ).bind(r.id).first();
+      if (!row?.n || String(row.latest || "") >= `${year}-01-01`) continue;
+      if (budget.left <= 0) return sent;
+      if (!(await onceOnly(env, `stale:${r.id}:${year}`))) continue;
+      sent += await deliver(env, r.id, {
+        title: "Your list hasn't changed since last year",
+        body: "Everyone's starting to shop. Update a wish or drop a few new hints.", url: "/#mine", tag: "stale",
+      }, budget);
+    }
+  }
+  await env.DB.prepare("INSERT INTO app_keys (name, value) VALUES ('reminders_done', ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value").bind(String(d)).run();
   return sent;
 }
 
@@ -1593,7 +1680,7 @@ async function chatPosted(env, author, groupId, subjectId, msg) {
   const { results: people } = await env.DB.prepare(
     `SELECT m.id, m.notify, r.last_read_at FROM group_members gm JOIN members m ON m.id = gm.member_id
        LEFT JOIN chat_reads r ON r.member_id = m.id AND r.group_id = gm.group_id AND r.subject_id = ?2
-      WHERE gm.group_id = ?1 AND m.id NOT IN (?2, ?3) AND EXISTS (SELECT 1 FROM push_subs s WHERE s.member_id = m.id)`,
+      WHERE gm.group_id = ?1 AND m.id NOT IN (?2, ?3) AND EXISTS (SELECT 1 FROM push_subs s WHERE s.member_id = m.id AND ${LIVE_SUB})`,
   ).bind(groupId, subjectId, author.id).all();
   for (const r of people) {
     if (!notifyPrefs(r.notify).chat) continue;
@@ -1612,14 +1699,25 @@ async function chatPosted(env, author, groupId, subjectId, msg) {
   }
 }
 
-// The Cron Trigger (src/worker.js, hourly): the wish digest every time, reminders in the 9am New York hour.
+// The Cron Trigger (src/worker.js, hourly). Every run: drop subscriptions whose device is gone. Outside quiet
+// hours: what quiet hours held (8 am), the wish digest, and from 9 am the daily reminders. One shared budget.
 export async function runSchedule(env) {
   if (!env.DB) return;
-  const hour = +new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(new Date());
-  const wishes = await wishDigest(env).catch((err) => (console.error("digest", err), 0));
+  const hour = nyHour(env);
+  const budget = { left: RUN_BUDGET };
+  await env.DB.prepare(
+    "DELETE FROM push_subs WHERE device_token IS NULL OR NOT EXISTS (SELECT 1 FROM devices d WHERE d.token = push_subs.device_token AND d.member_id = push_subs.member_id)",
+  ).run().catch((err) => console.error("push sweep", err));
+  if (hour === 3) {
+    // Once a night: forget old digest keys (two days) and everything else after 400 days.
+    await env.DB.prepare("DELETE FROM push_sent WHERE (key LIKE 'wishes:%' AND sent_at < ?) OR sent_at < ?")
+      .bind(new Date(Date.now() - 2 * 86_400_000).toISOString(), new Date(Date.now() - 400 * 86_400_000).toISOString()).run().catch(() => {});
+  }
+  const later = isQuiet(hour) ? 0 : await flushLater(env, budget).catch((err) => (console.error("later", err), 0));
+  const wishes = await wishDigest(env, budget, hour).catch((err) => (console.error("digest", err), 0));
   // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
-  const remind = hour === 9 || env.PUSH_DEV_REMIND === "1" ? await reminders(env).catch((err) => (console.error("reminders", err), 0)) : 0;
-  console.log(`schedule hour=${hour} wishes=${wishes} reminders=${remind}`);
+  const remind = (hour >= 9 && !isQuiet(hour)) || env.PUSH_DEV_REMIND === "1" ? await reminders(env, budget).catch((err) => (console.error("reminders", err), 0)) : 0;
+  console.log(`schedule hour=${hour} later=${later} wishes=${wishes} reminders=${remind} budget_left=${budget.left}`);
 }
 
 // Signing in as someone who is looked after isn't allowed until a manager hands their list over.
@@ -1792,6 +1890,8 @@ const handlers = {
     }
     for (const g of groups) g.created_by = await adminOf(env, g.id);
     let pinCleared = null;
+    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year FROM members WHERE id = ?").bind(me.id).first();
+    const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
     if (me.pinClearedAt) {
       const by = me.pinClearedBy && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(me.pinClearedBy).first());
       pinCleared = { by: (by && (nicks.get(me.pinClearedBy) || by.name)) || "Someone", at: me.pinClearedAt };
@@ -1802,8 +1902,12 @@ const handlers = {
         // Someone cleared your forgotten PIN (see "POST pin/clear"). Shown once as a notice.
         pinCleared,
         profile: await profileOf(env, me.id), household: myHousehold,
-        notify: notifyPrefs((await env.DB.prepare("SELECT notify FROM members WHERE id = ?").bind(me.id).first())?.notify),
+        notify: notifyPrefs(prefsRow?.notify),
+        // Year "Looks good" was tapped on the "hasn't changed since last year" card.
+        staleOk: prefsRow?.stale_ok_year || null,
       },
+      // How many wishes each person's list had when you last opened it, for the "N new" badges (any device).
+      seen: Object.fromEntries(seenRows.map((r) => [r.owner_id, r.seen_count])),
       today: t,
       households,
       groups: groups.map((g) => ({
@@ -2703,7 +2807,8 @@ const handlers = {
     return { key: (await vapidKeys(env)).pub };
   },
 
-  // Turn notifications on for this device. subscription: PushSubscription.toJSON().
+  // Turn notifications on for this device. subscription: PushSubscription.toJSON(). Tied to this sign-in
+  // (device token): signing out or being signed out ends it. The app also calls this on every start to keep it current.
   async "POST push/subscribe"(req, env) {
     const me = await auth(req, env);
     const { subscription: sub } = await body(req);
@@ -2711,9 +2816,10 @@ const handlers = {
     const p256dh = String(sub?.keys?.p256dh || ""), key = String(sub?.keys?.auth || "");
     if (!pushEndpointOk(endpoint, env) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(key)) fail(400, "That browser's notifications didn't work.");
     await env.DB.prepare(
-      `INSERT INTO push_subs (endpoint, member_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (endpoint) DO UPDATE SET member_id = excluded.member_id, p256dh = excluded.p256dh, auth = excluded.auth`,
-    ).bind(endpoint, me.id, p256dh, key, now()).run();
+      `INSERT INTO push_subs (endpoint, member_id, p256dh, auth, created_at, device_token) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (endpoint) DO UPDATE SET member_id = excluded.member_id, p256dh = excluded.p256dh, auth = excluded.auth,
+         device_token = excluded.device_token`,
+    ).bind(endpoint, me.id, p256dh, key, now(), me.token).run();
     // Keep the newest few devices per person.
     await env.DB.prepare(
       "DELETE FROM push_subs WHERE member_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM push_subs WHERE member_id = ?1 ORDER BY created_at DESC LIMIT ?2)",
@@ -2743,9 +2849,37 @@ const handlers = {
   async "POST push/test"(req, env) {
     const me = await auth(req, env);
     await rateLimit(env, `pushtest:${me.id}`, ABUSE.pushTestPerMember);
-    const sent = await pushTo(env, me.id, { title: "Notifications are on 🎁", body: "You'll hear about new wishes, birthdays and group gifts here.", url: "/#mine", tag: "test" });
+    const sent = await pushTo(env, me.id, { title: "Notifications are on 🎁", body: "You'll hear about new wishes, birthdays and group gifts here.", url: "/#mine", tag: "test" }, { anyTime: true });
     if (!sent) fail(502, "That didn't go through. Turn notifications off and on again on this device.");
     return { sent };
+  },
+
+  // The "N new" badges: { ownerId, count } after opening someone's list, or { seen: { ownerId: count } } to copy
+  // what a device remembered from before this was on the server (merge: only fills people with no count yet).
+  // Only people you share a circle with.
+  async "POST seen"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const entries = b.seen && typeof b.seen === "object" ? Object.entries(b.seen).slice(0, 300) : [[b.ownerId, b.count]];
+    const onConflict = b.seen && b.merge ? "DO NOTHING" : "DO UPDATE SET seen_count = excluded.seen_count, seen_at = excluded.seen_at";
+    const t = now();
+    const rows = entries
+      .filter(([id, n]) => typeof id === "string" && id && id !== me.id && Number.isInteger(n) && n >= 0 && n < 100000)
+      .map(([id, n]) => env.DB.prepare(
+        `INSERT INTO list_seen (viewer_id, owner_id, seen_count, seen_at)
+         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id WHERE x.member_id = ?1 AND y.member_id = ?2)
+         ON CONFLICT (viewer_id, owner_id) ${onConflict}`,
+      ).bind(me.id, id, n, t));
+    if (rows.length) await env.DB.batch(rows);
+    return { ok: true };
+  },
+
+  // "Looks good" on the yearly "Your list hasn't changed since last year" card: hides it on every device and
+  // skips that year's reminder notification.
+  async "POST stale/ok"(req, env) {
+    const me = await auth(req, env);
+    await env.DB.prepare("UPDATE members SET stale_ok_year = ? WHERE id = ?").bind(Math.floor(today() / 10000), me.id).run();
+    return { ok: true };
   },
 
   // ---------- people you look after ----------
@@ -3100,7 +3234,11 @@ const handlers = {
 
   async "POST signout"(req, env) {
     const me = await auth(req, env);
-    await env.DB.prepare("DELETE FROM devices WHERE token = ?").bind(me.token).run();
+    // This device's notifications end with its sign-in, so the next person on it never gets yours.
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM push_subs WHERE device_token = ?").bind(me.token),
+      env.DB.prepare("DELETE FROM devices WHERE token = ?").bind(me.token),
+    ]);
     return { ok: true };
   },
 };
