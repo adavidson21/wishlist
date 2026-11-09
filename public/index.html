@@ -5582,20 +5582,32 @@ const TAG_EMOJI = [
   [/\bwine\b/, "🍷"], [/\bbeer/, "🍺"], [/cocktail|margarita|martini/, "🍸"], [/cheese/, "🧀"], [/pizza/, "🍕"], [/sushi/, "🍣"], [/taco/, "🌮"],
   [/spic|hot sauce|pepper/, "🌶️"], [/bak(e|ing)|cupcake|cookie|dessert/, "🧁"], [/cook|kitchen|recipe/, "🍳"], [/fruit|berr(y|ies)|strawberr/, "🍓"], [/mint\b/, "🌿"],
   [/sock/, "🧦"], [/candle/, "🕯️"], [/plant|succulent/, "🪴"], [/flower|bouquet|\broses?\b|tulip/, "💐"], [/garden/, "🌻"], [/lavender/, "💜"],
-  [/house ?ware|home ?decor|\bdecor|neutral|throw pillow|furniture/, "🛋️"], [/blanket|cozy|cosy|comfy/, "🧶"], [/scarf|beanie|gloves|mittens/, "🧣"], [/hoodie|sweater|sweatshirt|jacket/, "🧥"],
+  [/house ?ware|home ?decor|\bdecor|neutral|throw pillow|furniture/, "🛋️"], [/blanket|cozy|cosy|comfy/, "🧶"], [/scarf|scarves|beanie|gloves|mittens/, "🧣"], [/hoodie|sweater|sweatshirt|jacket/, "🧥"],
   [/shoe|sneaker|boots?\b/, "👟"], [/\bbags?\b|purse|tote/, "👜"], [/jewel|necklace|earring|bracelet|\brings?\b/, "💍"], [/perfume|fragrance|cologne|scent/, "🌸"],
   [/skin ?care|lotion|serum/, "🧴"], [/\bbath|bubble/, "🛁"], [/makeup|lipstick|nail polish/, "💄"], [/glitter|sparkl|shiny/, "✨"],
-  [/\bbooks?\b|reading|novel|kindle/, "📚"], [/puzzle/, "🧩"], [/lego/, "🧱"], [/video game|gaming|nintendo|xbox|playstation|\bswitch\b|\bsteam\b/, "🎮"], [/board game|card game|\bgames?\b/, "🎲"], [/video game|gaming|nintendo|xbox|playstation|\bswitch\b|\bsteam\b/, "🎮"],
+  [/\bbooks?\b|reading|novels?\b|kindle/, "📚"], [/puzzle/, "🧩"], [/lego/, "🧱"], [/video game|gaming|nintendo|xbox|playstation|\bswitch\b|\bsteam\b/, "🎮"], [/board game|card game|\bgames?\b/, "🎲"], [/video game|gaming|nintendo|xbox|playstation|\bswitch\b|\bsteam\b/, "🎮"],
   [/music|vinyl|\brecords?\b|concert|guitar/, "🎵"], [/\bart\b|paint|draw|sketch|craft/, "🎨"], [/movie|film|cinema/, "🎬"], [/photo|camera/, "📷"],
   [/travel|trip|flight|vacation/, "✈️"], [/beach|ocean/, "🏖️"], [/camp/, "🏕️"], [/hik(e|ing)/, "🥾"], [/\brun(ning)?\b/, "🏃"], [/yoga/, "🧘"], [/gym|workout|fitness|weights/, "🏋️"],
   [/golf/, "⛳"], [/fishing|\bfish\b/, "🎣"], [/football|baseball|basketball|hockey|soccer|\bsports?\b/, "🏅"], [/space|astronom|\bstars?\b/, "🚀"],
   [/headphone|earbud|speaker/, "🎧"], [/\btech|gadget/, "🔌"], [/gift card/, "💳"], [/surprise/, "🎁"], [/clutter|knick|trinket|dust collector/, "📦"], [/\bpink\b/, "🩷"],
+  [/\banimals?\b|\bpets?\b/, "🐾"], [/grill|bbq|barbecue/, "🔥"], [/pajama|\bpjs?\b/, "🛌"], [/\bhats?\b|\bcaps?\b/, "🧢"], [/\bwatch(es)?\b/, "⌚"],
+  [/\bhair\b/, "💇"], [/self ?care|massage|\bspa\b/, "💆"], [/audiobook|podcast/, "🎧"], [/journal|stationery|notebook/, "📓"], [/knit|crochet|yarn|sew/, "🧶"],
+  [/theat(er|re)|broadway/, "🎭"], [/\btv\b|\bshows?\b/, "📺"], [/smart home|phone/, "📱"], [/\bbik(e|es|ing)\b|cycling/, "🚲"], [/\bski(ing)?\b|snowboard/, "⛷️"],
+  [/swim/, "🏊"], [/\bcars?\b/, "🚗"], [/\btools?\b|\bdiy\b/, "🛠️"], [/organiz/, "🗂️"], [/sustainab|\beco\b/, "♻️"], [/handmade/, "🤲"],
+  [/experience|\bclass(es)?\b/, "🎟️"], [/subscription/, "📬"], [/donation|charit/, "💝"], [/science/, "🔬"], [/history/, "🏛️"], [/fantasy|dragon/, "🐉"],
+  [/myster/, "🔍"], [/sci-?fi|alien/, "👽"], [/collectib/, "🏆"], [/building set/, "🧱"], [/\bloud\b/, "📢"], [/local shop/, "🏪"], [/\bshoes?\b/, "👟"], [/snack|popcorn/, "🍿"], [/novelty|gag gift/, "🎉"], [/fabric|itchy/, "🧵"],
 ];
 const tagEmoji = (t) => { const s = t.toLowerCase(); for (const [re, e] of TAG_EMOJI) if (re.test(s)) return e; return ""; };
 // Tap-to-add ideas while editing. A mix of things people love and things people would rather not get.
-const TAG_IDEAS = ["Animals", "Coffee", "Tea", "Chocolate", "Snacks", "Candles", "Plants", "Blankets", "Socks", "Books", "Puzzles",
-  "Board games", "Video games", "Building sets", "Baking", "Cooking", "Skincare", "Bath stuff", "Jewelry", "Fragrance", "Home decor", "Gift cards",
-  "Camping", "Sports", "Music", "Art supplies", "Movies", "Surprises", "Clutter", "Gardening", "Travel", "Comfy clothes", "Fitness", "Tech"];
+const TAG_IDEAS = ["Animals", "Cats", "Dogs", "Coffee", "Tea", "Chocolate", "Candy", "Snacks", "Baking", "Cooking", "Kitchen gadgets", "Grilling", "Spicy food", "Cheese",
+  "Fruit", "Wine", "Beer", "Cocktails", "Candles", "Plants", "Flowers", "Gardening", "Home decor", "Organizing", "Blankets", "Socks", "Pajamas",
+  "Comfy clothes", "Hats", "Scarves", "Bags", "Shoes", "Jewelry", "Watches", "Fragrance", "Skincare", "Makeup", "Hair care", "Nail polish", "Bath stuff",
+  "Self care", "Books", "Audiobooks", "Mystery novels", "Sci-fi", "Fantasy", "Journals", "Stationery", "Puzzles", "Board games", "Card games", "Video games",
+  "Building sets", "Collectibles", "Art supplies", "Crafts", "Knitting", "Sewing", "Photography", "Music", "Vinyl", "Concerts", "Movies", "TV shows",
+  "Theater", "Podcasts", "Tech", "Gadgets", "Headphones", "Smart home", "Phone accessories", "Travel", "Beach", "Camping", "Hiking", "Fishing", "Biking",
+  "Running", "Yoga", "Fitness", "Sports", "Golf", "Skiing", "Swimming", "Cars", "Tools", "DIY", "Space", "Science", "History", "Dinosaurs", "Experiences",
+  "Classes", "Subscriptions", "Handmade", "Local shops", "Sustainable", "Donations", "Gift cards", "Surprises", "Clutter", "Knickknacks", "Strong scents",
+  "Itchy fabrics", "Novelty gifts", "Loud toys"];
 const HEART_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4h2c.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>';
 const NOPE_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>';
 const CAREFUL_I = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>';
@@ -5830,7 +5842,7 @@ async function renderProfileEdit() {
       $(n, v).textContent = lists[m].length ? `(${lists[m].length})` : "";
     }
     v.querySelectorAll(".tag-col").forEach((c) => c.classList.toggle("on", c.dataset.col === mode));
-    tagIn.placeholder = mode === "likes" ? "Cats, coffee, Pokémon" : "Tea, fuzzy socks, clutter";
+    tagIn.placeholder = mode === "likes" ? "Something you love" : "Something you'd rather not get";
     const used = new Set([...lists.likes, ...lists.dislikes].map((t) => t.toLowerCase()));
     const ideas = TAG_IDEAS.filter((t) => !used.has(t.toLowerCase()));
     const start = ideas.length ? (ideaAt * 12) % ideas.length : 0;
