@@ -64,7 +64,7 @@ We know family gift lists are personal, and some of you have asked about photos 
 Hints keeps two kinds of things, and treats them very differently.
 
 **🙂 Things about you are never sent to any AI.**
-Your profile photo, your name, your birthday, your sizes, your loves and nopes, your allergies, and photos of your pets or household stay inside Hints. They're only shown to people you share a circle with. Your profile photo is shrunk down to a small square and stored in Hints' own database, and that's it.
+Your profile photo, your name, your birthday, your sizes, your loves and nopes, your allergies, and photos of your pets or household stay inside Hints. They're only shown to people you share a circle with. Your profile photo (and cover photo, if you add one) is shrunk down and stored in Hints' own database, and that's it.
 
 **🎁 Things about gifts can go to Google's AI (Gemini), only to find the product.**
 Some helper features use Google Gemini, and a few of them run on their own in the background:
