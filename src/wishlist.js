@@ -3236,7 +3236,7 @@ const handlers = {
           if (!inIt) fresh.push(r.group_id);
         }
         const clash = await nameClash(env, fresh, [id]);
-        if (clash) fail(409, `Someone named ${them.name} is already in ${clash}. Add a last initial to ${them.name} first.`);
+        if (clash) fail(409, `Someone named ${them.name} is already in ${clash}. Add their last name first.`);
         for (const g of fresh) await circleRoom(env, g);
       }
       // Keep them in every circle they share with the new manager, even ones they were only in through the old household.
@@ -3492,7 +3492,7 @@ const handlers = {
       ).bind(groupId, hh).first();
       await circleRoom(env, groupId, ids.length - already);
       const clash = await nameClash(env, [groupId], ids);
-      if (clash) fail(409, `Someone in that household has the same name as someone already in ${clash}. One of them can add a last initial first.`);
+      if (clash) fail(409, `Someone in that household has the same name as someone already in ${clash}. One of them can add their last name first.`);
       await env.DB.batch([
         env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(groupId, hh, t),
         ...ids.map((id) => env.DB.prepare(
