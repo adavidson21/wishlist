@@ -1040,6 +1040,8 @@
   .ask-in p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.45; }
   .ask-btns { display: flex; gap: 10px; margin-top: 20px; }
   .ask-btns .btn { flex: 1; }
+  .ask-btns.three { flex-wrap: wrap; }
+  .ask-btns.three [data-ask="alt"] { flex-basis: 100%; gap: 6px; }
   .ask-btns .btn.primary.danger { background: var(--err); border-color: var(--err); color: var(--card); }
   .grab { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
   .sheet h3 { font-family: var(--display); font-size: 25px; font-weight: 600; line-height: 1.2; margin: 0 52px 16px 0; }
@@ -2269,18 +2271,19 @@ sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); }
 // ask("Remove Sam? They'll leave the circle.", { yes: "Remove", danger: true }) resolves true or false.
 // The first question becomes the heading and the rest the explanation.
 const askBox = $("#ask");
-function ask(msg, { yes = "OK", no = "Cancel", danger = false } = {}) {
+// alt: an optional third button (trusted HTML label) that resolves "alt".
+function ask(msg, { yes = "OK", no = "Cancel", danger = false, alt = "" } = {}) {
   const cut = msg.indexOf("? ");
   const title = cut === -1 ? msg : msg.slice(0, cut + 1), body = cut === -1 ? "" : msg.slice(cut + 2);
   $("#askBody").innerHTML = `<h3 id="askTitle">${esc(title)}</h3>${body ? `<p>${esc(body)}</p>` : ""}`
-    + `<div class="ask-btns"><button class="btn" type="button" data-ask="no">${esc(no)}</button>`
+    + `<div class="ask-btns${alt ? " three" : ""}">${alt ? `<button class="btn" type="button" data-ask="alt">${alt}</button>` : ""}<button class="btn" type="button" data-ask="no">${esc(no)}</button>`
     + `<button class="btn primary${danger ? " danger" : ""}" type="button" data-ask="yes">${esc(yes)}</button></div>`;
   return new Promise((resolve) => {
     const done = (v) => { askBox.onclick = askBox.oncancel = null; if (askBox.open) askBox.close(); resolve(v); };
     askBox.onclick = (e) => {
       if (e.target === askBox) return done(false);
       const b = e.target.closest("[data-ask]");
-      if (b) done(b.dataset.ask === "yes");
+      if (b) done(b.dataset.ask === "alt" ? "alt" : b.dataset.ask === "yes");
     };
     askBox.oncancel = (e) => { e.preventDefault(); done(false); };
     askBox.showModal();
@@ -3343,7 +3346,7 @@ function wireGiftBox(root, action) {
 
 // ---------- my list ----------
 // Two sides behind a switch: Wish list (published, what your circles see; opens by default) and Maybe
-// (drafts only you can see; new wishes start here). Publishing is one way: a published wish never goes back to Maybe.
+// (drafts only you can see; new wishes start here). A published wish can go back with Move to Maybe.
 const MAYBE_NOTE = `<p class="maybe-note">${LOCK}<span><strong>Only you can see this.</strong></span></p>`;
 
 // Filters, sort and layout for My list. Shared by both sides; layout and sort are remembered per device.
@@ -3731,13 +3734,12 @@ function galleryCard(i, n = 0) {
   </div>`;
 }
 
-// Publishing is one way, so it always asks first and says so.
+// Publishing always asks first.
 function confirmPublish(item) {
   if (!item) return;
   openSheet(`
     <h3>Publish to your wish list?</h3>
     <p class="lead"><strong>${esc(item.title)}</strong> goes on your wish list.</p>
-    <p class="maybe-note">${LOCK}<span><strong>Can't go back to Maybe.</strong></span></p>
     <div class="actions">
       <button class="btn" type="button" id="pubCancel">Not yet</button>
       <button class="btn primary" type="button" id="pubGo">${PUBLISH_ICON} Publish</button>
@@ -4009,6 +4011,8 @@ function editItem(item, opts = {}) {
   const asId = opts.as || null, asName = asId ? personName(asId) : "";
   item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: c.priceAuto, notes: c.notes } : {};
   const draft = !asId && (isNew || !!item.draft);
+  // Your own published wish can go back to Maybe (Remove offers it too).
+  const canMaybe = !asId && !isNew && !draft && !item.held && !item.received_at;
   const hasDetails = item.price_cents != null || !!item.notes || !!item.category || !!item.brand;
   const priceField = `<label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="${isNew ? "Fills in from the link" : item.price_est ? `About ${money(item.price_est)} (a guess)` : "From the link"}"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>`;
   const catField = `<label class="field"><span>Category</span>
@@ -4044,6 +4048,7 @@ function editItem(item, opts = {}) {
         ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
       ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>` : ""}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
+      ${canMaybe ? `<button class="btn quiet wide" type="button" id="toMaybe">${LOCK} Move to Maybe</button>` : ""}
       <div class="actions sticky">
         ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
         ${isNew && asId ? `<button class="btn primary" type="submit" value="list">Add to ${esc(asName)}'s list</button>`
@@ -4099,9 +4104,24 @@ function editItem(item, opts = {}) {
         render();
       });
       $("#publishItem", el)?.addEventListener("click", () => confirmPublish(item));
+      // Back to Maybe: only you can see it again, and it's still there to publish later.
+      const toMaybe = async () => {
+        await api("item/unpublish", { id: item.id });
+        closeSheet();
+        toast("Moved to Maybe", () => api("item/publish", { id: item.id }).then(() => { state.stale = true; render(); }, (e) => oops(e.message)));
+        state.stale = true;
+        state.flash = item.id;
+        if (state.tab === "mine" && !state.person) { state.mineView = "maybe"; state.mineViewPinned = true; state.bumpCount = "maybe"; }
+        render();
+      };
+      $("#toMaybe", el)?.addEventListener("click", () => toMaybe().catch((e) => oops(e.message)));
       $("#removeItem", el)?.addEventListener("click", async () => {
-        if (!(await confirmRemove())) return;
-        try { await api("item/remove", { id: item.id, as: asId || undefined }); closeSheet(); toast("Removed"); state.stale = true; render(); }
+        const pick = await (canMaybe ? confirmRemoveOrMaybe() : confirmRemove());
+        if (!pick) return;
+        try {
+          if (pick === "alt") return await toMaybe();
+          await api("item/remove", { id: item.id, as: asId || undefined }); closeSheet(); toast("Removed"); state.stale = true; render();
+        }
         catch (e) { oops(e.message); }
       });
     });
@@ -4583,6 +4603,8 @@ function wireName(form, onRename = () => {}) {
 }
 
 const confirmRemove = () => ask("Remove this from your list?", { yes: "Remove", danger: true });
+// A published wish of your own: Remove, or keep it in Maybe instead. Resolves true (remove), "alt" (Maybe) or false.
+const confirmRemoveOrMaybe = () => ask("Remove this from your list? Or move it back to Maybe, where only you can see it.", { yes: "Remove", danger: true, alt: `${LOCK} Move to Maybe` });
 
 // ---------- family ----------
 // "2 new" on a Family row: wishes added since you last opened that person's list. Kept on the server (GET me
