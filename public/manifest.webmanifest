@@ -1,7 +1,7 @@
 {
   "name": "Hints",
   "short_name": "Hints",
-  "description": "Family wish lists with private gift notes.",
+  "description": "Wish lists for your circle, with private gift notes.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

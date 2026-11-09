@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hints</title>
-<meta name="description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep private gift notes.">
+<meta name="description" content="Wish lists for your circle: share what you'd like, mark what you're getting, keep private gift notes.">
 <!-- Link previews. src/worker.js swaps the title and description for invite links (/join/CODE). -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Hints">
 <meta property="og:title" content="Hints">
-<meta property="og:description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.">
+<meta property="og:description" content="Wish lists for your circle: share what you'd like, mark what you're getting, keep gifts a surprise.">
 <meta property="og:url" content="https://hints.alexisdavidson.org/">
 <meta property="og:image" content="https://hints.alexisdavidson.org/og-invite.png">
 <meta property="og:image:width" content="1200">
@@ -17,12 +17,12 @@
 <meta property="og:image:alt" content="You're invited to Hints: a gift box on a burgundy card">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Hints">
-<meta name="twitter:description" content="Wish lists for family and friends: share what you'd like, mark what you're getting, keep gifts a surprise.">
+<meta name="twitter:description" content="Wish lists for your circle: share what you'd like, mark what you're getting, keep gifts a surprise.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#4A0E22" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#2B0D18" media="(prefers-color-scheme: dark)">
 <link rel="preload" href="/fonts/figtree-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/fonts/fraunces-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/bricolage-grotesque-latin-standard-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon.svg">
@@ -37,7 +37,7 @@
   var ac = localStorage.getItem("wishlist-accent"); if (ac) document.documentElement.dataset.accent = ac; } catch (e) {}</script>
 <style>
   /* Warm and a little handmade: cream paper, a wine header band, burgundy for actions, gold for
-     top picks, pine for "you're getting this". Fraunces for titles and big numbers, Figtree for the rest.
+     top picks, pine for "you're getting this". Bricolage Grotesque for titles and big numbers, Figtree for the rest.
      Big tap targets and plain words so it works for every age. Motion marks real moments only. */
   :root {
     --bg: #FAF6F1; --card: #FFFFFF; --panel: #F3ECE4; --ink: #2A1E22; --muted: #6B5E62; --faint: #A3979A;
@@ -49,7 +49,7 @@
     --t0: #F7E6EA; --t0-ink: #7A1B36; --t1: #E6EFE9; --t1-ink: #2F6B4F; --t2: #FBF1DC; --t2-ink: #7A5410; --t3: #E8EAF4; --t3-ink: #33407A;
     --shadow: 0 1px 2px rgba(74, 14, 34, .06), 0 8px 20px rgba(74, 14, 34, .06);
     --r: 18px;
-    --serif: Fraunces, Georgia, "Times New Roman", serif;
+    --display: "Bricolage Grotesque", Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
     --sans: Figtree, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
     --spring: cubic-bezier(.3, 1.4, .5, 1);
   }
@@ -108,7 +108,7 @@
   .doodle { position: absolute; right: -28px; top: -14px; width: 240px; height: 170px; color: var(--hero-muted); opacity: .22; pointer-events: none; }
   @media (min-width: 720px) { .doodle { right: 4%; } }
   .kicker { margin: 0; color: var(--hero-muted); font-size: 15px; font-weight: 600; }
-  .hero h1 { font-family: var(--serif); font-weight: 600; font-size: 34px; line-height: 1.1; letter-spacing: -.01em; margin: 4px 0 0; }
+  .hero h1 { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1.1; letter-spacing: -.01em; margin: 4px 0 0; }
   .squiggle { display: block; margin-top: 6px; color: var(--gold); }
   .hero .back { color: var(--hero-muted); margin: -10px 0 6px -6px; padding: 0 8px 0 4px; }
   .hero-row { display: flex; align-items: center; gap: 14px; }
@@ -120,7 +120,7 @@
   .hero-meter { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; }
   .hero-meter .bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .16); overflow: hidden; }
   .hero-meter .bar i { display: block; height: 100%; border-radius: 4px; background: var(--gold); transform-origin: left; animation: fill 1s var(--spring) .2s both; }
-  .hero-meter b { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+  .hero-meter b { font-family: var(--display); font-size: 17px; font-weight: 600; }
   .hero-edit { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px 0 11px; border-radius: 999px;
     border: 1.5px solid color-mix(in srgb, var(--hero-muted) 55%, transparent); background: transparent; color: var(--hero-ink); font-weight: 700; font-size: 15px; }
   .hero-edit:active { transform: scale(.96); }
@@ -134,7 +134,7 @@
   .hero-btn { margin-top: 16px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid color-mix(in srgb, var(--hero-muted) 55%, transparent);
     background: transparent; color: var(--hero-ink); font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; }
   .hero-stat { margin-top: 18px; }
-  .big-num { display: block; font-family: var(--serif); font-size: 58px; font-weight: 600; line-height: 1.05; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .big-num { display: block; font-family: var(--display); font-size: 58px; font-weight: 600; line-height: 1.05; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
   .hero-sub { margin: 2px 0 0; color: var(--hero-muted); font-size: 15px; }
   .welcome-logo { width: 64px; height: 64px; border-radius: 18px; display: block; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
 
@@ -144,7 +144,7 @@
   :is(.press, .btn, .iconbtn, .member, .chip, .star-btn, .publish-btn):active, .row[role="button"]:active { transform: scale(.97); }
   :is(.iconbtn, .btn, .tab, .row, .member, .add, .chip, .star-btn, .pcard-head, .seg button, .hero-btn, .back):focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 
-  h2 { font-family: var(--serif); font-weight: 600; font-size: 26px; line-height: 1.15; margin: 0 0 6px; }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 26px; line-height: 1.15; margin: 0 0 6px; }
   .lead { color: var(--muted); margin: 0 0 20px; }
   .count-line { margin: 0 0 12px; font-size: 15px; color: var(--muted); }
   .label { margin: 30px 0 4px; font-size: 18px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
@@ -173,7 +173,7 @@
   .row { position: relative; width: 100%; text-align: left; background: var(--card); border: 0; border-radius: var(--r); padding: 14px; display: block; box-shadow: var(--shadow);
     transition: background-color .35s ease, box-shadow .35s ease, transform .14s var(--spring); }
   .row-top { display: flex; align-items: flex-start; gap: 14px; }
-  .tile { width: 60px; height: 60px; border-radius: 14px; flex: none; display: grid; place-items: center; font-family: var(--serif); font-size: 26px; font-weight: 600;
+  .tile { width: 60px; height: 60px; border-radius: 14px; flex: none; display: grid; place-items: center; font-family: var(--display); font-size: 26px; font-weight: 600;
     background: var(--t0); color: var(--t0-ink); }
   .tile svg { width: 30px; height: 30px; }
   .tile.photo { background: #FFFFFF; padding: 5px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
@@ -185,7 +185,7 @@
   .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .row-head { display: flex; align-items: flex-start; gap: 10px; }
   .row-title { flex: 1; min-width: 0; font-weight: 700; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
-  .row-price { font-family: var(--serif); font-weight: 600; font-size: 16px; color: var(--soft-ink); white-space: nowrap; }
+  .row-price { font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--soft-ink); white-space: nowrap; }
   .row-notes { color: var(--muted); font-size: 15px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
   .row-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .row-foot:empty { display: none; }
@@ -193,7 +193,7 @@
   .from { font-size: 14px; color: var(--muted); }
   .from a { color: inherit; }
   .price-tag { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 9px; border-radius: 6px 14px 14px 6px;
-    background: var(--soft); color: var(--soft-ink); font-family: var(--serif); font-size: 15px; font-weight: 600; transform: rotate(-3deg); transform-origin: 10px 50%; }
+    background: var(--soft); color: var(--soft-ink); font-family: var(--display); font-size: 15px; font-weight: 600; transform: rotate(-3deg); transform-origin: 10px 50%; }
   .price-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--card); }
   .anyprice { font-size: 14px; color: var(--muted); }
   .hid-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--panel);
@@ -277,7 +277,7 @@
   /* Someone's list: summary, filters, wish cards */
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
   .stat { background: var(--card); border-radius: 16px; padding: 12px 12px 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; }
-  .stat b { font-family: var(--serif); font-weight: 600; font-size: 26px; line-height: 1.1; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .stat b { font-family: var(--display); font-weight: 600; font-size: 26px; line-height: 1.1; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
   .stat b.sm { font-size: 16px; line-height: 1.25; white-space: normal; padding: 2px 0 3px; }
   .stat span { font-size: 13px; color: var(--muted); font-weight: 600; }
   .stat.ok { background: var(--ok-soft); box-shadow: none; } .stat.ok b { color: var(--ok); }
@@ -302,7 +302,7 @@
   .wish .tile.photo { padding: 7px; }
   .wish .row-main { gap: 4px; }
   .wish .row-title { font-size: 18px; }
-  .wish-price { font-family: var(--serif); font-weight: 600; font-size: 21px; line-height: 1.2; color: var(--soft-ink); font-variant-numeric: tabular-nums; }
+  .wish-price { font-family: var(--display); font-weight: 600; font-size: 21px; line-height: 1.2; color: var(--soft-ink); font-variant-numeric: tabular-nums; }
   .wish-price.none { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--faint); }
   .wish-price.fresh { animation: fade .45s ease both; }
   .live { display: block; font-size: 13px; font-weight: 700; margin-top: 2px; color: var(--muted); animation: fade .45s ease both; }
@@ -329,7 +329,7 @@
   /* People */
   .member { width: 100%; display: flex; align-items: center; gap: 14px; background: var(--card); border: 0; border-radius: var(--r);
     padding: 16px; text-align: left; box-shadow: var(--shadow); min-height: 76px; }
-  .avatar { position: relative; overflow: hidden; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 20px; flex: none; color: #fff; }
+  .avatar { position: relative; overflow: hidden; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 600; font-size: 20px; flex: none; color: #fff; }
   .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .avatar.huge { width: 88px; height: 88px; font-size: 36px; }
   .photo-row { display: flex; align-items: center; gap: 16px; }
@@ -371,7 +371,7 @@
 
   /* Empty states */
   .empty { text-align: center; padding: 18px 10px 6px; }
-  .empty strong { display: block; color: var(--ink); font-family: var(--serif); font-weight: 600; font-size: 23px; line-height: 1.25; margin: 10px auto 6px; max-width: 300px; }
+  .empty strong { display: block; color: var(--ink); font-family: var(--display); font-weight: 600; font-size: 23px; line-height: 1.25; margin: 10px auto 6px; max-width: 300px; }
   .empty p { color: var(--muted); margin: 0 auto 18px; max-width: 320px; }
   .empty .stack { text-align: left; }
   .giftbox { width: 140px; height: 132px; border: 0; background: none; padding: 0; position: relative; display: block; margin: 0 auto; }
@@ -465,7 +465,7 @@
   .modes + .sw-row { margin-top: 8px; }
   .seg.four { grid-template-columns: repeat(4, 1fr); }
   .seg.four button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-height: 60px; font-size: 13px; line-height: 1.2; }
-  .seg.four button b { font-family: var(--serif); font-weight: 600; color: inherit; line-height: 1.1; }
+  .seg.four button b { font-family: var(--display); font-weight: 600; color: inherit; line-height: 1.1; }
   .ts-preview { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-top: 10px; color: var(--ink); font-size: 16px; }
   .ts-preview small { display: block; color: var(--muted); font-size: 13px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -498,7 +498,7 @@
   .brand-chips.edit .brand-chip { padding: 0 2px 0 12px; animation: avPop .35s var(--spring) both; }
   .brand-add { display: flex; gap: 8px; margin-bottom: 16px; }
   /* Just for fun: gift style chips, favorite color swatches, little loves */
-  .fun-h { display: flex; align-items: center; gap: 8px; margin: 22px 0 4px; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+  .fun-h { display: flex; align-items: center; gap: 8px; margin: 22px 0 4px; font-family: var(--display); font-size: 19px; font-weight: 600; }
   .pick-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
   .pick-chips .chip { min-height: 40px; font-size: 14px; padding: 0 13px; }
   .swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
@@ -531,7 +531,7 @@
   .pf-cover::after { content: ""; position: absolute; inset: auto 0 0; height: 40px; background: linear-gradient(transparent, color-mix(in srgb, var(--card) 35%, transparent)); }
   .pf-body { padding: 0 20px 20px; text-align: center; }
   .pf-body > .avatar { margin: -48px auto 10px; border: 4px solid var(--card); box-shadow: 0 6px 16px rgba(0,0,0,.12); width: 96px; height: 96px; font-size: 40px; }
-  .pf-name { margin: 0; font-family: var(--serif); font-weight: 600; font-size: 28px; line-height: 1.15; overflow-wrap: anywhere; }
+  .pf-name { margin: 0; font-family: var(--display); font-weight: 600; font-size: 28px; line-height: 1.15; overflow-wrap: anywhere; }
   .pf-bio { margin: 6px auto 0; max-width: 34ch; color: var(--muted); font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
   .pf-bio.add { color: var(--brand); }
   .pf-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 12px; }
@@ -540,12 +540,12 @@
   .pf-counts { display: grid; grid-template-columns: repeat(3, 1fr); margin: 16px -4px 16px; }
   .pf-counts div { display: flex; flex-direction: column; align-items: center; gap: 1px; }
   .pf-counts div + div { border-left: 1px solid var(--line); }
-  .pf-counts b { font-family: var(--serif); font-weight: 600; font-size: 24px; line-height: 1.1; }
+  .pf-counts b { font-family: var(--display); font-weight: 600; font-size: 24px; line-height: 1.1; }
   .pf-counts span { font-size: 13px; color: var(--muted); font-weight: 600; }
 
   /* Loves and Nopes */
   .hcard { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px 16px 18px; }
-  .hcard-h { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-family: var(--serif); font-weight: 600; font-size: 20px; }
+  .hcard-h { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-family: var(--display); font-weight: 600; font-size: 20px; }
   .hcard-h .ico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; flex: none; }
   .hcard-h.love .ico { background: var(--soft); color: var(--brand); }
   .hcard-h.nope .ico { background: var(--panel); color: var(--muted); }
@@ -571,7 +571,7 @@
   .tags-empty { margin: 0; color: var(--faint); font-size: 15px; }
   .both-line { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 12px; border-radius: 14px; background: var(--gold-soft); color: var(--gold-ink); font-size: 15px; line-height: 1.35; }
   .both-line b { font-weight: 800; }
-  .hcard-bio { margin: 0 0 14px; font-family: var(--serif); font-size: 18px; line-height: 1.35; font-style: italic; color: var(--ink); overflow-wrap: anywhere; }
+  .hcard-bio { margin: 0 0 14px; font-family: var(--display); font-size: 18px; line-height: 1.35; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
   .hcard-empty { border: 2px dashed var(--line); border-radius: 16px; padding: 16px; text-align: center; color: var(--muted); font-size: 15px; }
   .hcard-empty .btn { margin-top: 10px; }
 
@@ -579,7 +579,7 @@
   .sz { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; margin-bottom: 14px; }
   .sz div { background: var(--panel); border-radius: 14px; padding: 9px 10px 8px; text-align: center; min-width: 0; }
   .sz span { display: block; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  .sz b { display: block; font-family: var(--serif); font-weight: 600; font-size: 18px; overflow-wrap: anywhere; }
+  .sz b { display: block; font-family: var(--display); font-weight: 600; font-size: 18px; overflow-wrap: anywhere; }
   .det { display: grid; gap: 12px; }
   .det-l { display: block; font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
   .careful { display: flex; gap: 12px; align-items: flex-start; background: var(--warn-soft); color: var(--warn); border-radius: var(--r); padding: 14px 16px; }
@@ -708,7 +708,7 @@
   .sheet-in { padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 22px); }
   .sheet-close { position: absolute; top: 14px; right: 14px; font-size: 26px; line-height: 1; }
   .grab { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
-  .sheet h3 { font-family: var(--serif); font-size: 25px; font-weight: 600; line-height: 1.2; margin: 0 52px 16px 0; }
+  .sheet h3 { font-family: var(--display); font-size: 25px; font-weight: 600; line-height: 1.2; margin: 0 52px 16px 0; }
   .sheet-sec { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 20px; }
   .sheet-sec h4 { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
   .sheet p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
@@ -776,7 +776,7 @@
   .buys { list-style: none; margin: 0 0 12px; padding: 0; }
   .buys li { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 16px; }
   .buys small { display: block; color: var(--muted); font-size: 13px; }
-  .buys b { font-family: var(--serif); font-weight: 600; color: var(--soft-ink); white-space: nowrap; }
+  .buys b { font-family: var(--display); font-weight: 600; color: var(--soft-ink); white-space: nowrap; }
   .pcard-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
   .pcard-body .stack { margin: 12px 0; }
   .pcard-body .row { box-shadow: none; border: 1.5px solid var(--line); }
@@ -853,7 +853,7 @@
   .ticket-top { position: relative; background: var(--hero); color: var(--hero-ink); padding: 20px 20px 24px; text-align: center; overflow: hidden; }
   .ticket-top .doodle { right: -60px; top: -40px; opacity: .16; }
   .ticket-top p { margin: 0; color: var(--hero-muted); font-size: 14px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-  .code-big { display: flex; justify-content: center; gap: 6px; margin: 10px 0 8px; font-family: var(--serif); font-size: 40px; font-weight: 600; line-height: 1; }
+  .code-big { display: flex; justify-content: center; gap: 6px; margin: 10px 0 8px; font-family: var(--display); font-size: 40px; font-weight: 600; line-height: 1; }
   .code-big span { display: inline-grid; place-items: center; width: 42px; height: 54px; border-radius: 10px; background: rgba(255, 255, 255, .1);
     animation: flipIn .5s var(--spring) both; }
   .ticket-top small { color: var(--hero-muted); font-size: 14px; overflow-wrap: anywhere; }
@@ -983,7 +983,7 @@
   .segs i.on::after { content: ""; position: absolute; inset: 0; border-radius: 5px; background: var(--gold); transform-origin: left; }
   .segs i.on.new::after { animation: fill .8s var(--spring) .2s both; }
   .starter.done { background: var(--gold-soft); text-align: center; position: relative; }
-  .starter.done strong { font-family: var(--serif); font-size: 22px; font-weight: 600; color: var(--gold-ink); }
+  .starter.done strong { font-family: var(--display); font-size: 22px; font-weight: 600; color: var(--gold-ink); }
   .idea-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 18px; }
   .idea-chips .chip { animation: avPop .45s var(--spring) both; }
 
@@ -1004,7 +1004,7 @@
       backdrop-filter: none; -webkit-backdrop-filter: none; padding: 26px 16px 18px; display: flex; flex-direction: column; overflow-y: auto; }
     nav.tabs:not([hidden]) { animation: sideIn .6s cubic-bezier(.2, .9, .3, 1) both; }
     .nav-brand { display: flex; align-items: center; gap: 12px; padding: 0 10px 26px; color: var(--ink); text-decoration: none;
-      font-family: var(--serif); font-size: 25px; font-weight: 600; letter-spacing: -.01em; }
+      font-family: var(--display); font-size: 25px; font-weight: 600; letter-spacing: -.01em; }
     .nav-brand img { width: 40px; height: 40px; border-radius: 12px; box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 30%, transparent);
       transition: transform .5s var(--spring); }
     .nav-brand:hover img { transform: rotate(-10deg) scale(1.08); }
@@ -1848,7 +1848,7 @@ async function renderWelcome(step = "code", info = {}) {
   if (step === "badInvite" || step === "code") {
     const bad = step === "badInvite";
     setHero(bad ? envelope(true) + heroTitle("Hmm", "That invite didn't work")
-      : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("Wish lists for your people", "Welcome to Hints")}`);
+      : `<img class="welcome-logo" src="/icons/icon.svg" alt="">${heroTitle("", "Welcome to Hints")}`);
     v.innerHTML = `
       <p class="lead">${bad ? "The link may be old or cut off. Ask whoever sent it for the invite code and type it here."
         : "Make your own wish list, see what everyone else would love, and quietly mark what you're getting them."}</p>
@@ -2287,7 +2287,7 @@ function finishTour() {
 
 // "Add 3 things" on My list, after the tour. Remembered on this device until you reach 3.
 const STARTER_KEY = "wishlist-starter";
-// "Show my family now" on a new wish: remembered per device, off by default (new wishes start in Maybe).
+// "Show my circles now" on a new wish: remembered per device, off by default (new wishes start in Maybe).
 const PUB_NOW_KEY = "wishlist-pub-now";
 function readPubNow() { try { return localStorage.getItem(PUB_NOW_KEY) === "1"; } catch { return false; } }
 function writePubNow(on) { try { on ? localStorage.setItem(PUB_NOW_KEY, "1") : localStorage.removeItem(PUB_NOW_KEY); } catch {} }
