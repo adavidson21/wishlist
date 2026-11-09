@@ -795,21 +795,24 @@ async function canManage(env, meId, memberId) {
   for (const r of results) if ((await adminOf(env, r.group_id)) === meId) return true;
   return false;
 }
-const CLAIM_DAYS = 30;
 async function sha256(textValue) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(textValue)));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
-// The person a personal invite link is for, or 404. Only people who haven't joined yet, before it expires.
+// The person a personal link is for, or 404. A personal link is reusable: the first time it hands a list someone
+// set up over to them, and after that it signs them in again on a new phone (asking for their PIN if they set
+// one). It works until a new link replaces it or it's turned off. claim_expires is only set on links made before
+// links became reusable (they still expire).
 async function claimFor(env, token) {
   const tk = String(token || "");
-  if (!/^[A-Za-z0-9]{20,64}$/.test(tk)) fail(404, "That invite link didn't work.");
+  if (!/^[A-Za-z0-9]{20,64}$/.test(tk)) fail(404, "That link didn't work.");
   const row = await env.DB.prepare(
-    "SELECT id, name, managed_by, claim_expires FROM members WHERE claim_hash = ? AND managed_by IS NOT NULL",
+    "SELECT id, name, managed_by, claim_expires, pin_hash FROM members WHERE claim_hash = ?",
   ).bind(await sha256(tk)).first();
-  if (!row || !row.claim_expires || row.claim_expires < now()) fail(404, "That invite link didn't work. It may be old, or it was already used.");
+  if (!row || (row.claim_expires && row.claim_expires < now())) fail(404, "That link isn't active anymore. Ask for a new one.");
   return row;
 }
+const newLinkToken = () => randomString(24, "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789");
 // Whose list or profile a write is for: yours, or (as: id) someone you look after.
 async function ownerFor(env, me, as) {
   if (!as || as === me.id) return me.id;
@@ -2161,7 +2164,7 @@ const handlers = {
       .bind(me.id)
       .all();
     const { results: people } = await env.DB.prepare(
-      `SELECT gm.group_id, m.id, m.name, m.last_name, m.photo_at, m.birthday, m.household_id, m.dislikes, m.owns, m.is_kid, m.managed_by, m.claim_expires, m.pin_hash IS NOT NULL AS has_pin,
+      `SELECT gm.group_id, m.id, m.name, m.last_name, m.photo_at, m.birthday, m.household_id, m.dislikes, m.owns, m.is_kid, m.managed_by, m.claim_hash IS NOT NULL AS has_link, m.pin_hash IS NOT NULL AS has_pin,
               (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0 AND i.held_season IS NULL AND i.received_at IS NULL
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -2193,7 +2196,7 @@ const handlers = {
       managedBy: p.managed_by || null,
       canManage: manages(p),
       // Their personal invite link is out and not used yet (only for people you can manage).
-      inviteSent: manages(p) && !!p.claim_expires && p.claim_expires > tNow,
+      inviteSent: manages(p) && !!p.has_link,
       // Unread messages in the chat about them in this circle. Always 0 for yourself (chatUnread skips your thread).
       chatUnread: p.id === me.id ? 0 : unread.get(`${p.group_id}:${p.id}`) || 0,
     });
@@ -2234,7 +2237,7 @@ const handlers = {
       }
     }
     let pinCleared = null;
-    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token FROM members WHERE id = ?").bind(me.id).first();
+    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, claim_hash IS NOT NULL AS has_link FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
     if (me.pinClearedAt) {
       const by = me.pinClearedBy && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(me.pinClearedBy).first());
@@ -2251,6 +2254,8 @@ const handlers = {
         staleOk: prefsRow?.stale_ok_year || null,
         // Your read-only share link (/s/TOKEN), or null when it's off.
         shareToken: prefsRow?.share_token || null,
+        // You have a personal sign-in link (it can't be shown again, only replaced or turned off).
+        hasLink: !!prefsRow?.has_link,
       },
       // How many wishes each person's list had when you last opened it, for the "N new" badges (any device).
       seen: Object.fromEntries(seenRows.map((r) => [r.owner_id, r.seen_count])),
@@ -3563,18 +3568,18 @@ const handlers = {
     return { ok: true, name: to.name };
   },
 
-  // A personal invite link for someone who isn't on Hints yet. Opening it signs them in as themselves and hands
-  // the list over (POST claim), so there's no shared PIN and they don't pick their name. A new link replaces the
-  // old one. Returns { token, expires }; the app builds /join/CODE?from=ME&hi=TOKEN.
+  // A personal link for someone who isn't on Hints yet. Opening it signs them in as themselves and hands the list
+  // over (invite/claim), so there's no shared PIN and they don't pick their name. It keeps working as their
+  // sign-in link on new phones. A new link replaces the old one. Returns { token }; the app builds
+  // /join/CODE?from=ME&hi=TOKEN.
   async "POST managed/invite"(req, env) {
     const me = await auth(req, env);
     const { memberId } = await body(req);
     if (!(await canManage(env, me.id, memberId))) fail(404, "Person not found.");
     await rateLimit(env, `invite:m:${me.id}`, ABUSE.invitesPerMemberDay, "That's a lot of invites today. Try again tomorrow.");
-    const token = randomString(24, "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789");
-    const expires = new Date(Date.now() + CLAIM_DAYS * 86_400_000).toISOString();
-    await env.DB.prepare("UPDATE members SET claim_hash = ?, claim_expires = ? WHERE id = ?").bind(await sha256(token), expires, String(memberId)).run();
-    return { token, expires };
+    const token = newLinkToken();
+    await env.DB.prepare("UPDATE members SET claim_hash = ?, claim_expires = NULL WHERE id = ?").bind(await sha256(token), String(memberId)).run();
+    return { token, expires: null };
   },
 
   // Turn off someone's personal invite link (it stops working).
@@ -3591,27 +3596,43 @@ const handlers = {
     const b = await body(req);
     await rateLimit(env, `lookup:ip:${ipOf(req)}`, ABUSE.lookupPerIp, "Too many tries. Wait a bit and try again.");
     const them = await claimFor(env, b.token);
-    const by = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(them.managed_by).first();
+    const by = them.managed_by ? await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(them.managed_by).first() : null;
     const { results: wishes } = await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL AND draft = 0 AND received_at IS NULL",
     ).bind(them.id).all();
     const { results: circles } = await env.DB.prepare(
       "SELECT g.name FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = ? ORDER BY gm.joined_at",
     ).bind(them.id).all();
-    return { name: them.name, by: by?.name || null, wishes: wishes[0]?.n || 0, circles: circles.map((c) => c.name) };
+    // returning: they've used their link before, so this signs them in again (pin: asks for their PIN first).
+    const returning = !them.managed_by;
+    return { id: them.id, name: them.name, by: by?.name || null, wishes: wishes[0]?.n || 0, circles: circles.map((c) => c.name), returning, pin: returning && !!them.pin_hash };
   },
 
-  // Use a personal invite link: the list becomes theirs, they're signed in on this device, and they get the
-  // welcome tour (which offers a PIN). The link stops working. { token }
+  // Use a personal link. The first time, the list becomes theirs and they get the welcome tour (which offers a
+  // PIN). After that it signs them in again on this device, asking for their PIN if they set one. The link keeps
+  // working. { token, pin? } Returns { token, name, returning }.
   async "POST invite/claim"(req, env) {
     const b = await body(req);
     await rateLimit(env, `join:ip:${ipOf(req)}`, ABUSE.joinPerIp, "Too many sign-in tries. Wait a bit and try again.");
     const them = await claimFor(env, b.token);
-    const done = await env.DB.prepare(
-      "UPDATE members SET managed_by = NULL, claim_hash = NULL, claim_expires = NULL, onboarded_at = NULL WHERE id = ? AND claim_hash IS NOT NULL",
-    ).bind(them.id).run();
-    if (!done.meta?.changes) fail(404, "That invite link was already used.");
-    return { token: await signIn(env, them.id), name: them.name };
+    if (them.managed_by) {
+      await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL WHERE id = ? AND managed_by IS NOT NULL")
+        .bind(them.id).run();
+      return { token: await signIn(env, them.id), name: them.name, returning: false };
+    }
+    if (them.pin_hash) await checkPin(env, req, them, b.pin);
+    return { token: await signIn(env, them.id), name: them.name, returning: true };
+  },
+
+  // Your own sign-in link, for a new phone or computer. on: true makes a new one (the old one stops working),
+  // false turns it off. Returns { token } (null when off). Only a hash is kept, so it can't be shown again.
+  async "POST me/link"(req, env) {
+    const me = await auth(req, env);
+    const { on } = await body(req);
+    await rateLimit(env, `invite:m:${me.id}`, ABUSE.invitesPerMemberDay, "That's a lot of new links today. Try again tomorrow.");
+    const token = on ? newLinkToken() : null;
+    await env.DB.prepare("UPDATE members SET claim_hash = ?, claim_expires = NULL WHERE id = ?").bind(token ? await sha256(token) : null, me.id).run();
+    return { token };
   },
 
   // Take someone you look after out of every circle (and their household). Nobody can see their list after that.

@@ -2496,6 +2496,21 @@ async function renderWelcome(step = "code", info = {}) {
     try { res = await api("claim/lookup", { token: invite.hi }); }
     catch (e) { invite.hi = ""; oops(e.message); return renderWelcome("invite"); }
     const circle = res.circles[0];
+    if (res.returning) {
+      // Their own sign-in link, used again (a new phone): sign in, with their PIN if they set one.
+      setHero(heroTitle("Hints", `Welcome back, ${res.name}!`));
+      v.innerHTML = `<form class="card slide" id="backForm" autocomplete="off">
+        <div class="err" hidden></div>
+        <p class="lead" style="margin-top:0">This is your personal link. ${res.pin ? "Enter your PIN to sign in on this device." : "Tap below to sign in on this device."}</p>
+        ${res.pin ? `<label class="field"><span>Your PIN</span><input class="input" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" required style="text-align:center;letter-spacing:.4em;font-size:22px"></label>` : ""}
+        <button class="btn primary wide" type="submit">Sign in as ${esc(res.name)}</button>
+        <p style="text-align:center;margin:12px 0 0"><button class="btn quiet" type="button" id="notMe">Not ${esc(res.name)}?</button></p>
+      </form>`;
+      if (res.pin) setTimeout(() => $("#backForm").elements.pin.focus(), 300);
+      wireForm($("#backForm"), async (d) => finishJoin(await api("invite/claim", { token: invite.hi, pin: d.pin })));
+      $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
+      return;
+    }
     setHero(envelope() + heroTitle(res.by ? `${res.by} invited you` : "You're invited", `Hi ${res.name}!`));
     v.innerHTML = `
       <p class="lead" style="text-align:center">${res.by ? `${esc(res.by)} set up` : "Someone set up"} your wish list${circle ? ` in <strong>${esc(circle)}</strong>` : ""}.${res.wishes ? ` It already has ${plural(res.wishes, "wish", "wishes")} on it.` : ""} Tap below and it's yours.</p>
@@ -2663,8 +2678,9 @@ async function offerJoin(inv) {
     // Someone's personal invite opened on a phone that's already signed in (often your own, testing it).
     let res;
     try { res = await api("claim/lookup", { token: inv.hi }); } catch (e) { return oops(e.message); }
-    return openSheet(`<h3>This invite is for ${esc(res.name)}</h3>
-      <p>It signs ${esc(res.name)} in as themselves, and works once. Send it to ${esc(res.name)} to open on their own phone. You're signed in as ${esc(state.me.name)} here, so nothing changed.</p>
+    if (res.id === state.me.id) return toast(`You're signed in, ${state.me.name}`);
+    return openSheet(`<h3>This link is for ${esc(res.name)}</h3>
+      <p>It signs ${esc(res.name)} in as themselves, on any phone. Send it to ${esc(res.name)} to open on their own. You're signed in as ${esc(state.me.name)} here, so nothing changed.</p>
       <div class="actions"><button class="btn primary" type="button" id="okHi">Got it</button></div>`, (el) => ($("#okHi", el).onclick = closeSheet));
   }
   if (state.groups.some((g) => g.code === inv.code)) return; // already in it: just open the app
@@ -4619,7 +4635,7 @@ function sendPersonalInvite(id) {
     mark();
     state.stale = true;
     const link = `${location.origin}/join/${encodeURIComponent(g.code)}?from=${encodeURIComponent(state.me.id)}&hi=${encodeURIComponent(res.token)}`;
-    const msg = `Hi ${m.fullName || name}! I set up your wish list on Hints 🎁 Tap this link and it signs you right in as you:`;
+    const msg = `Hi ${m.fullName || name}! I set up your wish list on Hints 🎁 Tap this link and it signs you right in as you. Keep it: it works again on a new phone too.`;
     $("#hiBody", el).innerHTML = `
       <div class="input" style="font-size:14px;overflow-wrap:anywhere;user-select:all">${esc(link)}</div>
       <div class="actions" style="margin-top:12px">
@@ -4634,7 +4650,7 @@ function sendPersonalInvite(id) {
     });
   };
   openSheet(`<h3>Invite ${esc(name)}</h3>
-    <p class="subtle">This link is just for ${esc(name)}. It signs them in as themselves, with everything already on their list, and they can add a PIN after. Works once, for 30 days.</p>
+    <p class="subtle">This link is just for ${esc(name)}. It signs them in as themselves, with everything already on their list, and they can add a PIN after. It keeps working, so they can use it again on a new phone.</p>
     <div class="err" hidden></div>
     <div id="hiBody">${m.inviteSent ? `<p>You already sent ${esc(name)} a link. A new one turns the old one off.</p>
       <div class="actions"><button class="btn" type="button" id="hiOff">Turn off link</button><button class="btn primary" type="button" id="hiNew">Make a new link</button></div>`
@@ -7135,6 +7151,34 @@ async function paintPush(card) {
   };
 }
 
+// Your own sign-in link (POST me/link), for a new phone. Only a hash is kept, so a link can be made, copied
+// right then, replaced or turned off, never shown again later.
+function paintMyLink(card, fresh = null) {
+  if (!card) return;
+  const code = group()?.code;
+  const link = fresh && code ? `${location.origin}/join/${encodeURIComponent(code)}?hi=${encodeURIComponent(fresh)}` : "";
+  card.innerHTML = fresh ? `<p class="sub">Save this somewhere safe, like a note or an email to yourself. It won't be shown again.</p>
+      <div class="input" style="font-size:14px;overflow-wrap:anywhere;user-select:all">${esc(link)}</div>
+      <div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="myLinkCopy">${COPY} Copy</button></div>`
+    : state.me.hasLink ? `<p class="sub">You have a sign-in link. Lost it? Make a new one and the old one stops working.</p>
+      <div class="actions"><button class="btn quiet danger" type="button" id="myLinkOff">Turn off</button><button class="btn" type="button" id="myLinkNew">Make a new link</button></div>`
+    : `<p class="sub">Get a link that signs you in on a new phone or computer, no code needed.${state.me.hasPin ? " It still asks for your PIN." : ""}</p>
+      <button class="btn wide" type="button" id="myLinkNew">Make my sign-in link</button>`;
+  const set = async (on) => {
+    try {
+      const { token } = await api("me/link", { on });
+      state.me.hasLink = !!token;
+      paintMyLink(card, token);
+      if (!on) toast("Sign-in link turned off");
+    } catch (e) { toast(e.message); }
+  };
+  $("#myLinkNew", card)?.addEventListener("click", () => set(true));
+  $("#myLinkOff", card)?.addEventListener("click", () => set(false));
+  $("#myLinkCopy", card)?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(link); buzz(); toast("Link copied"); } catch { toast("Press and hold the link to copy it"); }
+  });
+}
+
 async function renderSettings() {
   const iOS = isAppleMobile();
   const root = document.documentElement;
@@ -7178,6 +7222,9 @@ async function renderSettings() {
         </div>
       </form>
     </div>
+
+    <div class="label">Sign-in link${tip("A link that signs you in on a new phone or computer. Keep it to yourself.")}</div>
+    <div class="set-card" id="linkCard"></div>
 
     <div class="label">Notifications${tip("New wishes, birthday reminders and group gifts. Turned on per phone or computer.")}</div>
     <div class="set-card" id="pushCard"><p class="sub">Checking this device...</p></div>
@@ -7279,6 +7326,7 @@ async function renderSettings() {
     }));
     $("#installSettings", v)?.addEventListener("click", () => startInstall());
     paintPush($("#pushCard", v));
+    paintMyLink($("#linkCard", v));
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
     $("#removePin", v)?.addEventListener("click", async () => {
       try { await api("profile", { pin: "" }); reload("PIN removed"); } catch (e) { oops(e.message); }
