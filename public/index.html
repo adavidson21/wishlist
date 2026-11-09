@@ -562,6 +562,23 @@
   .set-nav button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
   .set-body > .label:first-child { margin-top: 0; }
   .set-card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 18px; margin-top: 12px; }
+  /* Received wishes: "Did you get these?" after an occasion, and the Received section. */
+  .held-card { background: var(--gold-soft); border-radius: var(--r); padding: 16px 16px 12px; margin: 0 0 14px; }
+  .held-card h4 { margin: 0 0 2px; font-size: 17px; }
+  .held-card .sub { margin: 0 0 10px; color: var(--gold-ink); font-size: 14px; }
+  .held-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-top: 1px solid color-mix(in srgb, var(--gold) 35%, transparent); }
+  .held-row .t { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .held-all { margin-top: 6px; padding: 0; }
+  .received { margin-top: 22px; }
+  .received > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; font-weight: 800; color: var(--muted); padding: 8px 0; }
+  .received > summary::-webkit-details-marker { display: none; }
+  .received > summary .chip-n { margin-left: 2px; }
+  .rec-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .rec-row .t { flex: 1; min-width: 0; }
+  .rec-row .t strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rec-row .t small { color: var(--muted); font-weight: 600; }
+  .rec-row .thx { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .rec-row .thx input { width: 18px; height: 18px; accent-color: var(--gold); }
   .set-card h4 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
   .set-card > p, .set-card .sub { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
   .set-card + .label { margin-top: 26px; }
@@ -3109,7 +3126,9 @@ async function renderMine() {
   if (!isLive()) return;
   state.myItems = data.items;
   const drafts = data.items.filter((i) => i.draft);
-  const live = data.items.filter((i) => !i.draft);
+  // Held: an occasion passed with these marked, waiting on "Did you get these?" (shown in their own card).
+  const held = data.items.filter((i) => !i.draft && i.held);
+  const live = data.items.filter((i) => !i.draft && !i.held);
   const view = data.items.length && state.mineView === "maybe" ? "maybe" : "list";
   setHero(heroTitle(`Hi ${state.me.name}`, view === "maybe" ? "Your maybes" : "Your wishlist"));
   const v = $("#view");
@@ -3150,6 +3169,7 @@ async function renderMine() {
       <button class="add" type="button" id="maybeAdd">${PLUS} Add a maybe</button></div>`}
   </div>`;
   const liveSection = n ? `
+    ${heldCard(held)}
     ${starter}
     ${showStaleNudge(live) ? `<div class="starter slide" id="staleNudge" style="margin:0 0 14px"><strong>Your list hasn't changed since last year</strong>
       <p>Everyone's starting to shop. Tap a wish to update or remove it, and add anything new you'd love.</p>
@@ -3161,6 +3181,7 @@ async function renderMine() {
       <p>Add it so everyone can plan for it too, not just Christmas.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="bdayLater">Not now</button><button class="btn primary" type="button" id="bdayAdd">Add birthday</button></div></div>` : ""}
     ${learning ? '<p class="footnote">Surprises stay hidden from you.</p>' : ""}` : `
+    ${heldCard(held)}
     <div class="maybe-empty slide">
       ${giftBox("Drop a hint")}
       <strong>Nothing on your wish list yet</strong>
@@ -3176,7 +3197,7 @@ async function renderMine() {
       <p>So your people can tell you apart from anyone else named ${esc(state.me.name)}.</p><div class="err" hidden></div>
       <label class="field"><span>Last name</span><input class="input" name="lastName" maxlength="40" required></label>
       <div class="actions" style="margin:0"><button class="btn primary" type="submit">Save</button></div></form>`;
-  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards)) + "</div>" : `
+  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + pinNotice + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards) + receivedSection(data.received)) + "</div>" : `
     <div class="empty">
       ${giftBox("Drop your first hint")}
       <strong>Let's start your list</strong>
@@ -3185,7 +3206,8 @@ async function renderMine() {
       <button class="add big shine" type="button" id="addFirst">${PLUS} Drop your first hint</button>
       <p class="footnote">Surprises stay hidden from you.</p>
     </div>
-    ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}`);
+    ${data.giftCards?.length ? myGiftCards(data.giftCards) : ""}
+    ${receivedSection(data.received)}`);
   paintInstallCard();
   paintPushNudge();
   $("#addFirst")?.addEventListener("click", () => addThing());
@@ -3227,6 +3249,7 @@ async function renderMine() {
   wireGiftBox(v, () => addThing());
   wireMineItems(v, data.items);
   wireMineTools(v, sideItems, data.items);
+  wireReceived(v);
 }
 
 // Clicks on cards: open to edit, Top pick, Publish.
@@ -4558,7 +4581,7 @@ async function renderPerson(id) {
 
   const v = $("#view");
   v.innerHTML = `<div class="person-layout"><div class="person-side">
-    ${manage ? manageCard(list, name) : ""}
+    ${manage ? manageCard(list, name) + heldCard(list.held, id, name) : ""}
     ${chatBar(id, name)}
     ${hintsCard(list.member.profile)}
     ${knowCard(list.member.profile)}
@@ -4579,6 +4602,7 @@ async function renderPerson(id) {
           : `<button class="add" type="button" id="nudge">${MSG} Send ${esc(name)} a reminder</button>`}</div>
       </div>`}
     ${theirGiftCards(list.giftCards, name, id)}
+    ${manage ? receivedSection(list.received, id) : ""}
     ${sugg.length ? `<div class="label">Ideas from others${tip(`Hidden from ${name}.`)}</div>
       <div class="stack">${sugg.map((i, n) => personRow(i, "idea", n)).join("")}</div>` : ""}
     <div class="label">Your ideas for ${esc(name)}${tip("Only you see these, unless you share one.")}</div>
@@ -4597,7 +4621,7 @@ async function renderPerson(id) {
     if (x) openChat(id, { tag: { kind, id: itemId, title: x.title } });
   }));
   $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
-  if (manage) wireManageCard(v, list, name, id);
+  if (manage) { wireManageCard(v, list, name, id); wireReceived(v, id); }
   wireGiftBox(v, () => addThing(id));
   const redo = () => render();
   v.querySelectorAll("[data-cat]").forEach((b) => (b.onclick = () => { view.cat = b.dataset.cat; redo(); }));
@@ -5924,6 +5948,49 @@ function giftCard(g, extra = "") {
 }
 
 // My list: the gift cards I picked, plus a tile to change them.
+// ---------- received wishes ----------
+// An occasion code (YYYYMMDD) that has passed: "Christmas 2026", or "birthday 2026".
+const seasonLabel = (code, whose = "") => (code % 10000 === 1225 ? `Christmas ${Math.floor(code / 10000)}` : `${whose ? `${whose} ` : ""}birthday ${Math.floor(code / 10000)}`);
+// After an occasion: wishes that were on the list for it, waiting on "Got it" or "Still want it". as: someone you look after.
+function heldCard(held, as = null, asName = "") {
+  if (!held?.length) return "";
+  const seasons = [...new Set(held.map((i) => i.held))];
+  const whose = as ? `${asName}'s` : "your";
+  const when = seasons.length === 1 ? seasonLabel(seasons[0], whose) : "your last occasions";
+  return `<section class="held-card slide" id="heldCard">
+    <h4>Did ${as ? `${esc(asName)} get` : "you get"} these?</h4>
+    <p class="sub">They were on ${as ? "the" : "your"} list for ${esc(when)}, so they're off everyone's list for now.</p>
+    ${held.map((i) => `<div class="held-row"><span class="t">${esc(i.title)}${seasons.length > 1 ? ` <small>· ${esc(seasonLabel(i.held, whose))}</small>` : ""}</span>
+      <button class="btn small quiet" type="button" data-got-no="${esc(i.id)}">Still want it</button>
+      <button class="btn small primary" type="button" data-got="${esc(i.id)}">Got it</button></div>`).join("")}
+    ${held.length > 1 ? `<button class="linkbtn held-all" type="button" id="gotAll">Got them all</button>` : ""}
+  </section>`;
+}
+function receivedSection(received, as = null) {
+  if (!received?.length) return "";
+  const open = state.receivedOpen ? " open" : "";
+  return `<details class="received"${open} id="receivedBox"><summary>${CHECK} Received <span class="chip-n">${received.length}</span></summary>
+    ${received.map((r) => `<div class="rec-row"><span class="t"><strong>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a>` : esc(r.title)}</strong>
+      <small>${esc(((l) => l[0].toUpperCase() + l.slice(1))(seasonLabel(r.season, as ? "their" : "your")))}</small></span>
+      <label class="thx"><input type="checkbox" data-thanked="${esc(r.id)}"${r.thanked ? " checked" : ""}> Thanked</label>
+      <button class="btn small quiet" type="button" data-unreceive="${esc(r.id)}" aria-label="Put back on the list">Put back</button></div>`).join("")}
+  </details>`;
+}
+function wireReceived(v, as = null) {
+  const done = async (body, msg) => { try { await api("item/got", { ...body, as: as || undefined }); toast(msg); state.stale = true; render(); } catch (e) { toast(e.message); } };
+  v.querySelectorAll("[data-got]").forEach((b) => (b.onclick = () => { buzz(); done({ id: b.dataset.got, got: true }, "Nice! It's in Received."); }));
+  v.querySelectorAll("[data-got-no]").forEach((b) => (b.onclick = () => done({ id: b.dataset.gotNo, got: false }, "Back on the list")));
+  $("#gotAll", v)?.addEventListener("click", () => { buzz(); done({ all: true, got: true }, "All moved to Received"); });
+  $("#receivedBox", v)?.addEventListener("toggle", (e) => { state.receivedOpen = e.target.open; });
+  v.querySelectorAll("[data-thanked]").forEach((c) => (c.onchange = async () => {
+    try { await api("item/thanked", { id: c.dataset.thanked, on: c.checked, as: as || undefined }); if (c.checked) buzz(); }
+    catch (e) { c.checked = !c.checked; toast(e.message); }
+  }));
+  v.querySelectorAll("[data-unreceive]").forEach((b) => (b.onclick = async () => {
+    try { await api("item/unreceive", { id: b.dataset.unreceive, as: as || undefined }); toast("Back on the list"); state.stale = true; render(); } catch (e) { toast(e.message); }
+  }));
+}
+
 function myGiftCards(cards = []) {
   const list = cards.filter((c) => GC[c.brand]);
   let k = 0;

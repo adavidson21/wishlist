@@ -422,10 +422,39 @@ async function sharesGroup(env, a, b) {
 
 // SQL condition: item `i` is published (not in the owner's "Maybe" drafts) and visible to the viewer
 // (bound once as ?) through at least one shared family that the owner hasn't hidden it from.
-const ITEM_VISIBLE = `i.draft = 0 AND EXISTS (
+const ITEM_VISIBLE = `i.draft = 0 AND i.held_season IS NULL AND i.received_at IS NULL AND EXISTS (
   SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
    WHERE x.member_id = ? AND y.member_id = i.owner_id
      AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = x.group_id))`;
+
+// ---------- received wishes ----------
+// Once an occasion passes, a wish marked for it is held (held_season) until its owner answers "Did you get
+// this?": received, or settled (back on the list, not asked again for that occasion). Held wishes leave
+// everyone's shopping view (ITEM_VISIBLE). "As many as you like" wishes are never held. A wish held for 30 days
+// is received. Runs hourly (runSchedule) and when an owner opens their list. ownerId limits it to one person.
+const RECEIVE_AFTER_DAYS = 30;
+function codeDaysAgo(n) {
+  const t = todayParts();
+  const d = new Date(Date.UTC(t.y, t.m - 1, t.d - n));
+  return dateCode(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+async function settleReceived(env, ownerId = null) {
+  const t = today();
+  const who = ownerId ? "AND items.owner_id = ?2" : "";
+  const args = ownerId ? [t, ownerId] : [t];
+  const past = "SELECT MAX(c.season) FROM claims c WHERE c.item_id = items.id AND c.season < ?1 AND c.season > COALESCE(items.settled_season, 0)";
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE items SET held_season = (${past})
+        WHERE held_season IS NULL AND received_at IS NULL AND removed_at IS NULL AND draft = 0 AND quantity != 0 ${who}
+          AND (${past}) IS NOT NULL`,
+    ).bind(...args),
+    env.DB.prepare(
+      `UPDATE items SET received_at = ?, received_season = held_season, settled_season = held_season, held_season = NULL
+        WHERE held_season IS NOT NULL AND held_season < ? ${ownerId ? "AND owner_id = ?" : ""}`,
+    ).bind(now(), codeDaysAgo(RECEIVE_AFTER_DAYS), ...(ownerId ? [ownerId] : [])),
+  ]);
+}
 
 // ---------- chat about a person ----------
 // One thread per circle and person. Messages older than this are swept and never returned.
@@ -816,6 +845,11 @@ function giftOut(item, rows, meId, nicks) {
   return { gift, claim };
 }
 
+// Received wishes, newest first. Never says who gave them.
+const receivedOut = (rows) => rows.filter((r) => r.received_at)
+  .sort((a, b) => (b.received_season - a.received_season) || b.received_at.localeCompare(a.received_at))
+  .map((r) => ({ id: r.id, title: r.title, url: r.url, image_url: r.image_url, price_cents: r.price_cents, season: r.received_season, thanked: !!r.thanked_at }));
+
 const itemOut = (r) => ({
   id: r.id,
   title: r.title,
@@ -828,6 +862,7 @@ const itemOut = (r) => ({
   priority: r.priority,
   category: r.category || null,
   quantity: r.quantity ?? 1, // how many they want; 0 = as many as you like
+  held: r.held_season || null, // waiting on "Did you get this?" for this occasion (owner only sees it)
   draft: !!r.draft,
   created_at: r.created_at,
   updated_at: r.updated_at,
@@ -1812,7 +1847,7 @@ async function reminders(env, budget) {
     for (const r of await pushRecipients(env, "reminders")) {
       if (r.stale_ok_year === year) continue;
       const row = await env.DB.prepare(
-        "SELECT COUNT(*) AS n, MAX(MAX(created_at, updated_at)) AS latest FROM items WHERE owner_id = ? AND draft = 0 AND removed_at IS NULL",
+        "SELECT COUNT(*) AS n, MAX(MAX(created_at, updated_at)) AS latest FROM items WHERE owner_id = ? AND draft = 0 AND removed_at IS NULL AND received_at IS NULL",
       ).bind(r.id).first();
       if (!row?.n || String(row.latest || "") >= `${year}-01-01`) continue;
       if (budget.left <= 0) return sent;
@@ -1885,6 +1920,7 @@ export async function runSchedule(env) {
     await env.DB.prepare("DELETE FROM push_sent WHERE (key LIKE 'wishes:%' AND sent_at < ?) OR sent_at < ?")
       .bind(new Date(Date.now() - 2 * 86_400_000).toISOString(), new Date(Date.now() - 400 * 86_400_000).toISOString()).run().catch(() => {});
   }
+  await settleReceived(env).catch((err) => console.error("settle", err));
   const later = isQuiet(hour) ? 0 : await flushLater(env, budget).catch((err) => (console.error("later", err), 0));
   const wishes = await wishDigest(env, budget, hour).catch((err) => (console.error("digest", err), 0));
   // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
@@ -2025,7 +2061,7 @@ const handlers = {
       .all();
     const { results: people } = await env.DB.prepare(
       `SELECT gm.group_id, m.id, m.name, m.last_name, m.photo_at, m.birthday, m.household_id, m.dislikes, m.owns, m.is_kid, m.managed_by, m.claim_expires, m.pin_hash IS NOT NULL AS has_pin,
-              (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0
+              (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL AND i.draft = 0 AND i.held_season IS NULL AND i.received_at IS NULL
                   AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = gm.group_id)) AS item_count
          FROM group_members gm JOIN members m ON m.id = gm.member_id
         WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE member_id = ?)
@@ -2211,11 +2247,13 @@ const handlers = {
     member.profile = await profileOf(env, member.id);
 
     if (own) {
-      const { results } = await env.DB.prepare(
+      await settleReceived(env, me.id);
+      const { results: all } = await env.DB.prepare(
         "SELECT * FROM items WHERE owner_id = ? AND removed_at IS NULL ORDER BY draft, (priority = 'must') DESC, created_at",
       )
         .bind(me.id)
         .all();
+      const results = all.filter((r) => !r.received_at);
       const { results: hidden } = await env.DB.prepare(
         "SELECT h.item_id, h.group_id FROM item_hidden h JOIN items i ON i.id = h.item_id WHERE i.owner_id = ?",
       )
@@ -2233,10 +2271,13 @@ const handlers = {
         })),
         // Just the brands. Who is giving one never comes back to the owner.
         giftCards: cards.filter((c) => GIFT_CARD_NAMES.has(c.brand)).map((c) => ({ brand: c.brand })),
+        received: receivedOut(all),
       };
     }
 
     const t = today();
+    // Hold anything from an occasion that just passed before anyone shops from it.
+    await settleReceived(env, memberId);
     // A removed wish only stays while someone still has it marked; a hidden one only for its buyers.
     const { results } = await env.DB.prepare(
       `SELECT i.* FROM items i
@@ -2266,6 +2307,11 @@ const handlers = {
       member,
       own,
       canManage: manage,
+      // Someone you look after: their received wishes, and held ones waiting on "Did you get this?".
+      ...(manage ? await (async () => {
+        const { results: mine } = await env.DB.prepare("SELECT * FROM items WHERE owner_id = ? AND removed_at IS NULL AND (received_at IS NOT NULL OR held_season IS NOT NULL)").bind(memberId).all();
+        return { received: receivedOut(mine), held: mine.filter((r) => r.held_season).map((r) => ({ id: r.id, title: r.title, held: r.held_season })) };
+      })() : {}),
       giftCards: await giftCardsFor(env, memberId, me.id),
       items: results.map((r) => ({
         ...itemOut(r),
@@ -2361,6 +2407,45 @@ const handlers = {
   },
 
   // Remove one of your items. If someone already bought it, keep it for them (flagged "removed").
+  // "Did you get this?" for held wishes. got: true = received, false = still want it (back on the list).
+  // all: true answers every held wish at once. as: someone you look after.
+  async "POST item/got"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const owner = await ownerFor(env, me, b.as);
+    const where = b.all ? "owner_id = ? AND held_season IS NOT NULL" : "owner_id = ? AND held_season IS NOT NULL AND id = ?";
+    const args = b.all ? [owner] : [owner, String(b.id || "")];
+    const res = await env.DB.prepare(
+      b.got
+        ? `UPDATE items SET received_at = ?, received_season = held_season, settled_season = held_season, held_season = NULL WHERE ${where}`
+        : `UPDATE items SET settled_season = held_season, held_season = NULL WHERE ${where}`,
+    ).bind(...(b.got ? [now()] : []), ...args).run();
+    if (!b.all && !res.meta.changes) fail(404, "Item not found.");
+    return { ok: true, count: res.meta.changes };
+  },
+
+  // The Thanked check on a received wish.
+  async "POST item/thanked"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const owner = await ownerFor(env, me, b.as);
+    const res = await env.DB.prepare("UPDATE items SET thanked_at = ? WHERE id = ? AND owner_id = ? AND received_at IS NOT NULL")
+      .bind(b.on ? now() : null, String(b.id || ""), owner).run();
+    if (!res.meta.changes) fail(404, "Item not found.");
+    return { ok: true };
+  },
+
+  // Put a received wish back on the list (it isn't asked about again for that occasion).
+  async "POST item/unreceive"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const owner = await ownerFor(env, me, b.as);
+    const res = await env.DB.prepare("UPDATE items SET received_at = NULL, received_season = NULL, thanked_at = NULL WHERE id = ? AND owner_id = ? AND received_at IS NOT NULL")
+      .bind(String(b.id || ""), owner).run();
+    if (!res.meta.changes) fail(404, "Item not found.");
+    return { ok: true };
+  },
+
   async "POST item/remove"(req, env) {
     const me = await auth(req, env);
     const { id, as } = await body(req);
@@ -2369,7 +2454,8 @@ const handlers = {
       .bind(id, owner)
       .first();
     if (!item) fail(404, "Item not found.");
-    const claimed = await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ? AND season >= ?").bind(id, today()).first();
+    // Any mark, past or upcoming, keeps the wish (removed) so gift history and buyers' views survive.
+    const claimed = await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ?").bind(id).first();
     if (claimed) {
       await env.DB.prepare("UPDATE items SET removed_at = ? WHERE id = ?").bind(now(), id).run();
     } else {
@@ -2439,7 +2525,7 @@ const handlers = {
     } else if (existing) {
       await env.DB.prepare("DELETE FROM claims WHERE item_id = ? AND season = ? AND buyer_id = ?").bind(itemId, existing.season, me.id).run();
       // An item the owner already removed disappears once nobody has bought it.
-      if (item.removed_at && rows.length === 1) {
+      if (item.removed_at && rows.length === 1 && !(await env.DB.prepare("SELECT 1 FROM claims WHERE item_id = ?").bind(itemId).first())) {
         await env.DB.batch([
           env.DB.prepare("DELETE FROM claims WHERE item_id = ?").bind(itemId),
           env.DB.prepare("DELETE FROM item_hidden WHERE item_id = ?").bind(itemId),
@@ -3372,7 +3458,7 @@ const handlers = {
     const them = await claimFor(env, b.token);
     const by = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(them.managed_by).first();
     const { results: wishes } = await env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL AND draft = 0",
+      "SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL AND draft = 0 AND received_at IS NULL",
     ).bind(them.id).all();
     const { results: circles } = await env.DB.prepare(
       "SELECT g.name FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = ? ORDER BY gm.joined_at",
