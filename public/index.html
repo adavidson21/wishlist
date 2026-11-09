@@ -649,6 +649,34 @@
   .pcard-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
   .pcard-body .stack { margin: 12px 0; }
   .pcard-body .row { box-shadow: none; border: 1.5px solid var(--line); }
+  .buys li { padding: 0; }
+  .buys li > button { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; display: flex; gap: 10px; align-items: center; padding: 10px 0; }
+  .buys li > button > span:first-child { flex: 1; min-width: 0; }
+  .buys li > button:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; border-radius: 8px; }
+  /* Budget tabs: People / Purchases / Ideas */
+  .btabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--line); margin: 0 0 16px; overflow-x: auto; scrollbar-width: none; }
+  .btabs button { flex: 1; min-height: 48px; border: 0; background: none; font-weight: 700; font-size: 16px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    border-bottom: 3px solid transparent; margin-bottom: -1.5px; white-space: nowrap; padding: 0 8px; }
+  .btabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brand); }
+  .btabs button:focus-visible { outline: 3px solid var(--brand); outline-offset: -3px; border-radius: 8px; }
+  .btabs .chip-n { background: var(--panel); color: var(--muted); }
+  .btabs button[aria-selected="true"] .chip-n { background: var(--soft); color: var(--brand); }
+  .occ-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .occ-label small { color: var(--muted); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 13px; }
+  .occ-label .linkbtn { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 4px; text-decoration: none; }
+  .occ-label .linkbtn svg { width: 15px; height: 15px; }
+  .row.buy .row-top > .avatar { width: 40px; height: 40px; font-size: 17px; flex: none; }
+  .stash { display: inline-flex; align-items: center; gap: 5px; color: var(--soft-ink); font-size: 14px; font-weight: 600; margin-top: 4px; }
+  .stash svg { flex: none; color: var(--brand); }
+  .buy-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .buy-foot .spacer { flex: 1; }
+  .buy-foot .btn svg { width: 14px; height: 14px; }
+  .stage { font-size: 13px; font-weight: 700; padding: 4px 9px; border-radius: 9px; white-space: nowrap; background: var(--panel); color: var(--muted); }
+  .stage.s1 { background: var(--gold-soft); color: var(--gold-ink); }
+  .stage.s2 { background: var(--soft); color: var(--brand); }
+  .stage.s3 { background: var(--ok-soft); color: var(--ok); }
+  .seg.stages { grid-template-columns: repeat(4, 1fr); }
+  .seg.stages button { font-size: 14px; padding: 0 4px; }
 
   /* Invite landing (/join/CODE): an envelope opens, the invite card rises, the family pops in. */
   .hero.tall .hero-in { text-align: center; padding: 4px 0 6px; }
@@ -2994,19 +3022,69 @@ function markPurchased(kind, x, name, personId) {
     });
 }
 
-// ---------- budget: per person budgets, spending, ideas (private) ----------
-// Two views: Christmas (everyone) and Birthdays (people who added one, soonest first).
+// ---------- budget: per person budgets, purchases, ideas (private) ----------
+// Three tabs: People (budgets, Christmas or Birthdays), Purchases (every gift you've bought for an
+// upcoming occasion and how it's coming along), and Ideas (your open ideas, by person).
 const BUDGET_VIEW_KEY = "wishlist-budget-view";
+const BUDGET_TAB_KEY = "wishlist-budget-tab";
 function budgetView() { try { return localStorage.getItem(BUDGET_VIEW_KEY) === "birthday" ? "birthday" : "christmas"; } catch { return "christmas"; } }
 function setBudgetView(v) { try { v === "birthday" ? localStorage.setItem(BUDGET_VIEW_KEY, v) : localStorage.removeItem(BUDGET_VIEW_KEY); } catch {} }
+function budgetTab() { try { const v = localStorage.getItem(BUDGET_TAB_KEY); return v === "gifts" || v === "ideas" ? v : "people"; } catch { return "people"; } }
+function setBudgetTab(v) { try { v === "people" ? localStorage.removeItem(BUDGET_TAB_KEY) : localStorage.setItem(BUDGET_TAB_KEY, v); } catch {} }
 // The occasion a person's card shows in a view (null: no birthday yet).
 const viewOcc = (p, view) => p.occasions.find((o) => (view === "birthday" ? o.birthday : o.christmas)) || null;
 const xmasYear = (t) => { const o = t.people[0] && viewOcc(t.people[0], "christmas"); return o ? occParts(o)[0] : ""; };
+
+// How a gift you bought is coming along. null = ordered / on the way. Must match PURCHASE_STAGES in src/wishlist.js.
+// [status, name, filter chip label, quick-advance button label (to reach this stage)]
+const STAGES = [[null, "Ordered", "On the way", ""], ["home", "Have it", "To wrap", "Got it"], ["wrapped", "Wrapped", "Wrapped", "Wrapped"], ["given", "Given", "Given", "Given"]];
+const stageAt = (status) => Math.max(0, STAGES.findIndex((s) => s[0] === (status || null)));
+const PIN = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+// Every purchase for an upcoming occasion, with who it's for and the occasion, soonest occasion first.
+const allBuys = (t) => t.people.flatMap((p) => p.occasions.flatMap((o) => o.purchases.map((x) => ({ x, p, o }))))
+  .sort((a, b) => a.o.code - b.o.code || String(a.x.date).localeCompare(String(b.x.date)));
+const occLabel = (p, o) => (o.christmas && !o.birthday ? `Christmas ${occParts(o)[0]}` : `${p.name}'s ${occName(o)} · ${occDay(o)}`);
+const stagePill = (x) => { const n = stageAt(x.status); return `<span class="stage s${n}">${STAGES[n][1]}</span>`; };
 
 async function renderTracker() {
   const t = await load("tracker");
   notePhotos(t.people);
   state.tracker = t;
+  const v = $("#view");
+  if (!t.people.length) {
+    setHero(budgetTitle());
+    v.innerHTML = `<div class="empty">${giftBox("Invite your people")}<strong>No one to plan for yet</strong><p>Budgets and gifts show up once people join.</p></div>`;
+    wireGiftBox(v, () => setTab("family"));
+    return;
+  }
+  renderBudgetTab(t);
+}
+
+const budgetTitle = () => `<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1>Budget</h1><span class="lockline">${LOCK} just for you</span></div>`;
+
+// Draws the tab strip and the chosen tab, from the tracker already loaded (switching tabs doesn't refetch).
+function renderBudgetTab(t) {
+  const tab = budgetTab();
+  const buys = allBuys(t);
+  const ideaCount = t.people.reduce((n, p) => n + p.ideas.length, 0);
+  const tabs = [["people", "People", ""], ["gifts", "Purchases", buys.length], ["ideas", "Ideas", ideaCount]];
+  const v = $("#view");
+  v.innerHTML = `<div class="btabs" role="tablist" aria-label="Budget sections">${tabs.map(([k, l, n]) =>
+    `<button type="button" role="tab" data-btab="${k}" aria-selected="${k === tab}">${l}${n ? `<span class="chip-n">${n}</span>` : ""}</button>`).join("")}</div>
+    <div id="btabBody" role="tabpanel"></div>`;
+  v.querySelectorAll("[data-btab]").forEach((b) => (b.onclick = () => {
+    if (b.dataset.btab === tab) return;
+    setBudgetTab(b.dataset.btab);
+    state.lastLeft = null;
+    renderBudgetTab(t);
+  }));
+  const body = $("#btabBody");
+  if (tab === "gifts") renderGiftsTab(t, body, buys);
+  else if (tab === "ideas") renderIdeasTab(t, body);
+  else renderPeopleTab(t, body);
+}
+
+function renderPeopleTab(t, v) {
   const view = budgetView();
   const rows = t.people.map((p) => ({ p, o: viewOcc(p, view) }));
   const shownRows = rows.filter((r) => r.o);
@@ -3026,8 +3104,7 @@ async function renderTracker() {
     ? `Next birthday ${inDays(soonest)}`
     : daysLeft <= 0 ? "Merry Christmas!" : `${plural(daysLeft, "day", "days")} until Christmas`;
   const needGift = shownRows.filter((r) => !r.o.purchases.length);
-  setHero(`
-    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h1>Budget</h1><span class="lockline">${LOCK} just for you</span></div>
+  setHero(`${budgetTitle()}
     <div class="hero-stat">
       <p class="kicker">${hasBudget ? (left < 0 ? `Over budget for ${esc(what)} by` : `Left to spend for ${esc(what)}`) : `Spent so far for ${esc(what)}`}</p>
       <span class="big-num" id="bigNum">${money(shown)}</span>
@@ -3039,9 +3116,8 @@ async function renderTracker() {
   countUp($("#bigNum"), from, shown);
   state.lastLeft = shown;
 
-  const v = $("#view");
   const segHtml = seg("Which budget", [["christmas", `Christmas ${xmasYear(t)}`], ["birthday", "Birthdays"]], view, "two");
-  v.innerHTML = t.people.length ? `
+  v.innerHTML = `
     <div id="viewSeg">${segHtml}</div>
     ${needGift.length && needGift.length < shownRows.length ? `<div class="label" style="margin-top:18px">Still need a gift for</div>
       <div class="still-need">${needGift.map((r) => `<button class="chip" type="button" data-need="${esc(r.p.id)}">${avatar(r.p.name, r.p.id, "sm")}${esc(r.p.name)}</button>`).join("")}</div>` : ""}
@@ -3054,15 +3130,172 @@ async function renderTracker() {
       <button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button>
       <button class="btn wide" type="button" id="addIdea">${PLUS} Gift idea</button>
       ${shownRows.length ? `<button class="btn quiet wide" type="button" id="exportBtn">${DOWN} Download as Excel</button>` : ""}
-    </div>` : `<div class="empty">${giftBox("Invite your people")}<strong>No one to plan for yet</strong><p>Budgets and gifts show up once people join.</p></div>`;
-  $("#viewSeg") && wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderTracker(); });
-  $("#addPurchase")?.addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
-  $("#addIdea")?.addEventListener("click", () => addThing(null));
+    </div>`;
+  wireSeg($("#viewSeg .seg"), (val) => { setBudgetView(val); state.lastLeft = null; renderPeopleTab(t, v); });
+  $("#addPurchase").addEventListener("click", () => editIdea(null, null, { purchase: true, view }));
+  $("#addIdea").addEventListener("click", () => addThing(null));
   $("#exportBtn")?.addEventListener("click", () => exportExcel(t, view));
   v.querySelectorAll(".stack > [data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
   v.querySelectorAll("[data-need]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.need)));
-  wireGiftBox(v, () => setTab("family"));
   v.querySelectorAll(".pcard").forEach((c) => wireTrackerCard(c, t, view));
+}
+
+// Purchases: everything you've bought for anyone's upcoming occasions, grouped by occasion, with where each
+// gift is (on the way, have it, wrapped, given) and where you hid it. Filter chips by stage.
+function renderGiftsTab(t, v, buys, still = false) {
+  const counts = STAGES.map((s, n) => buys.filter((b) => stageAt(b.x.status) === n).length);
+  const ready = counts[2] + counts[3];
+  const spent = buys.reduce((n, b) => n + b.x.spent_cents, 0);
+  const next = [counts[0] ? `${counts[0]} on the way` : "", counts[1] ? `${counts[1]} to wrap` : ""].filter(Boolean).join(" · ");
+  setHero(`${budgetTitle()}
+    <div class="hero-stat">
+      <p class="kicker">Gifts bought for what's coming up</p>
+      <span class="big-num">${buys.length}</span>
+      <p class="hero-sub">${buys.length ? `${money(spent)} spent · ${ready} of ${buys.length} wrapped or given` : "Nothing bought yet"}</p>
+      ${buys.length ? `<div class="hero-meter" style="margin-top:12px"><span class="bar"><i style="width:${Math.round((ready / buys.length) * 100)}%"></i></span></div>` : ""}
+      ${next ? `<p class="hero-sub" style="margin-top:10px;font-weight:700">${esc(next)}</p>` : ""}
+    </div>`);
+  const f = state.giftFilter ?? "all";
+  const filter = f !== "all" && counts[+f] ? +f : null;
+  const shown = filter == null ? buys : buys.filter((b) => stageAt(b.x.status) === filter);
+  // Group by occasion: one Christmas for everyone, each birthday on its own.
+  const groups = [];
+  for (const b of shown) {
+    const key = b.o.christmas && !b.o.birthday ? `x${b.o.code}` : `${b.o.code}:${b.p.id}`;
+    let g = groups.find((x) => x.key === key);
+    if (!g) groups.push((g = { key, o: b.o, p: b.p, list: [] }));
+    g.list.push(b);
+  }
+  const ordered = groups.flatMap((g) => g.list);
+  let k = 0;
+  v.innerHTML = buys.length ? `
+    <div class="chips" role="group" aria-label="Filter by how it's going" style="margin-top:4px">
+      <button class="chip" type="button" data-gf="all" aria-pressed="${filter == null}">All<span class="chip-n">${buys.length}</span></button>
+      ${STAGES.map((s, n) => counts[n] ? `<button class="chip" type="button" data-gf="${n}" aria-pressed="${filter === n}">${s[2]}<span class="chip-n">${counts[n]}</span></button>` : "").join("")}
+    </div>
+    ${groups.map((g) => `<div class="label occ-label"><span>${esc(occLabel(g.p, g.o))}</span><small>${esc(inDays(g.o))}</small></div>
+      <div class="stack">${g.list.map((b) => buyRow(b, k++, still)).join("")}</div>`).join("")}
+    <div class="stack" style="margin-top:18px"><button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button></div>`
+    : `<div class="empty" style="margin-top:12px">${giftBox("Find a gift")}<strong>Nothing bought yet</strong>
+      <p>When you mark something as purchased, or add a purchase here, it shows up so you can follow it from ordered to wrapped to given.</p></div>
+      <div class="stack" style="margin-top:18px"><button class="add" type="button" id="addPurchase">${PLUS} Add a purchase</button></div>`;
+  wireGiftBox(v, () => setTab("family"));
+  $("#addPurchase").addEventListener("click", () => editIdea(null, null, { purchase: true, view: budgetView() }));
+  v.querySelectorAll("[data-gf]").forEach((b) => (b.onclick = () => { state.giftFilter = b.dataset.gf; renderGiftsTab(t, v, buys); }));
+  v.querySelectorAll('.chip[aria-pressed="true"]').forEach((c) => c.scrollIntoView({ block: "nearest", inline: "nearest" }));
+  v.querySelectorAll("[data-buy]").forEach((el) => {
+    const b = ordered[+el.dataset.buy];
+    el.onclick = (e) => {
+      if (e.target.closest("a")) return;
+      const adv = e.target.closest("[data-advance]");
+      if (adv) advancePurchase(b, t, () => { const y = scrollY; renderGiftsTab(t, v, buys, true); scrollTo(0, y); });
+      else editPurchase(b.x, b.p, b.o);
+    };
+    el.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); editPurchase(b.x, b.p, b.o); } };
+  });
+}
+
+function buyRow({ x, p }, n, still) {
+  const at = stageAt(x.status);
+  const nextStage = STAGES[at + 1];
+  return `<div class="row buy${still ? "" : " slide"}" style="animation-delay:${Math.min(n, 8) * 0.04}s" role="button" tabindex="0" data-buy="${n}" aria-label="${esc(x.title)} for ${esc(p.name)}, ${STAGES[at][1]}">
+    <div class="row-top">${avatar(p.name, p.id)}
+      <div class="row-main">
+        <div class="row-head"><span class="row-title">${esc(x.title)}</span>${x.spent_cents ? `<span class="row-price">${money(x.spent_cents)}</span>` : ""}</div>
+        <span class="from">For ${esc(p.name)} · ${esc(x.from)}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(host(x.url))}</a>` : ""}</span>
+        ${x.stash ? `<span class="stash">${PIN}${esc(x.stash)}</span>` : ""}
+      </div>
+    </div>
+    <div class="buy-foot">${stagePill(x)}<span class="spacer"></span>
+      ${nextStage ? `<button class="btn small" type="button" data-advance>${CHECK} ${nextStage[3]}</button>` : ""}</div>
+  </div>`;
+}
+
+// One tap to the next stage. Shows right away; puts it back if saving fails.
+async function advancePurchase({ x, o, p }, t, redraw) {
+  const before = x.status;
+  const to = STAGES[stageAt(before) + 1];
+  if (!to) return;
+  x.status = to[0];
+  buzz();
+  redraw();
+  try {
+    await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: x.status, stash: x.stash || "" });
+    writeCache("tracker", t);
+    toast(`${x.title}: ${to[1].toLowerCase()}`, async () => {
+      x.status = before;
+      redraw();
+      try { await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: before || "", stash: x.stash || "" }); } catch (e) { toast(e.message); }
+    });
+  } catch (e) { x.status = before; redraw(); toast(e.message); }
+}
+
+// Edit a purchase: how it's going, where it's hidden, what you paid. Or take it back.
+function editPurchase(x, p, o) {
+  const at = stageAt(x.status);
+  openSheet(`
+    <h3>${esc(x.title)}</h3>
+    <p class="what">For ${esc(p.name)} · ${esc(occLabel(p, o))} · ${esc(x.from)}</p>
+    <form id="buyForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <div class="field"><span>How's it going?</span>
+        <div class="seg stages" role="radiogroup" aria-label="How's it going" data-stage>${STAGES.map((s, n) =>
+          `<button type="button" role="radio" data-v="${n}" aria-checked="${n === at}">${s[1]}</button>`).join("")}</div></div>
+      <label class="field"><span>Where it's hidden</span><input class="input" name="stash" maxlength="80" value="${esc(x.stash)}" placeholder="Hall closet, top shelf"></label>
+      <label class="field"><span>${x.kind === "giftcard" ? "Amount" : "Price you paid"}</span>
+        <div class="input money-in"><span>$</span><input name="paid" inputmode="decimal" value="${esc(priceIn(x.paid_cents ?? x.list_cents))}" aria-label="Price you paid"></div></label>
+      <p class="hint">${LOCK} Only you see this. ${esc(p.name)} never will.</p>
+      <div class="actions">
+        <button class="btn danger" type="button" id="unbuy">Not getting it</button>
+        <button class="btn primary" type="submit">Save</button>
+      </div>
+    </form>`, (el) => {
+      const stageEl = $("[data-stage]", el);
+      wireSeg(stageEl, () => buzz());
+      const form = $("#buyForm", el);
+      wireForm(form, async ({ stash, paid }) => {
+        const n = +stageEl.querySelector('[aria-checked="true"]').dataset.v;
+        if (paid.trim() !== priceIn(x.paid_cents ?? x.list_cents)) await setPurchase(x, p, o, true, paid.trim());
+        await api("purchase/progress", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, status: STAGES[n][0] || "", stash });
+        closeSheet();
+        toast("Saved");
+        render();
+      });
+      $("#unbuy", el).addEventListener("click", async () => {
+        if (!window.confirm(`Take back "${x.title}"? It won't count as purchased anymore.`)) return;
+        try { await setPurchase(x, p, o, false); closeSheet(); toast("Taken back"); render(); } catch (e) { toast(e.message); }
+      });
+    });
+}
+
+// Mark (on) with a price, or unmark, through the endpoint for that kind of purchase.
+function setPurchase(x, p, o, on, price) {
+  if (x.kind === "item") return api("claim", { itemId: x.id, on, price, occasion: o.code });
+  if (x.kind === "idea") return api("idea/claim", { ideaId: x.id, on, price, occasion: o.code });
+  return api("giftcard/give", { memberId: p.id, brand: x.brand, on, amount: price, occasion: o.code });
+}
+
+// Ideas: every open idea you have, by person, plus a quick way to add one for people with none.
+function renderIdeasTab(t, v) {
+  const withIdeas = t.people.filter((p) => p.ideas.length);
+  const without = t.people.filter((p) => !p.ideas.length);
+  const all = t.people.flatMap((p) => p.ideas);
+  const shared = all.filter((i) => i.shared).length;
+  setHero(`${budgetTitle()}
+    <div class="hero-stat">
+      <p class="kicker">Gift ideas you haven't bought yet</p>
+      <span class="big-num">${all.length}</span>
+      <p class="hero-sub">${all.length ? `For ${plural(withIdeas.length, "person", "people")}${shared ? ` · ${shared} shared with others` : ""}` : "Jot one down whenever it comes to you"}</p>
+    </div>`);
+  v.innerHTML = `
+    ${withIdeas.map((p) => `<div class="label occ-label"><span>${esc(p.name)}</span><button class="linkbtn" type="button" data-for="${esc(p.id)}">${PLUS} Add</button></div>
+      <div class="stack">${p.ideas.map(ideaRow).join("")}</div>`).join("")}
+    ${without.length ? `<div class="label" style="margin-top:18px">No ideas yet for</div>
+      <div class="still-need">${without.map((p) => `<button class="chip" type="button" data-for="${esc(p.id)}">${avatar(p.name, p.id, "sm")}${esc(p.name)}</button>`).join("")}</div>` : ""}
+    <div class="stack" style="margin-top:18px"><button class="add" type="button" id="addIdea">${PLUS} Gift idea</button></div>`;
+  $("#addIdea").addEventListener("click", () => addThing(null));
+  v.querySelectorAll("[data-for]").forEach((b) => (b.onclick = () => addThing(b.dataset.for)));
+  wireIdeaRows(v, all);
 }
 
 function wireTrackerCard(card, t, view) {
@@ -3078,6 +3311,7 @@ function wireTrackerCard(card, t, view) {
   card.querySelector("[data-budget]")?.addEventListener("click", () => editBudget(p, o));
   card.querySelector("[data-for]")?.addEventListener("click", () => addThing(card.dataset.person));
   card.querySelector("[data-open]")?.addEventListener("click", () => setTab("family", card.dataset.person));
+  card.querySelectorAll("[data-pbuy]").forEach((b) => (b.onclick = () => editPurchase(o.purchases[+b.dataset.pbuy], p, o)));
   wireIdeaRows(card, t.people.flatMap((x) => x.ideas));
 }
 
@@ -3097,7 +3331,8 @@ function personCard(p, o, view, n = 0, still = false) {
       ${budget != null ? `<span class="meter${over ? " over" : ""}"><i style="width:${over ? 100 : pct}%${still ? ";animation:none" : ""}"></i></span>` : ""}
     </button>
     ${isOpen ? `<div class="pcard-body">
-      ${o.purchases.length ? `<ul class="buys">${o.purchases.map((x) => `<li><span>${esc(x.title)}<small>${esc(x.from)}</small></span><b>${money(x.spent_cents)}</b></li>`).join("")}</ul>`
+      ${o.purchases.length ? `<ul class="buys">${o.purchases.map((x, k) => `<li><button type="button" data-pbuy="${k}" aria-label="${esc(x.title)}, ${STAGES[stageAt(x.status)][1]}. Edit">
+          <span>${esc(x.title)}<small>${esc(x.from)}${x.stash ? ` · ${esc(x.stash)}` : ""}</small></span>${stagePill(x)}<b>${money(x.spent_cents)}</b></button></li>`).join("")}</ul>`
         : '<p class="subtle">Nothing bought yet.</p>'}
       ${p.ideas.length ? `<div class="stack">${p.ideas.map(ideaRow).join("")}</div>` : ""}
       <div class="pcard-actions">
@@ -3439,8 +3674,8 @@ async function exportExcel(t, view) {
         rows: summary },
       { name: "Purchases", columns: [
           { header: "Person", width: 18 }, { header: "Gift", width: 36 }, { header: "From", width: 22 }, { header: "Paid", money: true },
-          { header: "Listed price", money: true }, { header: "Date", width: 12 }, { header: "Link", width: 40 }],
-        rows: rows.flatMap(({ p, o }) => o.purchases.map((x) => [p.name, x.title, x.from, dollars(x.spent_cents), dollars(x.list_cents), day(x.date), x.url])) },
+          { header: "Listed price", money: true }, { header: "Status", width: 12 }, { header: "Hidden", width: 22 }, { header: "Date", width: 12 }, { header: "Link", width: 40 }],
+        rows: rows.flatMap(({ p, o }) => o.purchases.map((x) => [p.name, x.title, x.from, dollars(x.spent_cents), dollars(x.list_cents), STAGES[stageAt(x.status)][1], x.stash, day(x.date), x.url])) },
       { name: "Ideas", columns: [
           { header: "Person", width: 18 }, { header: "Idea", width: 36 }, { header: "Price", money: true }, { header: "Shared", width: 10 },
           { header: "Note", width: 40 }, { header: "Link", width: 40 }],
