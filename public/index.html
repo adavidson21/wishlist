@@ -1016,6 +1016,7 @@
     background: var(--gc);
     box-shadow: inset 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.12), 0 6px 14px color-mix(in srgb, var(--gc) 26%, transparent);
     transition: transform .18s var(--spring), box-shadow .18s ease; }
+  .gc { container-type: inline-size; }
   .gc > * { position: relative; }
   .gc::before { content: ""; position: absolute; right: -28%; bottom: -46%; width: 70%; aspect-ratio: 1; border-radius: 50%;
     background: color-mix(in srgb, #fff 10%, transparent); pointer-events: none; }
@@ -1026,15 +1027,19 @@
   .gc-chip { width: 26px; height: 19px; border-radius: 4px; background: #E2C06A; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18), inset 9px 0 0 -8px rgba(0,0,0,.2), inset -9px 0 0 -8px rgba(0,0,0,.2); }
   .gc-emoji { font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
   /* Brand logo on a little white tile. Monochrome svg marks get more breathing room than store icons. */
-  .gc-logo { --s: 34px; width: var(--s); height: var(--s); flex: none; border-radius: calc(var(--s) * .26); background: #fff; display: grid; place-items: center;
+  .gc-logo { --s: min(34px, 22cqi); width: var(--s); height: var(--s); flex: none; border-radius: calc(var(--s) * .26); background: #fff; display: grid; place-items: center;
     padding: calc(var(--s) * .1); box-shadow: 0 1px 3px rgba(0,0,0,.25); overflow: hidden; }
   .gc-logo.mark { padding: calc(var(--s) * .2); }
   .gc-logo img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: calc(var(--s) * .14); }
   .gc-logo.broken { background: none; box-shadow: none; padding: 0; font-size: calc(var(--s) * .7); line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
   .gc-logo.broken img { display: none; }
   .gc-logo.broken::after { content: attr(data-emoji); }
-  .gc-name { font-weight: 800; font-size: 15px; line-height: 1.15; text-shadow: 0 1px 2px rgba(0,0,0,.3); overflow-wrap: anywhere; }
-  .gc-name small { display: block; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin-bottom: 1px; }
+  .gc-name { --fs: 15px; font-weight: 800; font-size: min(var(--fs), 10.6cqi); line-height: 1.15; text-shadow: 0 1px 2px rgba(0,0,0,.3); min-width: 0; }
+  .gc-name.l { font-size: min(var(--fs), 9.6cqi); }
+  .gc-name.xl { font-size: min(var(--fs) * .9, 8.8cqi); }
+  .gc-brand { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  .gc-name small { display: block; font-size: min(10px, 7.2cqi); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin-bottom: 1px; }
+  @container (max-width: 112px) { .gc-name small { display: none; } }
   .gc-badge { position: absolute; right: 8px; bottom: 8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
     background: #fff; color: var(--ok); box-shadow: 0 2px 6px rgba(0,0,0,.25); animation: checkpop .45s var(--spring) both; }
   .gc-cap { font-size: 14px; color: var(--muted); font-weight: 600; line-height: 1.3; min-height: 18px; }
@@ -1055,11 +1060,10 @@
   .gc-group { margin: 16px 0 8px; font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
   .gc-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
   .gc-pick .gc-item .gc { padding: 7px 9px; border-radius: 11px; }
-  .gc-pick .gc-name { font-size: 12.5px; }
-  .gc-pick .gc-name small { font-size: 8.5px; }
+  .gc-pick .gc-name { --fs: 12.5px; }
   .gc-pick .gc-chip { width: 20px; height: 15px; }
   .gc-pick .gc-emoji { font-size: 18px; }
-  .gc-pick .gc-logo { --s: 26px; }
+  .gc-pick .gc-logo { --s: min(26px, 24cqi); }
   .gc-pick .gc-item[aria-pressed="true"] .gc { box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--brand); }
   .gc-pick .gc-item[aria-pressed="true"] .gc-check { display: grid; }
   .gc-check { display: none; position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 50%; place-items: center; background: #fff; color: var(--brand);
@@ -1067,9 +1071,9 @@
   .gc-pick-foot { position: sticky; bottom: -1px; background: var(--bg); padding: 12px 0 4px; margin-top: 14px; box-shadow: 0 -10px 12px -10px rgba(0,0,0,.15); }
   .gc-hero { max-width: 230px; margin: 4px auto 16px; }
   .gc-hero .gc { transform: rotate(-2deg); }
-  .gc-hero .gc-name { font-size: 20px; }
+  .gc-hero .gc-name { --fs: 20px; }
   .gc-hero .gc-emoji { font-size: 34px; }
-  .gc-hero .gc-logo { --s: 48px; }
+  .gc-hero .gc-logo { --s: min(48px, 22cqi); }
   .about { text-align: center; color: var(--faint); font-size: 13px; margin-top: 22px; }
 
   /* Bottom tabs: My list, Circles, [Add], Budget, Profile (Settings opens from the gear on Profile) */
@@ -7856,7 +7860,7 @@ function giftCard(g, extra = "") {
   const mark = g.logo ? `<span class="gc-logo${g.logo.endsWith(".svg") ? " mark" : ""}" data-emoji="${g.emoji}"><img src="${g.logo}" alt="" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('broken')"></span>`
     : `<span class="gc-emoji">${g.emoji}</span>`;
   return `<span class="gc" style="--gc:${g.color}" aria-hidden="true"><span class="gc-top"><span class="gc-chip"></span>${mark}</span>
-    <span class="gc-name"><small>Gift card</small>${esc(g.name)}</span>${extra}</span>`;
+    <span class="gc-name${g.name.length > 20 ? " xl" : g.name.length > 14 ? " l" : ""}"><small>Gift card</small><span class="gc-brand">${esc(g.name)}</span></span>${extra}</span>`;
 }
 
 // My list: the gift cards I picked, plus a tile to change them.
