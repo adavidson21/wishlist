@@ -4,12 +4,15 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "check": "node scripts/check-routes.mjs && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "check": "node scripts/check-routes.mjs && node scripts/check-delete.mjs && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "deploy": "wrangler deploy",
     "migrate": "wrangler d1 migrations apply wishlist --remote",
     "backup": "node scripts/backup.mjs"
   },
   "devDependencies": {
     "wrangler": "^4"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.3.3"
   }
 }

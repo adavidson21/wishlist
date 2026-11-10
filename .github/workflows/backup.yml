@@ -3,7 +3,7 @@
 # artifact for 90 days. The repo is public, so the file is only ever stored encrypted.
 # Needs three repository secrets: CLOUDFLARE_API_TOKEN (Account > D1 > Edit), CLOUDFLARE_ACCOUNT_ID and
 # BACKUP_PASSPHRASE (a long random passphrase kept somewhere safe, like a password manager). Until they're all
-# set, it does nothing and says so.
+# set, it fails, so a run without them shows up red.
 name: backup
 on:
   schedule:
@@ -27,8 +27,9 @@ jobs:
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$BACKUP_PASSPHRASE" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Backups are off. Add CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and BACKUP_PASSPHRASE as repository secrets to turn them on."
-            echo "ok=false" >> "$GITHUB_OUTPUT"
+            # Fails (red, and GitHub emails about it) rather than quietly passing, so missing backups get noticed.
+            echo "::error::Backups are off. Add CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and BACKUP_PASSPHRASE as repository secrets to turn them on."
+            exit 1
           fi
       - uses: actions/checkout@v4
         if: steps.ready.outputs.ok == 'true'
