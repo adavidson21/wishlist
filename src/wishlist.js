@@ -1016,16 +1016,78 @@ async function leaveHousehold(env, memberId) {
     }
   }
   rows.push(env.DB.prepare("UPDATE members SET household_id = NULL WHERE id = ?").bind(memberId));
+  // Requests they sent for this household go with them.
+  rows.push(env.DB.prepare("DELETE FROM household_requests WHERE household_id = ? AND invited_by = ?").bind(hh, memberId));
   await env.DB.batch(rows);
   const still = await env.DB.prepare("SELECT 1 FROM members WHERE household_id = ? LIMIT 1").bind(hh).first();
   if (!still) {
     await env.DB.batch([
       // The last one out takes the pets.
       env.DB.prepare("UPDATE pets SET member_id = ?, household_id = NULL WHERE household_id = ?").bind(memberId, hh),
-      env.DB.prepare("DELETE FROM group_households WHERE household_id = ?").bind(hh),
-      env.DB.prepare("DELETE FROM households WHERE id = ?").bind(hh),
+      ...dropHousehold(env, hh),
     ]);
   }
+}
+
+// Statements that delete a household nobody is in, with everything that points at it (foreign keys).
+function dropHousehold(env, hh) {
+  return [
+    env.DB.prepare("DELETE FROM household_requests WHERE household_id = ?").bind(hh),
+    env.DB.prepare("DELETE FROM group_households WHERE household_id = ?").bind(hh),
+    env.DB.prepare("DELETE FROM households WHERE id = ?").bind(hh),
+  ];
+}
+
+// Puts someone with no household into household `hh`: their pets come along and they join every circle the
+// household is in. Throws on a same-name clash or a full circle. Callers check who may do this.
+async function joinHousehold(env, memberId, hh) {
+  const them = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(memberId).first();
+  const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all();
+  const clash = await nameClash(env, results.map((r) => r.group_id), [memberId], hh);
+  if (clash) fail(409, `Someone named ${them?.name} with the same last name is already in ${clash}, which this household is in.`);
+  for (const r of results) {
+    const inIt = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(r.group_id, memberId).first();
+    if (!inIt) await circleRoom(env, r.group_id);
+  }
+  const t = now();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, memberId),
+    petsInto(env, memberId, hh),
+    env.DB.prepare(
+      "INSERT INTO group_members (group_id, member_id, joined_at, direct) SELECT group_id, ?, ?, 0 FROM group_households WHERE household_id = ? ON CONFLICT DO NOTHING",
+    ).bind(memberId, t, hh),
+    // Joined: any other household they were asked to join is moot.
+    env.DB.prepare("DELETE FROM household_requests WHERE member_id = ?").bind(memberId),
+  ]);
+}
+
+// ---------- household requests (migration 0044) ----------
+// Joining a household shares its budgets and purchases both ways, so someone who uses Hints is asked first.
+// People who don't use the app (managed) are added directly.
+const usesApp = async (env, memberId) => !!(await env.DB.prepare("SELECT 1 FROM members WHERE id = ? AND managed_by IS NULL").bind(memberId).first());
+
+// Asks `memberId` to join household `hh` (null: start one with `meId`). Returns false if they were already asked.
+async function askToJoinHousehold(env, me, memberId, hh) {
+  const res = await env.DB.prepare(
+    "INSERT INTO household_requests (id, member_id, household_id, invited_by, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+  ).bind(newId(), memberId, hh, me.id, now()).run();
+  if (!res.meta?.changes) return false;
+  const nick = (await env.DB.prepare("SELECT nickname FROM nicknames WHERE author_id = ? AND subject_id = ?").bind(memberId, me.id).first())?.nickname;
+  await pushTo(env, memberId, {
+    title: `${nick || me.name} wants to add you to a household`,
+    body: "You'd plan gifts together for everyone outside it. Tap to answer.",
+    url: "/", tag: `hhreq:${me.id}`,
+  }).catch((err) => console.error("household request push", err));
+  return true;
+}
+
+// A household nobody is in and nobody is still being asked to join (made by household/create) goes away.
+async function dropIfEmpty(env, hh) {
+  if (!hh) return;
+  const used = await env.DB.prepare(
+    "SELECT 1 FROM members WHERE household_id = ?1 UNION ALL SELECT 1 FROM household_requests WHERE household_id = ?1 LIMIT 1",
+  ).bind(hh).first();
+  if (!used) await env.DB.batch(dropHousehold(env, hh));
 }
 
 // A household you can organize: your own, or one with someone in a circle you're the admin of.
@@ -1210,6 +1272,7 @@ async function deleteMember(env, id) {
   q("DELETE FROM household_budgets WHERE target = 'm:' || ?1");
   q("UPDATE household_budgets SET updated_by = NULL WHERE updated_by = ?1");
   q("DELETE FROM budget_skips WHERE author_id = ?1 OR target = 'm:' || ?1");
+  q("DELETE FROM household_requests WHERE member_id = ?1 OR invited_by = ?1");
   q("DELETE FROM gift_history WHERE buyer_id = ?1 OR subject_id = ?1");
   q("DELETE FROM pets WHERE member_id = ?1");
   q("UPDATE reports SET member_id = NULL WHERE member_id = ?1");
@@ -2911,7 +2974,7 @@ const handlers = {
         env.DB.prepare(`SELECT id, name, photo_at FROM households WHERE id IN (${marks})`).bind(...hhIds).all(),
         env.DB.prepare(`SELECT group_id, household_id FROM group_households WHERE household_id IN (${marks})`).bind(...hhIds).all(),
         myHh
-          ? env.DB.prepare("SELECT id, name, photo_at, pin_hash IS NOT NULL AS has_pin FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(myHh).all()
+          ? env.DB.prepare("SELECT id, name, photo_at, pin_hash IS NOT NULL AS has_pin, managed_by IS NULL AS uses_app FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(myHh).all()
           : Promise.resolve({ results: [] }),
       ]);
       const seen = new Map();
@@ -2930,7 +2993,7 @@ const handlers = {
         if (h.id === myHh) {
           myHousehold = {
             ...households[h.id],
-            members: list.map((p) => ({ id: p.id, name: p.id === me.id ? me.name : nicks.get(p.id) || p.name, photo: p.photo_at || null, hasPin: !!p.has_pin })),
+            members: list.map((p) => ({ id: p.id, name: p.id === me.id ? me.name : nicks.get(p.id) || p.name, photo: p.photo_at || null, hasPin: !!p.has_pin, usesApp: !!p.uses_app })),
           };
         }
       }
@@ -2963,6 +3026,34 @@ const handlers = {
           WHERE r.group_id IN (${runIds.map(() => "?").join(",")}) ORDER BY r.created_at`,
       ).bind(...runIds).all()
       : { results: [] };
+    // Household requests (migration 0044): ones asking you, and ones you can see waiting on someone (that you sent,
+    // for your household, or for a household in a circle you run).
+    const { results: askRows } = await env.DB.prepare(
+      `SELECT r.id, r.household_id, r.invited_by, m.name AS by_name FROM household_requests r JOIN members m ON m.id = r.invited_by
+        WHERE r.member_id = ? ORDER BY r.created_at`,
+    ).bind(me.id).all();
+    const householdInvites = [];
+    for (const r of askRows) {
+      const hhId = r.household_id || (await householdOf(env, r.invited_by));
+      const { results: inIt } = hhId
+        ? await env.DB.prepare("SELECT id, name FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(hhId).all()
+        : { results: [] };
+      const hhName = hhId ? (await env.DB.prepare("SELECT name FROM households WHERE id = ?").bind(hhId).first())?.name : null;
+      const ppl = inIt.length ? inIt : [{ id: r.invited_by, name: r.by_name }];
+      householdInvites.push({
+        id: r.id,
+        by: nicks.get(r.invited_by) || r.by_name,
+        label: householdLabel(hhName, ppl.map((p) => nicks.get(p.id) || p.name)),
+        people: ppl.map((p) => ({ id: p.id, name: nicks.get(p.id) || p.name })),
+      });
+    }
+    const { results: sentRows } = await env.DB.prepare(
+      `SELECT r.id, r.member_id, r.household_id, m.name FROM household_requests r JOIN members m ON m.id = r.member_id
+        WHERE r.invited_by = ?1 OR (r.household_id IS NOT NULL AND (r.household_id = ?2
+           OR r.household_id IN (SELECT gh.household_id FROM group_households gh JOIN groups g ON g.id = gh.group_id WHERE g.created_by = ?1)))
+        ORDER BY r.created_at`,
+    ).bind(me.id, myHh || "").all();
+    const householdAsks = sentRows.map((r) => ({ id: r.id, memberId: r.member_id, name: nicks.get(r.member_id) || r.name, householdId: r.household_id || myHh || null }));
     if (me.pinClearedAt) {
       const by = me.pinClearedBy && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(me.pinClearedBy).first());
       pinCleared = { by: (by && (nicks.get(me.pinClearedBy) || by.name)) || "Someone", at: me.pinClearedAt };
@@ -2973,6 +3064,8 @@ const handlers = {
         // Someone cleared your forgotten PIN (see "POST pin/clear"). Shown once as a notice.
         pinCleared,
         profile: await profileOf(env, me.id), household: myHousehold,
+        // Requests to join a household waiting on you, and ones you can see waiting on others.
+        householdInvites, householdAsks,
         notify: notifyPrefs(prefsRow?.notify),
         // Year "Looks good" was tapped on the "hasn't changed since last year" card.
         staleOk: prefsRow?.stale_ok_year || null,
@@ -4605,12 +4698,16 @@ const handlers = {
     }
     const hh = newId();
     const t = now();
+    // People who use Hints (other than you) are asked first; everyone else goes straight in.
+    const ask = [], direct = [];
+    for (const id of ids) (id !== me.id && (await usesApp(env, id)) ? ask : direct).push(id);
     await env.DB.batch([
       env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, ?, ?)").bind(hh, name, t),
       env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?)").bind(groupId, hh, t),
-      ...ids.flatMap((id) => [env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, id), petsInto(env, id, hh)]),
+      ...direct.flatMap((id) => [env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, id), petsInto(env, id, hh)]),
     ]);
-    return { household: { id: hh } };
+    for (const id of ask) await askToJoinHousehold(env, me, id, hh);
+    return { household: { id: hh }, asked: ask.length };
   },
 
   // Set up a household of people who aren't on Hints yet, in a circle you're the admin of. Each one is someone
@@ -4660,35 +4757,90 @@ const handlers = {
     const memberId = b.memberId;
     if (!memberId) fail(400, "Pick someone to add.");
     if (!(await sharesGroup(env, me.id, memberId))) fail(404, "Person not found.");
-    const them = await env.DB.prepare("SELECT name, household_id FROM members WHERE id = ?").bind(memberId).first();
+    const them = await env.DB.prepare("SELECT name, household_id, managed_by FROM members WHERE id = ?").bind(memberId).first();
     if (!them) fail(404, "Person not found.");
-    let hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : await householdOf(env, me.id);
+    const myHh = await householdOf(env, me.id);
+    let hh = b.householdId ? await manageableHousehold(env, me.id, b.householdId) : myHh;
     if (them.household_id && them.household_id === hh) fail(409, `${them.name} is already in this household.`);
     if (them.household_id) fail(409, `${them.name} is already in another household. Take them out of it first.`);
     if (!hh && memberId === me.id) fail(400, "Pick someone to add.");
-    const t = now();
+    if (memberId === me.id && hh !== myHh) {
+      // Moving yourself into someone else's household would show you their shopping: they add you instead.
+      const others = await env.DB.prepare("SELECT 1 FROM members WHERE household_id = ? AND managed_by IS NULL LIMIT 1").bind(hh).first();
+      if (others) fail(403, "Ask someone in that household to add you.");
+    }
+    // Someone who uses Hints says yes first (they'd share budgets and purchases with this household).
+    if (memberId !== me.id && !them.managed_by) {
+      const asked = await askToJoinHousehold(env, me, memberId, hh || null);
+      return { ok: true, asked: true, again: !asked };
+    }
     if (!hh) {
       hh = newId();
       await env.DB.batch([
-        env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, NULL, ?)").bind(hh, t),
+        env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, NULL, ?)").bind(hh, now()),
         env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, me.id),
         petsInto(env, me.id, hh),
       ]);
     }
-    const { results } = await env.DB.prepare("SELECT group_id FROM group_households WHERE household_id = ?").bind(hh).all();
-    const clash = await nameClash(env, results.map((r) => r.group_id), [memberId], hh);
-    if (clash) fail(409, `Someone named ${them.name} with the same last name is already in ${clash}, which this household is in.`);
-    for (const r of results) {
-      const inIt = await env.DB.prepare("SELECT 1 FROM group_members WHERE group_id = ? AND member_id = ?").bind(r.group_id, memberId).first();
-      if (!inIt) await circleRoom(env, r.group_id);
+    await joinHousehold(env, memberId, hh);
+    return { ok: true };
+  },
+
+  // Answer a request to join a household: { id, accept }. Yes puts you in it (or starts it with whoever asked).
+  async "POST household/answer"(req, env) {
+    const me = await auth(req, env);
+    const { id, accept } = await body(req);
+    const r = await env.DB.prepare("SELECT * FROM household_requests WHERE id = ? AND member_id = ?").bind(String(id || ""), me.id).first();
+    if (!r) fail(404, "That request is gone. They may have taken it back.");
+    if (!accept) {
+      await env.DB.prepare("DELETE FROM household_requests WHERE id = ?").bind(r.id).run();
+      await dropIfEmpty(env, r.household_id);
+      return { ok: true };
     }
-    await env.DB.batch([
-      env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, memberId),
-      petsInto(env, memberId, hh),
-      env.DB.prepare(
-        "INSERT INTO group_members (group_id, member_id, joined_at, direct) SELECT group_id, ?, ?, 0 FROM group_households WHERE household_id = ? ON CONFLICT DO NOTHING",
-      ).bind(memberId, t, hh),
-    ]);
+    if (await householdOf(env, me.id)) fail(409, "You're already in a household. Leave it first (Settings > Household).");
+    const inviter = await env.DB.prepare("SELECT id, name, household_id FROM members WHERE id = ?").bind(r.invited_by).first();
+    let hh = r.household_id;
+    if (hh && !(await env.DB.prepare("SELECT 1 FROM households WHERE id = ?").bind(hh).first())) hh = null;
+    if (!hh) {
+      // "Start a household with me": theirs if they've made one since, else a new one with them in it.
+      if (!inviter || !(await sharesGroup(env, me.id, inviter.id))) {
+        await env.DB.prepare("DELETE FROM household_requests WHERE id = ?").bind(r.id).run();
+        fail(404, "That request is gone. They may have taken it back.");
+      }
+      hh = inviter.household_id;
+      if (!hh) {
+        hh = newId();
+        await env.DB.batch([
+          env.DB.prepare("INSERT INTO households (id, name, created_at) VALUES (?, NULL, ?)").bind(hh, now()),
+          env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, inviter.id),
+          petsInto(env, inviter.id, hh),
+        ]);
+      }
+    }
+    await joinHousehold(env, me.id, hh);
+    // Tell the people already in it (the sharing sheet in the app explains the rest).
+    const { results: mates } = await env.DB.prepare("SELECT id FROM members WHERE household_id = ? AND id != ? AND managed_by IS NULL").bind(hh, me.id).all();
+    for (const m of mates) {
+      const nick = (await env.DB.prepare("SELECT nickname FROM nicknames WHERE author_id = ? AND subject_id = ?").bind(m.id, me.id).first())?.nickname;
+      await pushTo(env, m.id, { title: `${nick || me.name} joined your household`, body: "You'll plan gifts together for everyone outside it.", url: "/#budget", tag: `hhjoin:${me.id}` })
+        .catch((err) => console.error("household join push", err));
+    }
+    return { ok: true, household: { id: hh } };
+  },
+
+  // Take back a request to join a household: whoever asked, anyone in that household, or a circle admin who
+  // can manage it. { id }
+  async "POST household/uninvite"(req, env) {
+    const me = await auth(req, env);
+    const { id } = await body(req);
+    const r = await env.DB.prepare("SELECT * FROM household_requests WHERE id = ?").bind(String(id || "")).first();
+    if (!r) return { ok: true };
+    if (r.invited_by !== me.id) {
+      if (!r.household_id) fail(404, "Request not found.");
+      await manageableHousehold(env, me.id, r.household_id);
+    }
+    await env.DB.prepare("DELETE FROM household_requests WHERE id = ?").bind(r.id).run();
+    await dropIfEmpty(env, r.household_id);
     return { ok: true };
   },
 
