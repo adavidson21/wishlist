@@ -714,6 +714,17 @@
   .pet-txt small { color: var(--muted); font-weight: 600; font-size: 14px; }
   .pet-txt p { margin: 4px 0 0; font-size: 15px; overflow-wrap: break-word; }
   .pet .btn { flex: none; }
+  .pet-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .pet-meta .pf-pill { font-size: 13px; padding: 4px 10px; }
+  .pet-favs { margin-top: 8px; }
+  .pet-favs .tags { gap: 6px; }
+  .pet-favs .tag { min-height: 32px; font-size: 14px; padding-right: 12px; }
+  /* A pet's birthday: a party hat on the avatar, and tapping it throws confetti. */
+  .pet-bday { position: relative; flex: none; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
+  .pet-bday-field { margin-bottom: 16px; }
+  .pet-bday-field > span { display: block; font-size: 16px; font-weight: 700; margin-bottom: 7px; }
+  .pet-bday-field > span em { font-style: normal; font-weight: 500; color: var(--faint); }
+  .pet-bday::after { content: "🥳"; position: absolute; right: -6px; top: -8px; font-size: 20px; line-height: 1; }
   .hh-link { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: var(--r); background: var(--card); box-shadow: var(--shadow); text-align: left; font-size: 15px; color: var(--muted); }
   .hh-link .avatar { width: 40px; height: 40px; font-size: 17px; }
   .hh-link .mg-txt { flex: 1; min-width: 0; }
@@ -6386,7 +6397,7 @@ async function renderPerson(id) {
 }
 
 // ---------- pets and household pages ----------
-// Pets aren't people (no list, login or birthday): a name, what kind, one line of notes and a photo, so gift-givers
+// Pets aren't people (no list or login): a name, what kind, one line of notes and a photo, so gift-givers
 // know about them. They live on a household, or on someone who isn't in one (src/wishlist.js, migration 0037).
 // state.pets: { "h:<householdId>": [...], "m:<memberId>": [...] }.
 const PET_KINDS = [["dog", "Dog", "🐕"], ["cat", "Cat", "🐈"], ["bird", "Bird", "🐦"], ["fish", "Fish", "🐟"], ["bunny", "Bunny", "🐇"], ["reptile", "Reptile", "🦎"], ["horse", "Horse", "🐎"], ["other", "Other", "🐾"]];
@@ -6400,8 +6411,22 @@ function petAvatar(pet, size) {
   const pic = PHOTOS.has(key) ? `<img src="${esc(photoUrl(key))}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `<span class="avatar pet-av${size ? ` ${size}` : ""}" aria-hidden="true">${petEmoji(pet)}${pic}</span>`;
 }
-// "🐕 Biscuit · 🐈 Max"
-const petNames = (pets) => pets.map((p) => `${petEmoji(p)} ${esc(p.name)}`).join(" · ");
+// Days until a pet's birthday, or null when it has none. Just for fun: never an occasion, budget or reminder.
+const petBdayIn = (pet) => (pet?.birthday ? bdayIn(pet.birthday) : null);
+// A pet's favorite things, one line split on commas: "squeaky ducks, peanut butter" -> two chips.
+const petFavs = (pet) => String(pet?.favorites || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 8);
+// "🐕 Biscuit · 🐈 Max", with 🎂 in the week before a birthday and 🥳 on the day.
+const petNames = (pets) => pets.map((p) => {
+  const n = petBdayIn(p);
+  return `${petEmoji(p)} ${esc(p.name)}${n === 0 ? " 🥳" : n != null && n <= 7 ? " 🎂" : ""}`;
+}).join(" · ");
+// "🎂 March 14 · in 5 days", gold in the month before.
+function petBdayPill(pet) {
+  if (!pet.birthday) return "";
+  const n = bdayIn(pet.birthday);
+  const soon = n === 0 ? "today!" : n === 1 ? "tomorrow" : n <= 30 ? `in ${n} days` : "";
+  return `<span class="pf-pill${soon ? " gold" : ""}"><span aria-hidden="true">🎂</span>${esc(bdayText(pet.birthday))}${soon ? ` · ${soon}` : ""}</span>`;
+}
 // Who can change a household: the people in it, and the admin of a circle someone in it is in (the API checks too).
 const canEditHousehold = (id) => !!id && (id === myHouseholdId()
   || state.groups.some((g) => g.createdBy === state.me.id && g.members.some((m) => m.householdId === id)));
@@ -6418,8 +6443,10 @@ function petsCard(pets, { edit, title = "Pets", empty = "" } = {}) {
   if (!pets.length && !edit) return "";
   return `<section class="hcard" data-pets>
     <h3 class="hcard-h"><span class="ico" style="background:var(--gold-soft);color:var(--gold-ink)">🐾</span>${esc(title)}${pets.length ? ` <small>${pets.length}</small>` : ""}</h3>
-    ${pets.length ? `<div class="pets">${pets.map((p) => `<div class="pet">${petAvatar(p)}<div class="pet-txt"><strong>${esc(p.name)}</strong>
-        <small>${esc((PET_KIND[p.kind] || PET_KIND.other).label)}</small>${p.notes ? `<p>${esc(p.notes)}</p>` : ""}</div>
+    ${pets.length ? `<div class="pets">${pets.map((p) => `<div class="pet">${petBdayIn(p) === 0
+          ? `<button class="pet-bday" type="button" data-pet-party aria-label="It's ${esc(p.name)}'s birthday!">${petAvatar(p)}</button>` : petAvatar(p)}<div class="pet-txt"><strong>${esc(p.name)}</strong>
+        <small>${esc((PET_KIND[p.kind] || PET_KIND.other).label)}</small>${p.birthday ? `<div class="pet-meta">${petBdayPill(p)}</div>` : ""}
+        ${p.notes ? `<p>${esc(p.notes)}</p>` : ""}${petFavs(p).length ? `<div class="pet-favs">${tagList(petFavs(p), "love")}</div>` : ""}</div>
         ${edit ? `<button class="btn small quiet" type="button" data-pet-edit="${esc(p.id)}">Edit</button>` : ""}</div>`).join("")}</div>
       ${edit ? `<button class="btn small" type="button" data-pet-add style="margin-top:14px">${PLUS} Add a pet</button>` : ""}`
     : `<div class="hcard-empty">${esc(empty || "Got pets? Add them so your people can spoil them too.")}
@@ -6430,12 +6457,17 @@ function wirePetsCard(root, pets, owner) {
   const card = root.querySelector("[data-pets]");
   if (!card) return;
   card.querySelectorAll("[data-pet-add]").forEach((b) => (b.onclick = () => editPet(null, owner)));
+  card.querySelectorAll("[data-pet-party]").forEach((b) => (b.onclick = () => {
+    const r = b.getBoundingClientRect();
+    party(r.left + r.width / 2, r.top + r.height / 2, 28); buzz();
+  }));
   card.querySelectorAll("[data-pet-edit]").forEach((b) => (b.onclick = () => editPet(pets.find((p) => p.id === b.dataset.petEdit), owner)));
 }
 
 // Add or change a pet. The photo is kept until Save, so a new pet can have one from the start.
 function editPet(pet, owner) {
   let kind = pet?.kind || "dog";
+  const [pbm, pbd] = pet?.birthday ? pet.birthday.split("-").map(Number) : [0, 0];
   let photo; // undefined: unchanged, "": remove, data URL: new
   const preview = () => {
     const had = pet && PHOTOS.has(`p:${pet.id}`) && photo === undefined;
@@ -6451,6 +6483,10 @@ function editPet(pet, owner) {
       <label class="field"><span>Name</span><input class="input" name="name" maxlength="40" required value="${esc(pet?.name || "")}" placeholder="Biscuit"></label>
       <div class="kind-field"><span>What kind?</span><div class="kind-pick" role="group" aria-label="What kind of pet">
         ${PET_KINDS.map(([k, label, emoji]) => `<button class="chip" type="button" data-kind="${k}" aria-pressed="${k === kind}">${emoji} ${label}</button>`).join("")}</div></div>
+      <div class="field pet-bday-field"><span>Birthday <em>(optional)</em></span><div class="bday" style="margin:0">
+        <select class="input" name="bm" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${pbm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
+        <select class="input" name="bd" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, k) => `<option value="${k + 1}"${pbd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select></div></div>
+      <label class="field"><span>Favorite things <em>(optional)</em></span><input class="input" name="favorites" maxlength="120" value="${esc(pet?.favorites || "")}" placeholder="Squeaky ducks, peanut butter, belly rubs"></label>
       <label class="field"><span>Good to know <em>(optional)</em></span><input class="input" name="notes" maxlength="200" value="${esc(pet?.notes || "")}" placeholder="Size L harness, destroys plush toys"></label>
       <button class="btn primary wide" type="submit">${pet ? "Save" : "Add pet"}</button>
       ${pet ? '<button class="btn wide quiet danger" type="button" id="petDel" style="margin-top:8px">Remove pet</button>' : ""}
@@ -6475,8 +6511,10 @@ function editPet(pet, owner) {
     }));
     if (!pet) setTimeout(() => $("#petForm", el).elements.name.focus(), 300);
     const done = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
-    wireForm($("#petForm", el), async ({ name, notes }) => {
-      await api("pet/save", { ...(pet ? { id: pet.id } : owner), name, notes, kind, ...(photo === undefined ? {} : { photo }) });
+    wireForm($("#petForm", el), async ({ name, notes, favorites, bm, bd }) => {
+      if (!!bm !== !!bd) throw new Error("Pick a month and a day, or leave both empty.");
+      const birthday = bm ? `${String(bm).padStart(2, "0")}-${String(bd).padStart(2, "0")}` : "";
+      await api("pet/save", { ...(pet ? { id: pet.id } : owner), name, notes, favorites, birthday, kind, ...(photo === undefined ? {} : { photo }) });
       buzz();
       done(pet ? "Saved" : `${name.trim()} added`);
     });
@@ -8467,6 +8505,9 @@ const colorDots = (keys, no) => `<span class="cdots">${keys.filter((k) => COLOR_
 // ---------- loves and nopes ----------
 // A little emoji for a love or nope, guessed from its words. No match shows a plain dot.
 const TAG_EMOJI = [
+  // Pet favorites first, so "tennis balls" gets 🎾 rather than a sports medal.
+  [/tennis ball|\bfetch\b/, "🎾"], [/\bbones?\b|\bchews?\b|chew toy/, "🦴"], [/belly rub|scritch|head scratch/, "🫶"], [/catnip/, "🌿"], [/peanut butter/, "🥜"],
+  [/squeak/, "🧸"], [/zoomies|walkies/, "🐾"], [/\bnaps?\b|sunbeam|sun spot/, "😴"], [/\btreats?\b|\bkibble\b/, "🍖"], [/cardboard box|\bboxes\b/, "📦"], [/laser|feather/, "🪶"],
   [/\bcats?\b|kitt(y|ies|en)/, "🐱"], [/\bdogs?\b|pupp(y|ies)|doggo/, "🐶"], [/pok[eé]mon|pikachu/, "⚡"], [/bunn(y|ies)|rabbit/, "🐰"], [/\bbirds?\b/, "🐦"],
   [/\bfrogs?\b/, "🐸"], [/\bfox(es)?\b/, "🦊"], [/\bbears?\b/, "🐻"], [/\bduck/, "🦆"], [/horse/, "🐴"], [/dino/, "🦖"], [/\bwool|sheep/, "🐑"],
   [/coffee|latte|espresso|cold brew|cappuccino/, "☕"], [/\bteas?\b|matcha|chai/, "🍵"], [/chocolate/, "🍫"], [/candy|gumm(y|ies)|sweets|licorice/, "🍬"],
