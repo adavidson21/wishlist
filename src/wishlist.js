@@ -25,8 +25,9 @@
 //   - A person can be in several families. An item hidden from a family (item_hidden) is never shown through
 //     that family: you see it only if you share some other family with the owner where it isn't hidden.
 import { json, callGemini } from "./gemini.js";
-import { LIMITS as ABUSE, hit, ipOf } from "./limits.js";
+import { LIMITS as ABUSE, hit, peek, ipOf, scope } from "./limits.js";
 import { sendPush, vapidKeys, pushEndpointOk } from "./push.js";
+import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost, cleanBrandDomain } from "./stores.js";
 // Sets globalThis.GIFT_CARDS. Shared with the app, so both sides use the same brand list.
 import "../public/giftcards.js";
@@ -131,10 +132,45 @@ const newToken = () => randomString(40, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm
 // No 0/O, 1/I/L so the code is easy to read out over the phone.
 const newJoinCode = () => randomString(6, "ABCDEFGHJKMNPQRSTUVWXYZ23456789");
 
-async function hashPin(memberId, pin) {
-  const data = new TextEncoder().encode(`wishlist:${memberId}:${pin}`);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+// PINs. The base hash is SHA-256 of the member id and PIN. With only 10,000 PINs that alone is no protection if
+// the database or a backup ever leaked, so once PIN_PEPPER is set (a Worker secret, never in D1 or backups) the
+// stored hash is "p1:" + HMAC-SHA256(PIN_PEPPER, base hash). Wrapping the base hash (not the PIN) means old
+// hashes are upgraded without anyone's PIN: the hourly schedule does it (pepperPins), and checkPin accepts both.
+// Never change or remove PIN_PEPPER once set: every wrapped PIN would stop matching.
+const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+async function basePinHash(memberId, pin) {
+  return hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`wishlist:${memberId}:${pin}`)));
+}
+async function pepperHash(env, base) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.PIN_PEPPER), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return `p1:${hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(base)))}`;
+}
+async function hashPin(env, memberId, pin) {
+  const base = await basePinHash(memberId, pin);
+  return env.PIN_PEPPER ? pepperHash(env, base) : base;
+}
+// Same length strings compared without stopping at the first difference.
+function sameHash(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+async function pinMatches(env, member, pin) {
+  const base = await basePinHash(member.id, pin);
+  const stored = member.pin_hash || "";
+  if (!stored.startsWith("p1:")) return sameHash(base, stored);
+  if (!env.PIN_PEPPER) fail(503, "PIN sign-in isn't working right now. Try again later.");
+  return sameHash(await pepperHash(env, base), stored);
+}
+// Hourly: wraps PIN hashes made before PIN_PEPPER was set (a few hundred per run).
+async function pepperPins(env) {
+  if (!env.PIN_PEPPER) return;
+  const { results } = await env.DB.prepare("SELECT id, pin_hash FROM members WHERE pin_hash IS NOT NULL AND pin_hash NOT LIKE 'p1:%' LIMIT 300").all();
+  if (!results.length) return;
+  await env.DB.batch(await Promise.all(results.map(async (r) =>
+    env.DB.prepare("UPDATE members SET pin_hash = ? WHERE id = ? AND pin_hash = ?").bind(await pepperHash(env, r.pin_hash), r.id, r.pin_hash))));
+  console.log(`peppered ${results.length} PIN hashes`);
 }
 
 // Your nicknames for other people: Map of member id -> nickname.
@@ -151,13 +187,14 @@ const renameRow = (r, nicks) => ({
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 
 class HttpError extends Error {
-  constructor(status, message) {
+  constructor(status, message, extra) {
     super(message);
     this.status = status;
+    this.extra = extra; // more fields for the JSON answer (e.g. { turnstile: siteKey })
   }
 }
-const fail = (status, message) => {
-  throw new HttpError(status, message);
+const fail = (status, message, extra) => {
+  throw new HttpError(status, message, extra);
 };
 
 // ---------- abuse limits (numbers in src/limits.js) ----------
@@ -192,12 +229,61 @@ async function circleSlot(env, memberId) {
 }
 // Checks a PIN. Every try counts (per person and per IP), so 4 digits can't be guessed: 8 tries per 15 minutes
 // and 20 a day per person. Counting tries rather than misses means parallel guesses can't sneak past.
-async function checkPin(env, request, member, pin) {
+// On top of that (docs/plans/public-launch.md):
+//   - A few wrong PINs for one person: they get "Someone tried to sign in as you" on their signed-in devices.
+//   - Lots of wrong PINs across the whole app in an hour (someone trying a few PINs on everyone): "lockdown" for
+//     the rest of the hour, 3 tries per person, and whoever runs Hints gets a push.
+//   - With Turnstile set up (TURNSTILE_SITE_KEY var + TURNSTILE_SECRET secret), a person with recent misses, or
+//     anyone during lockdown, must pass a Turnstile check first. Without it, everything else still applies.
+async function checkPin(env, request, member, pin, turnstileToken) {
   const tooMany = "Too many PIN tries. Wait a while and try again.";
-  await rateLimit(env, `pin:m:${member.id}`, ABUSE.pinTriesPerMember, tooMany);
+  const lockdown = (await peek(env, "pinmiss:all", 3600)) >= ABUSE.pinMissesPerHour;
+  if (turnstileOn(env) && (lockdown || (await peek(env, `pinmiss:m:${member.id}`, 900)) >= ABUSE.pinMissesWarn)) {
+    await turnstileCheck(env, request, turnstileToken);
+  }
+  await rateLimit(env, `pin:m:${member.id}`, lockdown ? [...ABUSE.pinTriesPerMember, ...ABUSE.pinTriesLockdown] : ABUSE.pinTriesPerMember, tooMany);
   await rateLimit(env, `pin:ip:${ipOf(request)}`, ABUSE.pinTriesPerIp, tooMany);
   if (!pin) fail(403, "PIN required.");
-  if ((await hashPin(member.id, String(pin))) !== member.pin_hash) fail(403, "Wrong PIN.");
+  if (!(await pinMatches(env, member, String(pin)))) {
+    await pinMissed(env, member);
+    fail(403, "Wrong PIN.");
+  }
+}
+async function pinMissed(env, member) {
+  const [mine, all] = await Promise.all([hit(env, `pinmiss:m:${member.id}`, 900), hit(env, "pinmiss:all", 3600)]);
+  const jobs = [];
+  // Once per hour per person, on their own devices (held for quiet hours like any other push).
+  if (mine >= ABUSE.pinMissesWarn && (await hit(env, `pinwarn:m:${member.id}`, 3600)) === 1) {
+    jobs.push(pushTo(env, member.id, {
+      title: "Someone tried to sign in as you",
+      body: "A few wrong PINs just now. Your PIN kept them out. Wasn't you? You can change it in Settings.",
+      url: "/#settings", tag: "pinwarn",
+    }));
+  }
+  if (all === ABUSE.pinMissesPerHour) {
+    const owner = await appOwner(env).catch(() => null);
+    if (owner) jobs.push(pushTo(env, owner, {
+      title: "Lots of wrong PINs on Hints",
+      body: `${all} wrong PINs in the last hour. Sign-in is tightened up for the rest of the hour.`,
+      url: "/#settings", tag: "pinlockdown",
+    }, { anyTime: true }));
+  }
+  await Promise.all(jobs).catch((err) => console.error("pin warn", err));
+}
+// Cloudflare Turnstile (free bot check), only when both keys are set.
+const turnstileOn = (env) => !!(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET);
+async function turnstileCheck(env, request, token) {
+  const ask = (msg) => fail(403, msg, { turnstile: env.TURNSTILE_SITE_KEY });
+  if (!token || typeof token !== "string" || token.length > 2048) ask("Quick check first, then try your PIN again.");
+  const form = new FormData();
+  form.append("secret", env.TURNSTILE_SECRET);
+  form.append("response", token);
+  form.append("remoteip", request.headers.get("cf-connecting-ip") || "");
+  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form })
+    .then((x) => x.json()).catch(() => null);
+  // Turnstile itself being down shouldn't lock everyone out: the try limits still apply.
+  if (r === null) return;
+  if (!r.success) ask("That check didn't go through. Try again.");
 }
 
 // Signing in as someone with no PIN yet (their name on the circle link, or their personal link). Allowed only when
@@ -212,7 +298,7 @@ async function setFirstPin(env, request, member, pinIn) {
   if (!pin) fail(428, "Pick a 4-digit PIN so only you can sign in as you.");
   await rateLimit(env, `pin:m:${member.id}`, ABUSE.pinTriesPerMember, "Too many PIN tries. Wait a while and try again.");
   await env.DB.prepare("UPDATE members SET pin_hash = ?, pin_cleared_by = NULL, pin_cleared_at = NULL WHERE id = ? AND pin_hash IS NULL")
-    .bind(await hashPin(member.id, pin), member.id).run();
+    .bind(await hashPin(env, member.id, pin), member.id).run();
 }
 // Someone asked to join a circle with Ask to join on: tell its admin.
 async function askedToJoin(env, group, name) {
@@ -334,15 +420,21 @@ async function signIn(env, memberId) {
 }
 
 // Returns the signed-in member or throws 401.
+// Records who this request is for (Gemini allowances, src/limits.js).
+function forScope(member) {
+  const s = scope.getStore();
+  if (s) s.member = { id: member.id, createdAt: member.created_at };
+}
 async function auth(request, env) {
   const token = request.headers.get("x-wishlist-token");
   if (!token) fail(401, "Not signed in.");
   const me = await env.DB.prepare(
-    "SELECT m.id, m.name, m.last_name, m.pin_hash, m.onboarded_at, m.pin_cleared_by, m.pin_cleared_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
+    "SELECT m.id, m.name, m.last_name, m.pin_hash, m.onboarded_at, m.pin_cleared_by, m.pin_cleared_at, m.created_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
   )
     .bind(token)
     .first();
   if (!me) fail(401, "Signed out. Open your invite or sign-in link again.");
+  forScope(me);
   // Touch last_seen at most once a day to keep writes low.
   await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE token = ? AND last_seen < ?")
     .bind(now(), token, new Date(Date.now() - 86_400_000).toISOString())
@@ -1061,7 +1153,7 @@ async function joinHousehold(env, memberId, hh) {
   ]);
 }
 
-// ---------- household requests (migration 0044) ----------
+// ---------- household requests (migration 0045) ----------
 // Joining a household shares its budgets and purchases both ways, so someone who uses Hints is asked first.
 // People who don't use the app (managed) are added directly.
 const usesApp = async (env, memberId) => !!(await env.DB.prepare("SELECT 1 FROM members WHERE id = ? AND managed_by IS NULL").bind(memberId).first());
@@ -1212,7 +1304,7 @@ async function startSolo(req, env, b) {
   const id = newId();
   const link = newLinkToken();
   await env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, claim_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(id, name, lastName, await hashPin(id, pin), await sha256(link), now()).run();
+    .bind(id, name, lastName, await hashPin(env, id, pin), await sha256(link), now()).run();
   return { token: await signIn(env, id), link };
 }
 
@@ -1280,6 +1372,8 @@ async function deleteMember(env, id) {
   q("DELETE FROM join_requests WHERE member_id = ?1");
   q("DELETE FROM group_members WHERE member_id = ?1");
   q("DELETE FROM devices WHERE member_id = ?1");
+  q("DELETE FROM passkeys WHERE member_id = ?1");
+  q("DELETE FROM passkey_challenges WHERE member_id = ?1");
   await env.DB.batch(rows);
   // Circles they ran get the next admin (adminOf picks whoever has been in longest); then the person goes.
   for (const c of circles.filter((c) => c.others)) await adminOf(env, c.group_id);
@@ -1300,7 +1394,7 @@ async function newUniqueJoinCode(env) {
 async function groupByCode(env, code) {
   const c = String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!c) fail(400, "Enter your invite code.");
-  const group = await env.DB.prepare("SELECT id, name, join_code, ask_to_join FROM groups WHERE join_code = ?").bind(c).first();
+  const group = await env.DB.prepare("SELECT id, name, join_code, ask_to_join, link_claims FROM groups WHERE join_code = ?").bind(c).first();
   if (!group) fail(404, "No circle found with that code. Check it and try again.");
   return group;
 }
@@ -2179,8 +2273,9 @@ async function quickAdd(req, env) {
   const input = await sharedInput(req);
   const key = (req.headers.get("x-hints-key") || input.key || "").trim();
   if (!/^hk_[A-Za-z0-9]{40}$/.test(key)) fail(401, "This Shortcut needs your add key. Get one in Hints: Settings > Add from the Share button.");
-  const me = await env.DB.prepare("SELECT id FROM members WHERE add_key_hash = ?").bind(await sha256(key)).first();
+  const me = await env.DB.prepare("SELECT id, created_at FROM members WHERE add_key_hash = ?").bind(await sha256(key)).first();
   if (!me) fail(401, "That add key doesn't work anymore. Make a new one in Hints: Settings > Add from the Share button.");
+  forScope(me);
   await rateLimit(env, `quickadd:${me.id}`, ABUSE.quickAddPerMember, "That's a lot of links for now. Try again in a bit.");
 
   const shared = input.text.slice(0, LIMITS.url + 300);
@@ -2748,6 +2843,7 @@ export async function runSchedule(env) {
   }
   await settleReceived(env).catch((err) => console.error("settle", err));
   await snapshotGifts(env).catch((err) => console.error("history", err));
+  await pepperPins(env).catch((err) => console.error("pepper", err));
   const later = isQuiet(hour) ? 0 : await flushLater(env, budget).catch((err) => (console.error("later", err), 0));
   const wishes = await wishDigest(env, budget, hour).catch((err) => (console.error("digest", err), 0));
   // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
@@ -2761,6 +2857,45 @@ async function notManaged(env, member) {
   if (!member.managed_by) return;
   const by = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(member.managed_by).first();
   fail(409, `${member.name}'s list is looked after by ${by?.name || "someone in this circle"}. Ask them to tap "Let ${member.name} sign in" on ${member.name}'s list first.`);
+}
+
+// ---------- passkeys (docs/plans/public-launch.md, migration 0045) ----------
+// Sign in with Face ID or a fingerprint. The passkey lives in iCloud Keychain or Google Password Manager, so a new
+// phone has it, which is how a solo person who lost their sign-in link and phone gets back in. Passkey sign-in
+// skips the PIN (it's stronger than one). The relying party is whichever Hints domain the page is on.
+const b64u = {
+  from: (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
+  to: (str) => Uint8Array.from(atob(String(str).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)),
+};
+const passkeyLabel = (req) => {
+  const ua = req.headers.get("user-agent") || "";
+  return /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Macintosh/.test(ua) ? "Mac"
+    : /Windows/.test(ua) ? "Windows" : /CrOS/.test(ua) ? "Chromebook" : /Linux/.test(ua) ? "Computer" : "This device";
+};
+// The passkey's site (relying party) and the page origin to expect: this Worker's own host. (Local testing:
+// `wrangler dev --local-upstream localhost:8787`, or wrangler hands the Worker the production hostname.)
+function rpOf(env, req) {
+  const url = new URL(req.url);
+  return { id: url.hostname, origin: url.origin };
+}
+async function newChallenge(env, challenge, memberId = null) {
+  const id = newToken();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM passkey_challenges WHERE expires < ?").bind(now()),
+    env.DB.prepare("INSERT INTO passkey_challenges (id, challenge, member_id, expires) VALUES (?, ?, ?, ?)")
+      .bind(id, challenge, memberId, new Date(Date.now() + 5 * 60_000).toISOString()),
+  ]);
+  return id;
+}
+// Uses up a challenge (one try each). Must belong to memberId (null when signing in).
+async function takeChallenge(env, id, memberId = null) {
+  const row = await env.DB.prepare("DELETE FROM passkey_challenges WHERE id = ? RETURNING challenge, member_id, expires").bind(String(id || "")).first();
+  if (!row || row.expires < now() || (row.member_id || null) !== memberId) fail(400, "That took too long. Try again.");
+  return row.challenge;
+}
+async function passkeysOf(env, memberId) {
+  const { results } = await env.DB.prepare("SELECT id, label, created_at, last_used FROM passkeys WHERE member_id = ? ORDER BY created_at").bind(memberId).all();
+  return results.map((r) => ({ id: r.id, label: r.label, createdAt: r.created_at, lastUsed: r.last_used }));
 }
 
 const handlers = {
@@ -2791,7 +2926,7 @@ const handlers = {
       hhTag.set(m.household_id, householdLabel(h?.name, ppl.map((p) => p.name)));
     }
     return {
-      group: { name: group.name, admin: results.find((m) => m.id === adminId)?.name || null, askToJoin: !!group.ask_to_join },
+      group: { name: group.name, admin: results.find((m) => m.id === adminId)?.name || null, askToJoin: !!group.ask_to_join, linkClaims: !!group.link_claims },
       inviter: info?.inviter || null,
       members: results.map((m) => ({
         id: m.id, name: m.name, hasPin: !!m.pin_hash && !m.managed_by, photo: m.photo_at || null,
@@ -2824,17 +2959,32 @@ const handlers = {
       if (!member) fail(404, "That person isn't in this circle.");
       // A list someone set up for you, opened from the circle link: it becomes yours (like a personal link), with
       // the PIN you pick now. Kids someone looks after can't be taken over this way.
+      // Circles started after public sign-ups opened (groups.link_claims = 0) don't allow this: anyone holding the
+      // circle code could take over a list that isn't theirs. The admin gets a nudge to send that person their own
+      // link (the admin's OK, without a new approval flow). Older circles (link_claims = 1) work as before.
+      if (member.managed_by && !member.is_kid && !group.link_claims) {
+        const admin = await adminOf(env, group.id);
+        const adminName = admin && (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(admin).first())?.name;
+        if (admin && (await hit(env, `claimask:${member.id}`, 3600)) === 1) {
+          await pushTo(env, admin, {
+            title: `${member.name} is trying to get into Hints`,
+            body: "They opened the circle link. Send them their own link: Circles > Manage, then Invite next to their name.",
+            url: "/#family", tag: `claimask:${member.id}`,
+          }).catch((err) => console.error("claim ask push", err));
+        }
+        fail(403, `${adminName || "The circle's admin"} needs to send you your own link to get your list. We let them know.`);
+      }
       if (member.managed_by && !member.is_kid) {
         const pin = pinValue(b.pin);
         if (!pin) fail(428, "Pick a 4-digit PIN so only you can sign in as you.");
         const done = await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL, pin_hash = ? WHERE id = ? AND managed_by IS NOT NULL")
-          .bind(await hashPin(member.id, pin), member.id).run();
+          .bind(await hashPin(env, member.id, pin), member.id).run();
         if (!done.meta?.changes) fail(409, `${member.name} just joined. Go back and tap your name again.`);
         return { token: await signIn(env, member.id), claimed: true };
       }
       await notManaged(env, member);
       if (member.pin_hash) {
-        await checkPin(env, req, member, b.pin);
+        await checkPin(env, req, member, b.pin, b.turnstile);
         return { token: await signIn(env, member.id) };
       }
       await setFirstPin(env, req, member, b.pin);
@@ -2861,7 +3011,7 @@ const handlers = {
     const id = newId();
     const t = now();
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, name, lastName, await hashPin(id, pin), t),
+      env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, name, lastName, await hashPin(env, id, pin), t),
       group.ask_to_join
         ? env.DB.prepare("INSERT INTO join_requests (group_id, member_id, created_at) VALUES (?, ?, ?)").bind(group.id, id, t)
         : env.DB.prepare(JOIN_DIRECT).bind(group.id, id, t),
@@ -2889,12 +3039,12 @@ const handlers = {
     const t = now();
     const code = await newUniqueJoinCode(env);
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at) VALUES (?, ?, ?, ?)").bind(groupId, groupName, code, t),
+      env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at, link_claims) VALUES (?, ?, ?, ?, 0)").bind(groupId, groupName, code, t),
       env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, created_at) VALUES (?, ?, ?, ?, ?)").bind(
         memberId,
         name,
         lastName,
-        await hashPin(memberId, pin),
+        await hashPin(env, memberId, pin),
         t,
       ),
       env.DB.prepare(JOIN_DIRECT).bind(groupId, memberId, t),
@@ -3007,7 +3157,7 @@ const handlers = {
     const openReports = isOwner
       ? (await env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE done_at IS NULL").first())?.n || 0
       : 0;
-    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, claim_hash IS NOT NULL AS has_link, add_key_hash IS NOT NULL AS has_add_key FROM members WHERE id = ?").bind(me.id).first();
+    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, created_at, claim_hash IS NOT NULL AS has_link, add_key_hash IS NOT NULL AS has_add_key FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
     // Circles you asked to join and are waiting on, and (for circles you run) who's waiting on you.
     const { results: pendingRows } = await env.DB.prepare(
@@ -3026,7 +3176,7 @@ const handlers = {
           WHERE r.group_id IN (${runIds.map(() => "?").join(",")}) ORDER BY r.created_at`,
       ).bind(...runIds).all()
       : { results: [] };
-    // Household requests (migration 0044): ones asking you, and ones you can see waiting on someone (that you sent,
+    // Household requests (migration 0045): ones asking you, and ones you can see waiting on someone (that you sent,
     // for your household, or for a household in a circle you run).
     const { results: askRows } = await env.DB.prepare(
       `SELECT r.id, r.household_id, r.invited_by, m.name AS by_name FROM household_requests r JOIN members m ON m.id = r.invited_by
@@ -3075,6 +3225,10 @@ const handlers = {
         hasLink: !!prefsRow?.has_link,
         // You have an add key for the iPhone Shortcut (also can't be shown again).
         hasAddKey: !!prefsRow?.has_add_key,
+        // Passkeys (Settings) and what the "save a passkey" nudge needs: signed-in devices and account age.
+        passkeys: await passkeysOf(env, me.id),
+        devices: (await env.DB.prepare("SELECT COUNT(*) AS n FROM devices WHERE member_id = ?").bind(me.id).first())?.n || 0,
+        since: prefsRow?.created_at || null,
       },
       // Whoever runs Hints (appOwner): their name for "Send Alexis a note", and for them, the Inbox's open count.
       owner: owner ? { name: owner.id === me.id ? me.name : nicks.get(owner.id) || owner.name, you: isOwner, open: openReports } : null,
@@ -4322,7 +4476,7 @@ const handlers = {
     const t = now();
     const code = await newUniqueJoinCode(env);
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at, created_by) VALUES (?, ?, ?, ?, ?)").bind(id, name, code, t, me.id),
+      env.DB.prepare("INSERT INTO groups (id, name, join_code, created_at, created_by, link_claims) VALUES (?, ?, ?, ?, ?, 0)").bind(id, name, code, t, me.id),
       env.DB.prepare(JOIN_DIRECT).bind(id, me.id, t),
     ]);
     return { group: { id, name, code } };
@@ -4639,13 +4793,84 @@ const handlers = {
       const pin = pinValue(b.pin);
       if (!pin) fail(428, "Pick a 4-digit PIN so only you can sign in as you.");
       const done = await env.DB.prepare("UPDATE members SET managed_by = NULL, claim_expires = NULL, onboarded_at = NULL, pin_hash = ? WHERE id = ? AND managed_by IS NOT NULL")
-        .bind(await hashPin(them.id, pin), them.id).run();
+        .bind(await hashPin(env, them.id, pin), them.id).run();
       if (!done.meta?.changes) fail(409, `${them.name} just signed in. Open the link again.`);
       return { token: await signIn(env, them.id), name: them.name, returning: false };
     }
-    if (them.pin_hash) await checkPin(env, req, them, b.pin);
+    if (them.pin_hash) await checkPin(env, req, them, b.pin, b.turnstile);
     else await setFirstPin(env, req, them, b.pin);
     return { token: await signIn(env, them.id), name: them.name, returning: true };
+  },
+
+  // Make a passkey (step 1): options for navigator.credentials.create(). { options, id }
+  async "POST passkey/new"(req, env) {
+    const me = await auth(req, env);
+    const rp = rpOf(env, req);
+    const mine = await env.DB.prepare("SELECT id, transports FROM passkeys WHERE member_id = ?").bind(me.id).all();
+    if (mine.results.length >= ABUSE.passkeysPerMember) fail(409, `You have ${mine.results.length} passkeys, the most allowed. Remove one first.`);
+    const options = await generateRegistrationOptions({
+      rpName: "Hints", rpID: rp.id,
+      userName: me.lastName ? `${me.name} ${me.lastName}` : me.name, userID: new TextEncoder().encode(me.id),
+      attestationType: "none",
+      excludeCredentials: mine.results.map((r) => ({ id: r.id, transports: JSON.parse(r.transports || "[]") })),
+      // Discoverable, so signing in needs no name or code: the phone offers the passkey for this site.
+      authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+    });
+    return { options, id: await newChallenge(env, options.challenge, me.id) };
+  },
+  // Make a passkey (step 2): checks what the phone made and keeps its public key. { id, response } -> { passkeys }
+  async "POST passkey/save"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const rp = rpOf(env, req);
+    const expectedChallenge = await takeChallenge(env, b.id, me.id);
+    let v;
+    try {
+      v = await verifyRegistrationResponse({ response: b.response, expectedChallenge, expectedOrigin: rp.origin, expectedRPID: rp.id, requireUserVerification: false });
+    } catch (err) {
+      console.log("passkey save", err?.message);
+      fail(400, "That passkey didn't save. Try again.");
+    }
+    if (!v.verified || !v.registrationInfo) fail(400, "That passkey didn't save. Try again.");
+    const c = v.registrationInfo.credential;
+    await env.DB.prepare("INSERT OR IGNORE INTO passkeys (id, member_id, public_key, counter, transports, label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(c.id, me.id, b64u.from(c.publicKey), c.counter || 0, JSON.stringify(c.transports || []), passkeyLabel(req), now()).run();
+    return { passkeys: await passkeysOf(env, me.id) };
+  },
+  async "POST passkey/remove"(req, env) {
+    const me = await auth(req, env);
+    const { id } = await body(req);
+    await env.DB.prepare("DELETE FROM passkeys WHERE id = ? AND member_id = ?").bind(String(id || ""), me.id).run();
+    return { passkeys: await passkeysOf(env, me.id) };
+  },
+  // Sign in with a passkey (step 1, signed out): options for navigator.credentials.get(). { options, id }
+  async "POST passkey/start"(req, env) {
+    await rateLimit(env, `passkey:ip:${ipOf(req)}`, ABUSE.passkeyPerIp, "Too many tries. Wait a bit and try again.");
+    const options = await generateAuthenticationOptions({ rpID: rpOf(env, req).id, userVerification: "preferred" });
+    return { options, id: await newChallenge(env, options.challenge) };
+  },
+  // Sign in with a passkey (step 2): { id, response } -> { token, name }
+  async "POST passkey/signin"(req, env) {
+    await rateLimit(env, `join:ip:${ipOf(req)}`, ABUSE.joinPerIp, "Too many sign-in tries. Wait a bit and try again.");
+    const b = await body(req);
+    const rp = rpOf(env, req);
+    const expectedChallenge = await takeChallenge(env, b.id);
+    const credId = String(b.response?.id || "");
+    const pk = credId && (await env.DB.prepare("SELECT p.*, m.name FROM passkeys p JOIN members m ON m.id = p.member_id WHERE p.id = ?").bind(credId).first());
+    if (!pk) fail(404, "That passkey isn't on Hints anymore. Sign in with your link or invite code instead.");
+    let v;
+    try {
+      v = await verifyAuthenticationResponse({
+        response: b.response, expectedChallenge, expectedOrigin: rp.origin, expectedRPID: rp.id, requireUserVerification: false,
+        credential: { id: pk.id, publicKey: b64u.to(pk.public_key), counter: pk.counter, transports: JSON.parse(pk.transports || "[]") },
+      });
+    } catch (err) {
+      console.log("passkey signin", err?.message);
+      fail(403, "That passkey didn't work. Try again.");
+    }
+    if (!v.verified) fail(403, "That passkey didn't work. Try again.");
+    await env.DB.prepare("UPDATE passkeys SET counter = ?, last_used = ? WHERE id = ?").bind(v.authenticationInfo.newCounter || 0, now(), pk.id).run();
+    return { token: await signIn(env, pk.member_id), name: pk.name };
   },
 
   // Your own sign-in link, for a new phone or computer. on: true makes a new one (the old one stops working),
@@ -5081,7 +5306,7 @@ const handlers = {
       // Everyone keeps a PIN (it's what stops the circle link signing anyone in as you). It can be changed, not removed.
       if (!pin) fail(400, "Your PIN can be changed, but not turned off.");
       await env.DB.prepare("UPDATE members SET pin_hash = ?, pin_cleared_by = NULL, pin_cleared_at = NULL WHERE id = ?")
-        .bind(pin ? await hashPin(who, pin) : null, who)
+        .bind(pin ? await hashPin(env, who, pin) : null, who)
         .run();
     }
     if (b.photo !== undefined) {
@@ -5250,6 +5475,31 @@ const handlers = {
     return { ok: true };
   },
 
+  // Deletion requests by email from people who can't sign in (privacy page): whoever runs Hints finds the person
+  // (Settings > Inbox) and deletes them the same way Delete my Hints does. Owner only.
+  async "POST owner/find"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    const q = String((await body(req)).q || "").trim().slice(0, 60);
+    if (q.length < 2) fail(400, "Type at least 2 letters of their name.");
+    const { results } = await env.DB.prepare(
+      `SELECT m.id, m.name, m.last_name, m.created_at, m.managed_by,
+         (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL) AS wishes,
+         (SELECT GROUP_CONCAT(g.name, ', ') FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = m.id) AS circles
+         FROM members m WHERE (m.name || ' ' || COALESCE(m.last_name, '')) LIKE ? ORDER BY m.name COLLATE NOCASE LIMIT 20`,
+    ).bind(`%${q.replace(/[%_]/g, "")}%`).all();
+    return { people: results.map((r) => ({ id: r.id, name: r.last_name ? `${r.name} ${r.last_name}` : r.name, since: r.created_at, wishes: r.wishes, circles: r.circles || "", lookedAfter: !!r.managed_by })) };
+  },
+  async "POST owner/delete"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    const { memberId } = await body(req);
+    if (!memberId || memberId === me.id) fail(400, "To delete yourself, use Delete my Hints.");
+    if (!(await env.DB.prepare("SELECT 1 FROM members WHERE id = ?").bind(String(memberId)).first())) fail(404, "That person isn't on Hints anymore.");
+    await deleteMember(env, String(memberId));
+    return { ok: true };
+  },
+
   // ---------- keeping a circle closed ----------
   // A new invite link for a circle (the admin only). Old links and the old code stop working at once, so a
   // forwarded link or someone who was taken out can't use it to come back. Personal links keep working.
@@ -5320,7 +5570,7 @@ const handlers = {
     const me = await auth(req, env);
     const b = await body(req);
     const row = await env.DB.prepare("SELECT id, name, pin_hash FROM members WHERE id = ?").bind(me.id).first();
-    if (row.pin_hash) await checkPin(env, req, row, b.pin);
+    if (row.pin_hash) await checkPin(env, req, row, b.pin, b.turnstile);
     await deleteMember(env, me.id);
     return { ok: true };
   },
@@ -5339,10 +5589,11 @@ const handlers = {
 async function handle(request, env, key, ctx) {
   if (!env.DB) return json({ error: "Hints database isn't set up yet (missing DB binding)." }, 500);
   try {
-    const out = await handlers[key](request, env, new URL(request.url), ctx);
+    // A scope per request: auth() records who it's for, so Gemini calls count against that person (src/limits.js).
+    const out = await scope.run({ route: key }, () => handlers[key](request, env, new URL(request.url), ctx));
     return out instanceof Response ? out : json(out);
   } catch (err) {
-    if (err instanceof HttpError) return json({ error: err.message }, err.status);
+    if (err instanceof HttpError) return json({ error: err.message, ...(err.extra || {}) }, err.status);
     console.error("wishlist", key, err);
     // Shows up in Settings > Inbox for whoever runs Hints.
     const saved = recordProblem(env, { where: `API ${key}`, message: err?.message || String(err), detail: clip(err?.stack, 3000) || null })

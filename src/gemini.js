@@ -1,5 +1,5 @@
 // Gemini helper (used by photo search). Copied from personal-tools.
-import { geminiAllowed } from "./limits.js";
+import { geminiAllowed, geminiCount } from "./limits.js";
 
 // Token savers sent with every call. If the model rejects them (400), the call is retried once without them.
 // - mediaResolution MEDIUM: about half the image tokens of the default, still sharp enough to read labels.
@@ -34,11 +34,25 @@ export function quotaInfo(data) {
 // Returns { data, grounding, urlContext } or { error: Response, status, quota }. `tools` turns on built-in tools such as
 // [{ google_search: {} }]; `grounding` is then the response's groundingMetadata (may be empty).
 export async function callGemini(env, system, parts, schema, timeoutMs, model = env.GEMINI_MODEL || "gemini-3.5-flash-lite", tools = null) {
-  // Whole-app daily cap (GEMINI_DAILY_CAP), so nobody can run up the bill. Treated like Google's own daily limit.
-  if (!(await geminiAllowed(env))) {
-    console.log("Gemini daily cap reached (GEMINI_DAILY_CAP)");
-    return { error: json({ error: "The AI hit today's limit for Hints. It resets tomorrow. You can still type things in." }, 429), status: 429, quota: { daily: true } };
+  // Caps (src/limits.js geminiAllowed): the person's daily allowance, the new-account reserve, the whole-app
+  // daily cap, and Google Search grounding (its own smaller cap, since searches are billed separately).
+  const wantsSearch = !!tools?.some((t) => t.google_search);
+  const allowed = await geminiAllowed(env, { grounded: wantsSearch });
+  if (!allowed.ok) {
+    console.log(`Gemini not allowed (${allowed.why})`);
+    const msg = allowed.why === "person" ? "You've used today's AI help. It resets tomorrow. You can still type things in."
+      : "The AI hit today's limit for Hints. It resets tomorrow. You can still type things in.";
+    return { error: json({ error: msg }, 429), status: 429, quota: { daily: true } };
   }
+  if (wantsSearch && !allowed.grounded) {
+    tools = tools.filter((t) => !t.google_search);
+    // Search was all it asked for: answer like a search quota, so callers fall back the way they already do.
+    if (!tools.length) {
+      console.log("Gemini grounded cap reached (GEMINI_GROUNDED_CAP)");
+      return { error: json({ error: "Search is resting for today. Try again tomorrow." }, 429), status: 429, quota: { daily: true, search: true } };
+    }
+  }
+  const grounded = !!tools?.some((t) => t.google_search);
   const makeBody = (savers) => JSON.stringify({
     system_instruction: { parts: [{ text: system }] },
     contents: [{ role: "user", parts }],
@@ -48,6 +62,8 @@ export async function callGemini(env, system, parts, schema, timeoutMs, model = 
   let savers = true, serverRetries = 1, rateWaits = 0;
   let apiRes, data, quota = null;
   for (;;) {
+    // Every request counts toward the caps, retries included.
+    await geminiCount(env, grounded);
     apiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {

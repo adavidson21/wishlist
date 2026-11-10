@@ -1906,6 +1906,11 @@
     .tab[data-tab][aria-current="page"]::after { content: ""; position: absolute; bottom: -5px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--gold); }
   }
   ::selection { background: color-mix(in srgb, var(--gold) 40%, transparent); }
+  .pk-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line, rgba(0,0,0,.08)); }
+  .pk-row small { display: block; color: var(--muted); font-weight: 400; }
+  .ts-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.45); }
+  .ts-overlay .card { width: 100%; max-width: 360px; }
+  .ts-widget { display: flex; justify-content: center; min-height: 70px; margin: 12px 0; }
 </style>
 </head>
 <body>
@@ -2322,9 +2327,94 @@ async function api(path, data) {
   noteVersion(res.headers.get("x-app-version"));
   const out = await res.json().catch(() => ({}));
   if (res.status === 401 && t) { setToken(null); state.me = null; dropBrowserPush(); render(); }
+  // A PIN sign-in that needs a quick Turnstile check first (only when Hints has it set up): pass it, then try again.
+  if (!res.ok && out.turnstile && data && typeof data === "object" && !data.turnstile) {
+    const token = await turnstileToken(out.turnstile);
+    if (token) return api(path, { ...data, turnstile: token });
+  }
   if (!res.ok) { const e = new Error(out.error || "Something went wrong."); e.status = res.status; e.detail = out.detail; throw e; }
   return out;
 }
+
+// Cloudflare Turnstile, loaded only when the server asks for it. Its own small overlay, so it never closes a sheet
+// that's open underneath (Delete my Hints asks for a PIN in one). Resolves to a token, or null if cancelled.
+let turnstileJs = null;
+function turnstileToken(siteKey) {
+  turnstileJs ||= new Promise((ok, no) => {
+    const sc = document.createElement("script");
+    sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    sc.async = true;
+    sc.onload = ok;
+    sc.onerror = () => { turnstileJs = null; no(); };
+    document.head.append(sc);
+  });
+  return turnstileJs.then(() => new Promise((resolve) => {
+    const box = document.createElement("div");
+    box.className = "ts-overlay";
+    box.innerHTML = `<div class="card"><h3 style="margin-top:0">Quick check</h3>
+      <p class="subtle">This keeps people from guessing PINs.</p><div class="ts-widget"></div>
+      <button class="btn quiet wide" type="button">Cancel</button></div>`;
+    document.body.append(box);
+    let done = false;
+    const finish = (t) => { if (done) return; done = true; box.remove(); resolve(t); };
+    $("button", box).onclick = () => finish(null);
+    window.turnstile.render($(".ts-widget", box), { sitekey: siteKey, callback: (t) => finish(t), "error-callback": () => finish(null) });
+  })).catch(() => null);
+}
+
+// ---------- passkeys ----------
+// Sign in with Face ID or a fingerprint (src/wishlist.js "passkey/*"). The passkey syncs through iCloud Keychain or
+// Google Password Manager, so it's there on a new phone. WebAuthn wants bytes; the server speaks base64url.
+const passkeyOk = () => !!window.PublicKeyCredential && window.isSecureContext;
+const fromB64u = (str) => Uint8Array.from(atob(String(str).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)).buffer;
+const toB64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const credCancelled = (e) => e?.name === "NotAllowedError" || e?.name === "AbortError";
+// Makes a passkey for whoever is signed in. Returns the new list, or null if they cancelled.
+async function createPasskey() {
+  const { options, id } = await api("passkey/new", {});
+  let cred;
+  try {
+    cred = await navigator.credentials.create({ publicKey: {
+      ...options, challenge: fromB64u(options.challenge), user: { ...options.user, id: fromB64u(options.user.id) },
+      excludeCredentials: (options.excludeCredentials || []).map((c) => ({ ...c, id: fromB64u(c.id) })),
+    } });
+  } catch (e) {
+    if (e?.name === "InvalidStateError") throw new Error("This phone already has a Hints passkey for you.");
+    if (credCancelled(e)) return null;
+    throw new Error("That passkey didn't save. Try again.");
+  }
+  if (!cred) return null;
+  const r = cred.response;
+  const { passkeys } = await api("passkey/save", { id, response: {
+    id: cred.id, rawId: toB64u(cred.rawId), type: cred.type,
+    response: { clientDataJSON: toB64u(r.clientDataJSON), attestationObject: toB64u(r.attestationObject), transports: r.getTransports?.() || [] },
+    clientExtensionResults: cred.getClientExtensionResults?.() || {}, authenticatorAttachment: cred.authenticatorAttachment || undefined,
+  } });
+  state.me.passkeys = passkeys;
+  return passkeys;
+}
+// Signed out: the phone offers its Hints passkey, then we're in.
+async function passkeySignIn() {
+  try {
+    const { options, id } = await api("passkey/start", {});
+    const cred = await navigator.credentials.get({ publicKey: {
+      ...options, challenge: fromB64u(options.challenge),
+      allowCredentials: (options.allowCredentials || []).map((c) => ({ ...c, id: fromB64u(c.id) })),
+    } });
+    if (!cred) return;
+    const r = cred.response;
+    finishJoin(await api("passkey/signin", { id, response: {
+      id: cred.id, rawId: toB64u(cred.rawId), type: cred.type,
+      response: { clientDataJSON: toB64u(r.clientDataJSON), authenticatorData: toB64u(r.authenticatorData), signature: toB64u(r.signature),
+        userHandle: r.userHandle ? toB64u(r.userHandle) : undefined },
+      clientExtensionResults: cred.getClientExtensionResults?.() || {}, authenticatorAttachment: cred.authenticatorAttachment || undefined,
+    } }), { returning: true });
+  } catch (e) {
+    if (credCancelled(e)) return;
+    oops(e.message || "That passkey didn't work. Try again.");
+  }
+}
+const passkeyBtn = () => (passkeyOk() ? '<p style="text-align:center;margin:12px 0 0"><button class="btn quiet" type="button" id="passkeyIn">Sign in with a passkey</button></p>' : "");
 
 // New version check. The Worker stamps every response with its deploy id (x-app-version). The first API answer
 // sets the version this page is running; if a later one differs, a deploy happened while the app was open, so
@@ -2943,11 +3033,13 @@ async function renderWelcome(step = "code", info = {}) {
           <input class="input code-in" name="code" maxlength="8" value="${esc(bad ? "" : invite?.code || "")}" placeholder="ABC234" autocapitalize="characters" required></label>
         <button class="btn primary wide" type="submit">Continue</button>
       </form>
+      ${bad ? "" : passkeyBtn()}
       <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="soloBtn">Just make my own list</button>
         <br><button class="btn quiet" type="button" id="startBtn">Start a new circle</button>
         <br><button class="btn quiet" type="button" id="aboutBtn">What's Hints?</button></p>`;
     $("#aboutBtn").onclick = () => renderLanding();
     wireForm($("#codeForm"), async ({ code }) => useCodeOrLink(code));
+    $("#passkeyIn")?.addEventListener("click", passkeySignIn);
     $("#startBtn").onclick = () => renderWelcome("start");
     $("#soloBtn").onclick = () => renderWelcome("solo");
     return;
@@ -2973,6 +3065,12 @@ async function renderWelcome(step = "code", info = {}) {
     $("#newBtn").onclick = () => renderWelcome("new", info);
     v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = async () => {
       const m = info.members.find((x) => x.id === b.dataset.id);
+      // Newer circles don't hand set-up lists over from the circle link (the admin sends a personal link). The server
+      // says so and nudges the admin.
+      if (m.waiting && info.group.linkClaims === false) {
+        try { return finishJoin(await api("join", { code: info.code, memberId: m.id }), { returning: true }); }
+        catch (e) { return renderWelcome("elsewhere", { ...info, member: m, message: e.message }); }
+      }
       if (m.waiting) return renderWelcome("mine", { ...info, member: m });
       if (m.hasPin) return renderWelcome("pin", { ...info, member: m });
       // No PIN yet: the server says whether they can pick one here (428) or are signed in somewhere else (423).
@@ -3178,8 +3276,10 @@ function renderLanding() {
         <button class="btn primary" type="submit">Go</button></span></label>
       <p class="hint" style="margin:8px 0 0">Got a link? Just open it, or paste it here.</p>
     </form>
+    ${passkeyBtn()}
   </div>`;
   wireForm($("#codeForm"), async ({ code }) => useCodeOrLink(code));
+  $("#passkeyIn")?.addEventListener("click", passkeySignIn);
   $("#startTop").onclick = $("#startBottom").onclick = () => { scrollTo(0, 0); renderWelcome("solo"); };
   $("#circleTop").onclick = () => { scrollTo(0, 0); renderWelcome("start"); };
 }
@@ -3545,6 +3645,9 @@ function openTour() {
     !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
       text: "Your ideas and budgets are already hidden from the people you shop for. A 4-digit PIN just stops someone else from signing in as you on another phone.",
       extra: '<div class="tour-pin"><input class="input pin-in" id="tourPin" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" aria-label="4-digit PIN" placeholder="····"></div>' },
+    w.solo && passkeyOk() && { id: "passkey", scene: pinScene(), title: "Save a passkey",
+      text: "Get back in with Face ID or your fingerprint, even on a new phone. Nothing to remember.",
+      extra: '<button class="btn primary" type="button" id="tourPasskey" style="margin-top:18px">Save a passkey</button>' },
     w.solo && w.link && { id: "signin", scene: pinScene(), title: "Save your sign-in link",
       text: "This link (and your PIN) gets you back into your list on a new phone. Save it somewhere safe, like a note or an email to yourself. It won't be shown again, but you can make a new one in Settings.",
       extra: `<div class="tour-invite"><div class="input" style="font-size:14px;overflow-wrap:anywhere;user-select:all;text-align:left">${esc(myLinkUrl(w.link))}</div>
@@ -3604,6 +3707,14 @@ function openTour() {
   if (w.started && group()) wireInviteCard(tourEl, group());
   $("#tourLinkCopy", tourEl)?.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(myLinkUrl(w.link)); buzz(); toast("Link copied"); } catch { toast("Press and hold the link to copy it"); }
+  });
+  $("#tourPasskey", tourEl)?.addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      if (await createPasskey()) { b.textContent = "Passkey saved"; party(); go(idx + 1 < slides.length ? idx + 1 : idx); }
+      else b.disabled = false;
+    } catch (err) { oops(err.message); b.disabled = false; }
   });
   $("#tourPush", tourEl)?.addEventListener("click", async (e) => {
     const b = e.currentTarget;
@@ -3984,9 +4095,30 @@ async function renderMine() {
   wireReceived(v);
   $("#shareOut", v)?.addEventListener("click", () => shareOutside(state.me.shareToken || null));
   $("#soloCircle", v)?.addEventListener("click", () => startCircleSheet());
+  wirePasskeyNudge(v);
 }
 // The small "share outside your circles" link at the end of My list.
-const shareRow = () => !state.groups.length ? `<div class="starter slide" style="margin:22px 0 6px"><strong>Share your list</strong>
+// Solo, signed in on just this device for a week, no passkey: one card to save one, until it's done or dismissed.
+const PK_NUDGE = "wishlist-pk-nudge";
+function passkeyNudge() {
+  try { if (localStorage.getItem(PK_NUDGE)) return ""; } catch { return ""; }
+  const me = state.me;
+  if (state.groups.length || !passkeyOk() || me.passkeys?.length || me.devices > 1 || !me.since || Date.now() - Date.parse(me.since) < 7 * 86_400_000) return "";
+  return `<div class="starter slide" id="pkNudge" style="margin:22px 0 6px"><strong>Don't get locked out</strong>
+    <p>You're only signed in here. Save a passkey to get back in with Face ID or your fingerprint if you lose this phone.</p>
+    <div class="actions" style="margin:0"><button class="btn primary" type="button" id="pkNudgeGo">Save a passkey</button>
+    <button class="btn quiet" type="button" id="pkNudgeNo">Not now</button></div></div>`;
+}
+function wirePasskeyNudge(root) {
+  const card = $("#pkNudge", root);
+  if (!card) return;
+  const hide = () => { try { localStorage.setItem(PK_NUDGE, "1"); } catch {} card.remove(); };
+  $("#pkNudgeNo", card).onclick = hide;
+  $("#pkNudgeGo", card).onclick = async () => {
+    try { if (await createPasskey()) { toast("Passkey saved"); hide(); } } catch (e) { toast(e.message); }
+  };
+}
+const shareRow = () => !state.groups.length ? `${passkeyNudge()}<div class="starter slide" style="margin:22px 0 6px"><strong>Share your list</strong>
     <p>Send one link to anyone. They can see your wishes without signing up.</p>
     <div class="actions" style="margin:0"><button class="btn primary" type="button" id="shareOut">${state.me.shareToken ? "Your link · Manage" : "Share my list"}</button></div>
     <p class="hint" style="margin:12px 0 0">Want people to quietly mark what they're getting, so nobody doubles up? <button class="linkbtn" type="button" id="soloCircle" style="padding:0">Start a circle</button></p></div>`
@@ -8883,6 +9015,25 @@ function paintMyLink(card, fresh = null) {
   });
 }
 
+// Settings > Passkeys: what you have (by device), remove, add.
+function paintPasskeys(card) {
+  if (!card) return;
+  const list = state.me.passkeys || [];
+  const when = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
+  card.innerHTML = `<p class="sub">Get back in with Face ID or your fingerprint, even on a new phone.</p>
+    ${list.map((p) => `<div class="pk-row"><span><strong>${esc(p.label || "Passkey")}</strong><small>Added ${esc(when(p.createdAt))}</small></span>
+      <button class="btn small quiet danger" type="button" data-pk="${esc(p.id)}">Remove</button></div>`).join("")}
+    <button class="btn wide" type="button" id="pkAdd" style="margin-top:${list.length ? 12 : 0}px">${list.length ? "Add a passkey on this device" : "Save a passkey"}</button>`;
+  $("#pkAdd", card).onclick = async () => {
+    try { if (await createPasskey()) { toast("Passkey saved"); paintPasskeys(card); } } catch (e) { toast(e.message); }
+  };
+  card.querySelectorAll("[data-pk]").forEach((b) => (b.onclick = async () => {
+    if (!(await ask("Remove this passkey? You can still sign in with your PIN or sign-in link.", { yes: "Remove", danger: true }))) return;
+    try { state.me.passkeys = (await api("passkey/remove", { id: b.dataset.pk })).passkeys; toast("Passkey removed"); paintPasskeys(card); }
+    catch (e) { toast(e.message); }
+  }));
+}
+
 // ---------- Add to Hints from the iPhone Share button ----------
 // iPhones don't let web apps into the Share menu (Android gets share_target in the manifest), so a Shortcut does it:
 // it sends the shared link with the person's add key to POST /api/quickadd, which saves it to Maybe.
@@ -8977,6 +9128,9 @@ async function renderSettings() {
 
     <div class="label">Sign-in link${tip("A link that signs you in on a new phone or computer. Keep it to yourself.")}</div>
     <div class="set-card" id="linkCard"></div>
+
+    ${passkeyOk() ? `<div class="label">Passkeys${tip("Sign in with Face ID or your fingerprint. Saved in iCloud Keychain or Google Password Manager, so a new phone has it too.")}</div>
+    <div class="set-card" id="passkeyCard"></div>` : ""}
 
     ${iOS ? `<div class="label">Add from the Share button${tip("Share a product from Safari, Amazon or any app straight to your Maybe list.")}</div>
     <div class="set-card" id="addKeyCard"></div>` : ""}
@@ -9107,6 +9261,7 @@ async function renderSettings() {
     $("#installSettings", v)?.addEventListener("click", () => startInstall());
     paintPush($("#pushCard", v));
     paintMyLink($("#linkCard", v));
+    paintPasskeys($("#passkeyCard", v));
     paintAddKey($("#addKeyCard", v));
     const nf = $("#noteForm", v);
     if (nf) wireForm(nf, async ({ body }) => {
@@ -9193,7 +9348,11 @@ async function paintInbox(box) {
   box.innerHTML = `<div class="label">Notes and problems${tip("Notes people send you from Settings, and errors the app ran into. Only you can see this.")}</div>
     ${open.length ? open.map(card).join("") : `<div class="set-card"><p class="sub" style="margin:0">All clear. Nothing new.</p></div>`}
     ${done.length ? `<div class="label">Done</div>${done.map(card).join("")}` : ""}
-    <p class="subtle" style="margin-top:14px">Done cards, and problems that stop happening, clear themselves after 90 days.</p>`;
+    <p class="subtle" style="margin-top:14px">Done cards, and problems that stop happening, clear themselves after 90 days.</p>
+    <div class="label">Delete someone's Hints${tip("For deletion requests by email from people who can't sign in. Same as Delete my Hints.")}</div>
+    <div class="set-card"><form id="ownerFind" autocomplete="off"><div class="err" hidden></div>
+      <label class="field"><span>Their name</span><span class="land-code-row"><input class="input" name="q" maxlength="60" required>
+      <button class="btn" type="submit">Find</button></span></label></form><div id="ownerFound"></div></div>`;
   const act = async (b, path, data, msg) => {
     b.disabled = true;
     try { await api(path, data); toast(msg); paintInbox(box); }
@@ -9204,6 +9363,22 @@ async function paintInbox(box) {
     if (!(await ask("Delete this card? It can't be brought back.", { yes: "Delete", danger: true }))) return;
     act(b, "reports/delete", { id: b.dataset.rdel }, "Deleted");
   }));
+  const found = $("#ownerFound", box);
+  const showFound = (people) => {
+    const day = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
+    found.innerHTML = people.length ? people.map((p) => `<div class="pk-row"><span><strong>${esc(p.name)}</strong>
+        <small>Joined ${esc(day(p.since))} · ${plural(p.wishes, "wish", "wishes")}${p.circles ? ` · ${esc(p.circles)}` : " · no circle"}${p.lookedAfter ? " · looked after" : ""}</small></span>
+        <button class="btn small quiet danger" type="button" data-odel="${esc(p.id)}">Delete</button></div>`).join("")
+      : '<p class="sub" style="margin:10px 0 0">Nobody by that name.</p>';
+    found.querySelectorAll("[data-odel]").forEach((b) => (b.onclick = async () => {
+      const p = people.find((x) => x.id === b.dataset.odel);
+      if (!(await ask(`Delete ${p.name} and everything of theirs? This can't be undone.`, { yes: "Delete", danger: true }))) return;
+      b.disabled = true;
+      try { await api("owner/delete", { memberId: p.id }); toast(`${p.name} is deleted`); showFound(people.filter((x) => x.id !== p.id)); }
+      catch (e) { oops(e.message); b.disabled = false; }
+    }));
+  };
+  wireForm($("#ownerFind", box), async ({ q }) => showFound((await api("owner/find", { q })).people));
 }
 
 // A new invite link for a circle (admin). Old links and the old code stop working.
