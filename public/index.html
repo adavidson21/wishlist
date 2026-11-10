@@ -1907,6 +1907,7 @@
   }
   ::selection { background: color-mix(in srgb, var(--gold) 40%, transparent); }
   .pk-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line, rgba(0,0,0,.08)); }
+  .pk-row > span:first-child { min-width: 0; }
   .pk-row small { display: block; color: var(--muted); font-weight: 400; }
   .ts-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.45); }
   .ts-overlay .card { width: 100%; max-width: 360px; }
@@ -9349,7 +9350,7 @@ async function paintInbox(box) {
     ${open.length ? open.map(card).join("") : `<div class="set-card"><p class="sub" style="margin:0">All clear. Nothing new.</p></div>`}
     ${done.length ? `<div class="label">Done</div>${done.map(card).join("")}` : ""}
     <p class="subtle" style="margin-top:14px">Done cards, and problems that stop happening, clear themselves after 90 days.</p>
-    <div class="label">Delete someone's Hints${tip("For deletion requests by email from people who can't sign in. Same as Delete my Hints.")}</div>
+    <div class="label">Find someone${tip("Raise AI: only the app's daily cap applies to them, no per-person limits. Delete: for deletion requests by email from people who can't sign in, same as Delete my Hints.")}</div>
     <div class="set-card"><form id="ownerFind" autocomplete="off"><div class="err" hidden></div>
       <label class="field"><span>Their name</span><span class="land-code-row"><input class="input" name="q" maxlength="60" required>
       <button class="btn" type="submit">Find</button></span></label></form><div id="ownerFound"></div></div>`;
@@ -9368,8 +9369,16 @@ async function paintInbox(box) {
     const day = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch { return ""; } };
     found.innerHTML = people.length ? people.map((p) => `<div class="pk-row"><span><strong>${esc(p.name)}</strong>
         <small>Joined ${esc(day(p.since))} · ${plural(p.wishes, "wish", "wishes")}${p.circles ? ` · ${esc(p.circles)}` : " · no circle"}${p.lookedAfter ? " · looked after" : ""}</small></span>
-        <button class="btn small quiet danger" type="button" data-odel="${esc(p.id)}">Delete</button></div>`).join("")
+        <span class="actions" style="margin:0;flex-wrap:nowrap">${p.lookedAfter ? "" : `<button class="btn small${p.trusted ? " quiet" : ""}" type="button" data-otrust="${esc(p.id)}" style="white-space:nowrap">${p.trusted ? "AI raised" : "Raise AI"}</button>`}
+        <button class="btn small quiet danger" type="button" data-odel="${esc(p.id)}">Delete</button></span></div>`).join("")
       : '<p class="sub" style="margin:10px 0 0">Nobody by that name.</p>';
+    found.querySelectorAll("[data-otrust]").forEach((b) => (b.onclick = async () => {
+      const p = people.find((x) => x.id === b.dataset.otrust);
+      if (p.trusted && !(await ask(`Put ${p.name} back on the normal AI limits?`, { yes: "Lower it" }))) return;
+      b.disabled = true;
+      try { p.trusted = (await api("owner/trust", { memberId: p.id, on: !p.trusted })).trusted; toast(p.trusted ? `${p.name}'s AI limit is raised` : `${p.name} is back on normal limits`); showFound(people); }
+      catch (e) { oops(e.message); b.disabled = false; }
+    }));
     found.querySelectorAll("[data-odel]").forEach((b) => (b.onclick = async () => {
       const p = people.find((x) => x.id === b.dataset.odel);
       if (!(await ask(`Delete ${p.name} and everything of theirs? This can't be undone.`, { yes: "Delete", danger: true }))) return;

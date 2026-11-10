@@ -423,13 +423,13 @@ async function signIn(env, memberId) {
 // Records who this request is for (Gemini allowances, src/limits.js).
 function forScope(member) {
   const s = scope.getStore();
-  if (s) s.member = { id: member.id, createdAt: member.created_at };
+  if (s) s.member = { id: member.id, createdAt: member.created_at, trusted: !!member.ai_trusted };
 }
 async function auth(request, env) {
   const token = request.headers.get("x-wishlist-token");
   if (!token) fail(401, "Not signed in.");
   const me = await env.DB.prepare(
-    "SELECT m.id, m.name, m.last_name, m.pin_hash, m.onboarded_at, m.pin_cleared_by, m.pin_cleared_at, m.created_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
+    "SELECT m.id, m.name, m.last_name, m.pin_hash, m.onboarded_at, m.pin_cleared_by, m.pin_cleared_at, m.created_at, m.ai_trusted FROM devices d JOIN members m ON m.id = d.member_id WHERE d.token = ?",
   )
     .bind(token)
     .first();
@@ -2336,7 +2336,7 @@ async function quickAdd(req, env) {
   const input = await sharedInput(req);
   const key = (req.headers.get("x-hints-key") || input.key || "").trim();
   if (!/^hk_[A-Za-z0-9]{40}$/.test(key)) fail(401, "This Shortcut needs your add key. Get one in Hints: Settings > Add from the Share button.");
-  const me = await env.DB.prepare("SELECT id, created_at FROM members WHERE add_key_hash = ?").bind(await sha256(key)).first();
+  const me = await env.DB.prepare("SELECT id, created_at, ai_trusted FROM members WHERE add_key_hash = ?").bind(await sha256(key)).first();
   if (!me) fail(401, "That add key doesn't work anymore. Make a new one in Hints: Settings > Add from the Share button.");
   forScope(me);
   await rateLimit(env, `quickadd:${me.id}`, ABUSE.quickAddPerMember, "That's a lot of links for now. Try again in a bit.");
@@ -5559,12 +5559,22 @@ const handlers = {
     const q = String((await body(req)).q || "").trim().slice(0, 60);
     if (q.length < 2) fail(400, "Type at least 2 letters of their name.");
     const { results } = await env.DB.prepare(
-      `SELECT m.id, m.name, m.last_name, m.created_at, m.managed_by,
+      `SELECT m.id, m.name, m.last_name, m.created_at, m.managed_by, m.ai_trusted,
          (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL) AS wishes,
          (SELECT GROUP_CONCAT(g.name, ', ') FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = m.id) AS circles
          FROM members m WHERE (m.name || ' ' || COALESCE(m.last_name, '')) LIKE ? ORDER BY m.name COLLATE NOCASE LIMIT 20`,
     ).bind(`%${q.replace(/[%_]/g, "")}%`).all();
-    return { people: results.map((r) => ({ id: r.id, name: r.last_name ? `${r.name} ${r.last_name}` : r.name, since: r.created_at, wishes: r.wishes, circles: r.circles || "", lookedAfter: !!r.managed_by })) };
+    return { people: results.map((r) => ({ id: r.id, name: r.last_name ? `${r.name} ${r.last_name}` : r.name, since: r.created_at, wishes: r.wishes, circles: r.circles || "", lookedAfter: !!r.managed_by, trusted: !!r.ai_trusted })) };
+  },
+  // Raise (or lower) someone's AI limits: trusted accounts only count toward the whole-app daily cap, with no
+  // per-person or new-account limits (src/limits.js geminiAllowed). { memberId, on }
+  async "POST owner/trust"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    const { memberId, on } = await body(req);
+    const done = await env.DB.prepare("UPDATE members SET ai_trusted = ? WHERE id = ?").bind(on === false ? 0 : 1, String(memberId || "")).run();
+    if (!done.meta?.changes) fail(404, "That person isn't on Hints anymore.");
+    return { ok: true, trusted: on !== false };
   },
   async "POST owner/delete"(req, env) {
     const me = await auth(req, env);

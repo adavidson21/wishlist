@@ -69,6 +69,9 @@ export const LIMITS = {
   // sign-ups can't use up the day for everyone else.
   geminiReserve: 0.2,
   newAccountDays: 7,
+  // Of the daily Google Search calls, how many are kept for things people tap: background price checks and
+  // lookups stop using search once only this many are left.
+  geminiGroundedForTaps: 50,
   // PIN guessing across the whole app: wrong PINs per hour before Hints tightens up for everyone (fewer tries,
   // Turnstile if it's set up) and tells whoever runs Hints.
   pinMissesPerHour: 60,
@@ -132,7 +135,7 @@ export async function burstOk(env, request) {
 
 // Who an API request is for, so Gemini calls deep inside link lookups can be counted against the right person
 // without passing them through every function. src/wishlist.js handle() opens a scope per request ({ route });
-// auth() and the Share button add { member: { id, createdAt } }. The hourly schedule has no scope.
+// auth() and the Share button add { member: { id, createdAt, trusted } }. The hourly schedule has no scope.
 // Needs the "nodejs_als" compatibility flag (wrangler.jsonc).
 export const scope = new AsyncLocalStorage();
 // Routes where Gemini runs because someone tapped something (the rest are the app working on its own).
@@ -142,8 +145,11 @@ export const isNewAccount = (createdAt) =>
   !createdAt || Date.now() - Date.parse(createdAt) < LIMITS.newAccountDays * 86_400_000;
 
 // Whether a Gemini request may go ahead, before it's made. Checks, in order: the person's daily allowance, the
-// reserve (new accounts stop at 80% of the day), and the whole-app cap. grounded: whether Google Search may be
-// used (false once the grounded cap is reached). Fails closed: Gemini is optional, so a counting error means no.
+// reserve (new accounts stop at 80% of the day), and the whole-app cap. Trusted accounts (members.ai_trusted:
+// everyone who was on Hints before public sign-ups, plus anyone the owner raises) skip the first two: only the
+// whole-app cap applies to them. grounded: whether Google Search may be used. It stops at the grounded cap, and
+// for background work (anything not tapped, including the hourly schedule) it stops geminiGroundedForTaps
+// earlier, so taps always have some left. Fails closed: Gemini is optional, so a counting error means no.
 // { ok, grounded, why: "person" | "busy" | "app" | "error" }
 export async function geminiAllowed(env, { grounded = false } = {}) {
   if (!env.DB) return { ok: true, grounded };
@@ -151,16 +157,18 @@ export async function geminiAllowed(env, { grounded = false } = {}) {
   const groundedCap = Number(env.GEMINI_GROUNDED_CAP) || LIMITS.geminiGroundedPerDay;
   try {
     const s = scope.getStore();
+    const user = GEMINI_USER_ROUTES.has(s?.route);
     const used = await peek(env, "gemini:all", 86400);
-    if (s?.member) {
+    if (s?.member && !s.member.trusted) {
       const fresh = isNewAccount(s.member.createdAt);
-      const user = GEMINI_USER_ROUTES.has(s.route);
       const [norm, newb] = user ? LIMITS.geminiUserPerMember : LIMITS.geminiAutoPerMember;
       if ((await peek(env, `gemini:${user ? "u" : "a"}:${s.member.id}`, 86400)) >= (fresh ? newb : norm)) return { ok: false, why: "person" };
       if (fresh && used >= cap * (1 - LIMITS.geminiReserve)) return { ok: false, why: "busy" };
     }
     if (used >= cap) return { ok: false, why: "app" };
-    return { ok: true, grounded: grounded && (await peek(env, "gemini:grounded", 86400)) < groundedCap };
+    if (!grounded) return { ok: true, grounded: false };
+    const searchLimit = user ? groundedCap : Math.max(0, groundedCap - LIMITS.geminiGroundedForTaps);
+    return { ok: true, grounded: (await peek(env, "gemini:grounded", 86400)) < searchLimit };
   } catch (err) {
     console.error("gemini allowance", err);
     return { ok: false, why: "error" };

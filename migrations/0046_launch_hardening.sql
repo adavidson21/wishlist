@@ -27,3 +27,9 @@ CREATE TABLE passkey_challenges (
   member_id TEXT,      -- set when making a passkey (signed in), NULL when signing in with one
   expires   TEXT NOT NULL
 );
+
+-- Trusted accounts: only the whole-app Gemini cap applies to them, no per-person or new-account limits
+-- (src/limits.js geminiAllowed). Everyone already on Hints when public sign-ups open is trusted; whoever runs
+-- Hints can raise anyone else later (Settings > Inbox, "Raise AI limit").
+ALTER TABLE members ADD COLUMN ai_trusted INTEGER NOT NULL DEFAULT 0;
+UPDATE members SET ai_trusted = 1;

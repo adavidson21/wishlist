@@ -93,11 +93,12 @@ test("Gemini: per-person allowance, new accounts stop at 80%, search has its own
   assert.equal((await as(fresh, "POST estimate", () => geminiAllowed(env))).why, "busy");
   assert.equal((await as(old, "POST name", () => geminiAllowed(env))).ok, true);
   assert.equal((await geminiAllowed(env)).ok, true);
-  // Search: 2 a day here.
-  assert.equal((await geminiAllowed(env, { grounded: true })).grounded, true);
+  // Search: 2 a day here, all of it kept for taps (background work stops 50 earlier).
+  assert.equal((await as(old, "POST name", () => geminiAllowed(env, { grounded: true }))).grounded, true);
+  assert.equal((await as(old, "POST prices", () => geminiAllowed(env, { grounded: true }))).grounded, false, "background leaves search for taps");
   await geminiCount(env, true);
   await geminiCount(env, true);
-  const g = await geminiAllowed(env, { grounded: true });
+  const g = await as(old, "POST name", () => geminiAllowed(env, { grounded: true }));
   assert.equal(g.ok, true);
   assert.equal(g.grounded, false, "runs without search");
   // The whole-app cap.
@@ -142,4 +143,37 @@ test("only whoever runs Hints can find and delete someone", async () => {
   assert.equal((await w.call(owner, "POST owner/delete", { memberId: owner.id })).status, 400, "not yourself");
   await w.api(owner, "POST owner/delete", { memberId: sam.id });
   assert.equal(w.sql("SELECT COUNT(*) AS n FROM members WHERE id = ?", sam.id)[0].n, 0);
+});
+
+test("Gemini: trusted accounts only count toward the whole-app cap; background search stops early", async () => {
+  const w = world();
+  const env = { DB: w.env.DB, GEMINI_DAILY_CAP: "100", GEMINI_GROUNDED_CAP: "60" };
+  const fam = { id: "fam1", createdAt: new Date().toISOString(), trusted: true };
+  const as = (member, route, fn) => scope.run({ route, member }, fn);
+  for (let i = 0; i < 90; i++) await as(fam, "POST name", () => geminiCount(env, false));
+  assert.equal((await as(fam, "POST name", () => geminiAllowed(env))).ok, true, "no per-person limit, no 80% stop");
+  for (let i = 0; i < 10; i++) await geminiCount(env, false);
+  assert.equal((await as(fam, "POST name", () => geminiAllowed(env))).why, "app");
+
+  const w2 = world();
+  const env2 = { DB: w2.env.DB, GEMINI_GROUNDED_CAP: "60" };
+  for (let i = 0; i < 10; i++) await geminiCount(env2, true);
+  assert.equal((await as(fam, "POST prices", () => geminiAllowed(env2, { grounded: true }))).grounded, false, "background: 60 - 50 = 10");
+  assert.equal((await as(fam, "POST preview", () => geminiAllowed(env2, { grounded: true }))).grounded, true, "taps still search");
+});
+
+test("the owner can raise and lower someone's AI limits; existing accounts start trusted", async () => {
+  const w = world();
+  const c = w.circle();
+  const owner = w.person("Alexis", { circle: c });
+  const sam = w.person("Sam", { circle: c });
+  assert.equal((await w.call(sam, "POST owner/trust", { memberId: sam.id })).status, 404);
+  await w.api(owner, "POST owner/trust", { memberId: sam.id });
+  assert.equal(w.sql("SELECT ai_trusted AS t FROM members WHERE id = ?", sam.id)[0].t, 1);
+  assert.equal((await w.api(owner, "POST owner/find", { q: "sam" })).people[0].trusted, true);
+  await w.api(owner, "POST owner/trust", { memberId: sam.id, on: false });
+  assert.equal(w.sql("SELECT ai_trusted AS t FROM members WHERE id = ?", sam.id)[0].t, 0);
+  // The migration marks everyone already there as trusted (UPDATE runs before anyone new signs up).
+  const sql = (await import("node:fs")).readFileSync(new URL("../migrations/0046_launch_hardening.sql", import.meta.url), "utf8");
+  assert.match(sql, /UPDATE members SET ai_trusted = 1;/);
 });
