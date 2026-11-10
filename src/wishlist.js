@@ -1054,6 +1054,25 @@ async function givers(env, me, myHh) {
   return results.some((r) => r.id === me.id) ? results : [{ id: me.id, name: me.name }, ...results];
 }
 
+// Everyone someone else in your household (who uses the app) shares a circle with. A budget is only shared when
+// one of them can see the person it's for; otherwise it would say "shared with Mike" about someone Mike can't see
+// (household budgets plan, rule 1).
+async function mateSees(env, meId, myHh) {
+  if (!myHh) return new Set();
+  const { results } = await env.DB.prepare(
+    `SELECT DISTINCT y.member_id AS id FROM members t JOIN group_members x ON x.member_id = t.id JOIN group_members y ON y.group_id = x.group_id
+      WHERE t.household_id = ? AND t.id != ? AND t.managed_by IS NULL`,
+  ).bind(myHh, meId).all();
+  return new Set(results.map((r) => r.id));
+}
+const sharedFor = (myHh, seen, subject) => sharesBudget(myHh, subject) && seen.has(subject.id);
+// "Mike" for a household budget someone else last set (null when it was you or nobody's recorded).
+async function setterName(env, meId, id) {
+  if (!id || id === meId) return null;
+  const nick = (await env.DB.prepare("SELECT nickname FROM nicknames WHERE author_id = ? AND subject_id = ?").bind(meId, id).first())?.nickname;
+  return nick || (await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(id).first())?.name || null;
+}
+
 // Two people with the same name can share a circle only if they're in different households (see SAME_SLOT).
 // Returns the circle name where `memberIds`, once in household `hh` (null = none), would clash, or null.
 async function nameClash(env, groupIds, memberIds, hh) {
@@ -4066,20 +4085,26 @@ const handlers = {
       ).bind(id, me.id, me.id).first();
       if (!row) fail(404, "Household not found.");
     }
-    if (b.skip) {
-      await env.DB.prepare("INSERT INTO budget_skips (author_id, target, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(me.id, target, now()).run();
-    } else {
-      await env.DB.prepare("DELETE FROM budget_skips WHERE author_id = ? AND target = ?").bind(me.id, target).run();
-    }
-    return { ok: true };
+    // both: for everyone in your household who uses the app (the default in the app when you're in one), so you all
+    // agree who you're buying for. Otherwise just you, as before.
+    const myHh = b.both ? await householdOf(env, me.id) : null;
+    const who = myHh ? (await givers(env, me, myHh)).map((x) => x.id) : [me.id];
+    await env.DB.batch(who.map((id) => (b.skip
+      ? env.DB.prepare("INSERT INTO budget_skips (author_id, target, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(id, target, now())
+      : env.DB.prepare("DELETE FROM budget_skips WHERE author_id = ? AND target = ?").bind(id, target))));
+    return { ok: true, for: who.length };
   },
 
   // Set (amount) or clear (empty amount) your budget for one person for one occasion
   // (occasion: YYYYMMDD of their Christmas or birthday; absent = the soonest). For someone outside your
   // household this is your household's shared budget (their whole household's at Christmas).
+  // was: the amount (cents, or null for none) the app showed when you opened it. When it's sent and someone else in
+  // your household changed a shared budget since, nothing is saved and the answer is 409 with detail.conflict
+  // { amount_cents, by }, so the app can ask. Older apps don't send it and save as before.
   async "POST budget"(req, env) {
     const me = await auth(req, env);
-    const { subjectId, amount, occasion } = await body(req);
+    const b = await body(req);
+    const { subjectId, amount, occasion } = b;
     if (!subjectId || subjectId === me.id || !(await sharesGroup(env, me.id, subjectId))) fail(400, "Pick who this budget is for.");
     const s = await pickOccasion(env, subjectId, occasion);
     const value = cents(amount);
@@ -4087,8 +4112,24 @@ const handlers = {
       householdOf(env, me.id),
       env.DB.prepare("SELECT id, household_id FROM members WHERE id = ?").bind(String(subjectId)).first(),
     ]);
-    if (sharesBudget(myHh, subject)) {
+    const seen = await mateSees(env, me.id, myHh);
+    // Shared when someone else in your household can see them, or (at Christmas) anyone in their household.
+    let shared = sharedFor(myHh, seen, subject);
+    if (!shared && sharesBudget(myHh, subject) && isXmasCode(s) && subject.household_id) {
+      const { results } = await env.DB.prepare("SELECT id FROM members WHERE household_id = ?").bind(subject.household_id).all();
+      shared = results.some((r) => seen.has(r.id));
+    }
+    if (shared) {
       const target = budgetTarget(subject, s);
+      if ("was" in b) {
+        const row = await env.DB.prepare("SELECT amount_cents, updated_by FROM household_budgets WHERE household_id = ? AND target = ? AND season = ?")
+          .bind(myHh, target, s).first();
+        const was = b.was == null ? null : Number(b.was);
+        const now_ = row?.amount_cents ?? null;
+        if (now_ !== was && row?.updated_by && row.updated_by !== me.id) {
+          return json({ error: "Someone changed this budget.", detail: { conflict: { amount_cents: now_, by: await setterName(env, me.id, row.updated_by) || "Someone" } } }, 409);
+        }
+      }
       if (value === null) {
         await env.DB.prepare("DELETE FROM household_budgets WHERE household_id = ? AND target = ? AND season = ?").bind(myHh, target, s).run();
       } else {
@@ -4321,9 +4362,14 @@ const handlers = {
         ORDER BY h.season DESC, s.name COLLATE NOCASE, h.created_at`,
     ).bind(...ids, ...(member ? [String(member)] : [])).all();
     const nicks = await nicknamesFor(env, me.id);
+    // Your household's gifts only for people you share a circle with (not someone only they know).
+    const { results: circle } = await env.DB.prepare(
+      "SELECT DISTINCT y.member_id AS id FROM group_members x JOIN group_members y ON y.group_id = x.group_id WHERE x.member_id = ?",
+    ).bind(me.id).all();
+    const mine = new Set(circle.map((r) => r.id));
     return {
       gifts: results
-        .filter((r) => r.buyer_id === me.id || sharesBudget(myHh, r))
+        .filter((r) => r.buyer_id === me.id || (sharesBudget(myHh, r) && mine.has(r.subject_id)))
         .map((r) => ({
           kind: r.kind, id: r.ref_id, season: r.season, subjectId: r.subject_id, subjectName: nicks.get(r.subject_id) || r.subject_name,
           title: r.kind === "card" ? `${GIFT_CARD_NAMES.get(r.title) || r.title} gift card` : r.title,
@@ -4341,6 +4387,7 @@ const handlers = {
     const skips = await skipsFor(env, me.id);
     const teamIds = team.map((x) => x.id);
     const inTeam = teamIds.map(() => "?").join(",");
+    const seen = await mateSees(env, me.id, myHh);
     const [people, budgets, shared, itemBuys, ideaBuys, ideas, cardGifts] = await Promise.all([
       env.DB.prepare(
         `SELECT DISTINCT m.id, m.name, m.photo_at, m.birthday, m.household_id FROM group_members gm JOIN members m ON m.id = gm.member_id
@@ -4349,7 +4396,7 @@ const handlers = {
       ).bind(me.id, me.id).all(),
       env.DB.prepare("SELECT subject_id, season, amount_cents FROM budgets WHERE author_id = ? AND season >= ?").bind(me.id, t).all(),
       myHh
-        ? env.DB.prepare("SELECT target, season, amount_cents FROM household_budgets WHERE household_id = ? AND season >= ?").bind(myHh, t).all()
+        ? env.DB.prepare("SELECT target, season, amount_cents, updated_by, updated_at FROM household_budgets WHERE household_id = ? AND season >= ?").bind(myHh, t).all()
         : Promise.resolve({ results: [] }),
       env.DB.prepare(
         `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.qty, c.chip_in, c.buyer_id
@@ -4368,7 +4415,18 @@ const handlers = {
     ]);
     const nicks = await nicknamesFor(env, me.id);
     const byId = new Map(people.results.map((p) => [p.id, p]));
-    const isShared = (subjectId) => { const p = byId.get(subjectId); return !!p && sharesBudget(myHh, p); };
+    // Everyone in the households you plan Christmas for, including people you don't share a circle with, so the
+    // household's spending is the same number for everyone in yours (household budgets plan, rule 2).
+    // A household's Christmas is shared when someone else in yours can see anyone in it (same rule as POST budget).
+    const candidates = [...new Set(people.results.filter((p) => p.household_id && sharesBudget(myHh, p)).map((p) => p.household_id))];
+    const hhAll = new Map();
+    if (candidates.length) {
+      const { results } = await env.DB.prepare(`SELECT id, household_id FROM members WHERE household_id IN (${candidates.map(() => "?").join(",")})`).bind(...candidates).all();
+      for (const r of results) hhAll.set(r.household_id, [...(hhAll.get(r.household_id) || []), r.id]);
+    }
+    const targetHhs = candidates.filter((h) => (hhAll.get(h) || []).some((id) => seen.has(id)));
+    const inTarget = (p) => !!p.household_id && targetHhs.includes(p.household_id);
+    const isShared = (subjectId) => { const p = byId.get(subjectId); return !!p && (sharedFor(myHh, seen, p) || inTarget(p)); };
     // Your own purchases, plus your household's for people outside it.
     const counts = (r) => r.buyer_id === me.id || isShared(r.subject_id);
     const buyerName = (id) => (id === me.id ? me.name : nicks.get(id) || team.find((x) => x.id === id)?.name || "Someone");
@@ -4414,11 +4472,33 @@ const handlers = {
     });
     const purchases = [...itemBuys.results.filter(counts).map(purchase("item")), ...ideaBuys.results.filter(counts).map(purchase("idea")), ...cardGifts.results.filter(counts).map(cardBuy)]
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const sharedBudget = (target, code) => shared.results.find((b) => b.target === target && b.season === code)?.amount_cents ?? null;
+    const sharedRow = (target, code) => shared.results.find((b) => b.target === target && b.season === code) || null;
+    const sharedBudget = (target, code) => sharedRow(target, code)?.amount_cents ?? null;
+    const names = new Map(team.map((x) => [x.id, nicks.get(x.id) || x.name]));
+    // Who last set a shared budget and when (null by: you, or not recorded).
+    const setBy = (target, code) => {
+      const r = sharedRow(target, code);
+      return r ? { budget_by: r.updated_by && r.updated_by !== me.id ? names.get(r.updated_by) || "Someone" : null, budget_at: r.updated_at || null } : {};
+    };
+    // Purchases by your household for people in a household you can't see (amount only, no titles).
+    const everyBuy = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea")), ...cardGifts.results.map(cardBuy)];
+    const unseenBuys = (hh, code) => {
+      const visible = new Set(people.results.map((p) => p.id));
+      const all = new Set(hhAll.get(hh) || []);
+      const rows = everyBuy.filter((x) => x.occasion === code && all.has(x.subject_id) && !visible.has(x.subject_id));
+      const byBuyer = {};
+      for (const x of rows) byBuyer[x.buyerId] = (byBuyer[x.buyerId] || 0) + x.spent_cents;
+      return { count: rows.length, cents: rows.reduce((n, x) => n + x.spent_cents, 0), byBuyer };
+    };
+    // Everything your household bought anyone in household `hh` for this occasion.
+    const hhSpent = (hh, code) => {
+      const all = new Set(hhAll.get(hh) || []);
+      return everyBuy.filter((x) => x.occasion === code && all.has(x.subject_id)).reduce((n, x) => n + x.spent_cents, 0);
+    };
     // Households you plan Christmas for as a whole (people outside yours who are in one), with who's in them.
     const households = {};
     for (const p of people.results) {
-      if (!p.household_id || !sharesBudget(myHh, p)) continue;
+      if (!inTarget(p)) continue;
       (households[p.household_id] ||= { id: p.household_id, members: [] }).members.push(p);
     }
     const hhIds = Object.keys(households);
@@ -4441,10 +4521,11 @@ const handlers = {
       people: people.results.map((p) => {
         const occasions = occasionsFor(p, t);
         const mine = (rows) => rows.filter((x) => x.subject_id === p.id);
-        const shares = sharesBudget(myHh, p);
+        const shares = sharedFor(myHh, seen, p) || inTarget(p);
+        const sharesOwn = sharedFor(myHh, seen, p);
         // A mark or budget filed under an old birthday date (they changed it) still shows until that date passes.
         const sharedCodes = shared.results.filter((b) => b.target === `m:${p.id}`).map((b) => b.season);
-        for (const code of new Set([...(shares ? sharedCodes : mine(budgets.results).map((b) => b.season)), ...mine(purchases).map((x) => x.occasion)])) {
+        for (const code of new Set([...(sharesOwn ? sharedCodes : mine(budgets.results).map((b) => b.season)), ...mine(purchases).map((x) => x.occasion)])) {
           if (!occasions.some((o) => o.code === code)) {
             const xmas = isXmasCode(code);
             occasions.push({ code, date: isoOf(code), christmas: xmas, birthday: !xmas });
@@ -4463,17 +4544,21 @@ const handlers = {
           occasions: occasions.map((o) => {
             const bought = mine(purchases).filter((x) => x.occasion === o.code);
             const ownSpent = bought.reduce((sum, x) => sum + x.spent_cents, 0);
-            if (!shares) {
-              return { ...o, budget_cents: mine(budgets.results).find((b) => b.season === o.code)?.amount_cents ?? null, spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
+            if (isXmasCode(o.code) && inTarget(p)) {
+              // Their household's Christmas: one budget, everything any of you bought for any of them counts, the
+              // same number for everyone in your household.
+              const target = `h:${p.household_id}`;
+              const unseen = unseenBuys(p.household_id, o.code);
+              return { ...o, shared: true, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), spent_cents: hhSpent(p.household_id, o.code), own_spent_cents: ownSpent, household: p.household_id, purchases: bought, ...(unseen.count ? { unseen } : {}) };
+            }
+            if (!sharesOwn) {
+              // Personal. Someone only you can see who still has an older shared budget keeps showing it until you set one.
+              const own = mine(budgets.results).find((b) => b.season === o.code)?.amount_cents ?? null;
+              const legacy = sharesBudget(myHh, p) ? sharedBudget(budgetTarget(p, o.code), o.code) : null;
+              return { ...o, shared: false, budget_cents: own ?? legacy, spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
             }
             const target = budgetTarget(p, o.code);
-            if (target.startsWith("h:")) {
-              // Their household's Christmas: one budget, everything bought for any of them counts.
-              const members = households[p.household_id].members;
-              const spent = purchases.filter((x) => x.occasion === o.code && members.includes(x.subject_id)).reduce((sum, x) => sum + x.spent_cents, 0);
-              return { ...o, budget_cents: sharedBudget(target, o.code), spent_cents: spent, own_spent_cents: ownSpent, household: p.household_id, purchases: bought };
-            }
-            return { ...o, budget_cents: sharedBudget(target, o.code), spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
+            return { ...o, shared: true, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
           }),
           ideas: ideas.results.filter((r) => r.subject_id === p.id).map((r) => ideaOut(renameRow(r, nicks), me.id)),
         };
