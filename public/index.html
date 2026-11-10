@@ -1546,6 +1546,14 @@
 
   /* Getting started on My list: add 3 wishes. */
   .starter { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
+  .hh-invite { border: 2px solid var(--gold); }
+  .hh-invite-top { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+  .hh-invite-top p { margin: 4px 0 0; }
+  .hh-asked strong small { display: block; font-weight: 600; color: var(--muted); }
+  .share-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+  .share-split > div { background: var(--panel); border-radius: 14px; padding: 10px 12px; }
+  .share-split ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
+  .share-split .label { margin: 0; }
   .starter strong { display: block; font-size: 17px; }
   .starter p { margin: 2px 0 12px; color: var(--muted); font-size: 15px; }
   .segs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -1977,9 +1985,10 @@ function initials2(n) {
 // Picture for a circle (key "g:<id>") or household ("h:<id>"): its photo, or initials on a rounded square.
 // A household without a photo is split down the middle between two of its people (their photos or initials),
 // people who use the app and have a photo first.
-function tileAvatar(name, key, size) {
-  if (key.startsWith("h:") && !PHOTOS.has(key)) {
-    const ids = state.households?.[key.slice(2)]?.memberIds || [];
+// memberIds: whose faces to split it between, when it isn't a household in state.households (a household request).
+function tileAvatar(name, key, size, memberIds) {
+  if ((key.startsWith("h:") || memberIds) && !PHOTOS.has(key)) {
+    const ids = memberIds || state.households?.[key.slice(2)]?.memberIds || [];
     const known = new Map(everyone().map((m) => [m.id, m]));
     if (state.me) known.set(state.me.id, { id: state.me.id, name: state.me.name });
     const people = ids.map((id) => known.get(id)).filter(Boolean)
@@ -2667,6 +2676,7 @@ async function refreshMe() {
   copySeenOnce();
   updateAppBadge();
   syncPush();
+  noteHouseholdChange();
 }
 
 // Older wishes and ideas get their link details (photo, price, brand, size, color) refreshed once on the server,
@@ -3919,7 +3929,7 @@ async function renderMine() {
       <p>So your people can tell you apart from anyone else named ${esc(state.me.name)}.</p><div class="err" hidden></div>
       <label class="field"><span>Last name</span><input class="input" name="lastName" maxlength="40" required></label>
       <div class="actions" style="margin:0"><button class="btn primary" type="submit">Save</button></div></form>`;
-  v.innerHTML = '<div id="installSlot"></div><div id="pushSlot"></div>' + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards) + receivedSection(data.received) + shareRow()) + "</div>" : `
+  v.innerHTML = hhInviteCards() + '<div id="installSlot"></div><div id="pushSlot"></div>' + lastNotice + (data.items.length ? switcher + `<div id="mPanel" role="tabpanel" aria-labelledby="${view === "maybe" ? "msMaybe" : "msList"}">` + (view === "maybe" ? maybeSection : liveSection + myGiftCards(data.giftCards) + receivedSection(data.received) + shareRow()) + "</div>" : `
     <div class="empty">
       ${giftBox("Drop your first hint")}
       <strong>Let's start your list</strong>
@@ -3933,6 +3943,7 @@ async function renderMine() {
   paintInstallCard();
   paintPushNudge();
   oneNudge();
+  wireHhInvites(v);
   $("#addFirst")?.addEventListener("click", () => addThing());
   $("#listAdd")?.addEventListener("click", () => addThing());
   $("#maybeAdd")?.addEventListener("click", () => addThing());
@@ -5791,7 +5802,7 @@ function openHouseholds(gid) {
     ${waiting.length ? `<p class="subtle">${plural(waiting.length, "person isn't", "people aren't")} on Hints yet. Add wishes for them now, then tap Invite to send each one their own sign-in link.</p>` : ""}
     ${[...by].map(([id, ppl]) => `<div class="hh" style="margin-bottom:12px">
       <div class="hh-name">${tileAvatar(householdLabel(id), `h:${id}`)} ${esc(householdLabel(id))}<button class="btn quiet small" type="button" data-rename="${esc(id)}">Edit</button></div>
-      <div style="background:var(--card);border-radius:14px;padding:4px 12px">${ppl.map((m) => row(m, `<button class="btn small quiet danger" type="button" data-out="${esc(m.id)}" data-hh="${esc(id)}">Remove</button>`)).join("")}</div>
+      <div style="background:var(--card);border-radius:14px;padding:4px 12px">${ppl.map((m) => row(m, `<button class="btn small quiet danger" type="button" data-out="${esc(m.id)}" data-hh="${esc(id)}">Remove</button>`)).join("")}${hhAskRows(id)}</div>
       <button class="btn small wide" type="button" data-addto="${esc(id)}" style="margin-top:8px">${PLUS} Add someone</button></div>`).join("")}
     ${by.size ? "" : `<p class="subtle">No households yet.</p>`}
     ${loose.length ? `<div class="label" style="margin-top:18px">Not in a household</div>
@@ -5801,6 +5812,7 @@ function openHouseholds(gid) {
   (el) => {
     $("#hhToManage", el).onclick = () => openCircleManage(gid);
     wireInviteBtns(el);
+    wireHhAsks(el, back);
     // New people who aren't on Hints yet. You look after their lists until they open their invite.
     $("#setupHh", el).onclick = () => {
       const nameRow = (i) => `<div class="two" data-prow><label class="field"><span>Person ${i}</span><input class="input" data-first maxlength="40" placeholder="First name"></label>
@@ -5894,13 +5906,13 @@ function openHouseholds(gid) {
       const id = b.dataset.addto;
       if (!loose.length) return addNew(id);
       picker(`Add to ${householdLabel(id)}`, false, async ([memberId]) => {
-        await api("household/add", { householdId: id, memberId });
-        await back(`Added ${memberId === state.me.id ? "you" : personName(memberId)}`);
+        const r = await api("household/add", { householdId: id, memberId });
+        await back(askedMsg(r, personName(memberId)) || `Added ${memberId === state.me.id ? "you" : personName(memberId)}`);
       }, id);
     }));
     $("#newHh", el)?.addEventListener("click", () => picker("New household", true, async (memberIds, name) => {
-      await api("household/create", { groupId: gid, memberIds, name });
-      await back("Household made");
+      const r = await api("household/create", { groupId: gid, memberIds, name });
+      await back(r.asked ? `Household made. Asked ${plural(r.asked, "person", "people")} to join, since they use Hints.` : "Household made");
     }));
   });
 }
@@ -9284,17 +9296,88 @@ function openCircleManage(gid) {
   });
 }
 
+// ---------- household requests ----------
+// Joining a household shares gift budgets and purchases both ways, so people who use Hints say yes first
+// (src/wishlist.js household/answer). The card shows on My list and in Settings > Household until answered.
+function hhInviteCards() {
+  return (state.me?.householdInvites || []).map((r) => `<div class="starter slide hh-invite" data-hh-invite="${esc(r.id)}">
+    <div class="hh-invite-top">${tileAvatar(r.label, `hhinv:${r.id}`, undefined, r.people.map((p) => p.id))}<div><strong>${esc(r.by)} wants to add you to ${esc(r.label === `${r.by}'s household` ? "their household" : r.label)}</strong>
+      <p>You'd share gift budgets and see what each other buys for everyone outside it. Ideas, and gifts for each other, stay private.</p></div></div>
+    <div class="err" hidden></div>
+    <div class="actions" style="margin:0"><button class="btn quiet" type="button" data-hh-no>No thanks</button><button class="btn primary" type="button" data-hh-yes>Join</button></div></div>`).join("");
+}
+function wireHhInvites(root, after = () => render()) {
+  root.querySelectorAll("[data-hh-invite]").forEach((card) => {
+    const id = card.dataset.hhInvite;
+    const answer = async (accept, btn) => {
+      btn.disabled = true;
+      try {
+        await api("household/answer", { id, accept });
+        await refreshMe();
+        if (accept) { buzz(); party(); } else toast("Okay, you're not in their household.");
+        after();
+      } catch (e) { const err = $(".err", card); err.textContent = e.message; err.hidden = false; btn.disabled = false; }
+    };
+    $("[data-hh-yes]", card).onclick = (e) => answer(true, e.currentTarget);
+    $("[data-hh-no]", card).onclick = (e) => answer(false, e.currentTarget);
+  });
+}
+// People asked to join household `hhId` (null: yours, including "start one with me") who haven't answered yet.
+const hhAsks = (hhId) => (state.me?.householdAsks || []).filter((a) => (hhId ? a.householdId === hhId : !a.householdId || a.householdId === state.me.household?.id));
+function hhAskRows(hhId) {
+  const asks = hhAsks(hhId);
+  return asks.map((a) => `<div class="hh-row hh-asked">${avatar(a.name, a.memberId)}<strong>${esc(a.name)}<small>Asked to join</small></strong>
+    ${hhActs(`<button class="btn small quiet" type="button" data-hh-unask="${esc(a.id)}">Take back</button>`)}</div>`).join("");
+}
+function wireHhAsks(root, reload) {
+  root.querySelectorAll("[data-hh-unask]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await api("household/uninvite", { id: b.dataset.hhUnask }); reload("Request taken back"); } catch (e) { oops(e.message); b.disabled = false; }
+  }));
+}
+// After household/add or household/create: what to say.
+const askedMsg = (r, name) => (r?.asked ? (r.again ? `You already asked ${name}` : `Asked ${name}. They'll join once they say yes.`) : null);
+
+// The moment you start (or stop) sharing budgets with someone: who's in your household using the app, compared
+// with last time on this device. The first look on a device just remembers, so nobody gets a sheet out of nowhere.
+const HH_MATES_KEY = "hints-hh-mates";
+function noteHouseholdChange() {
+  const me = state.me;
+  if (!me) return;
+  const mates = (me.household?.members || []).filter((m) => m.usesApp && m.id !== me.id);
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(HH_MATES_KEY) || "null"); } catch { saved = null; }
+  try { localStorage.setItem(HH_MATES_KEY, JSON.stringify({ me: me.id, ids: mates.map((m) => m.id) })); } catch {}
+  if (!saved || saved.me !== me.id) return;
+  const was = new Set(saved.ids || []);
+  const added = mates.filter((m) => !was.has(m.id));
+  const gone = was.size && !mates.length;
+  if (added.length) setTimeout(() => sharingSheet(mates.map((m) => m.name)), 600);
+  else if (gone) setTimeout(() => toast("You no longer share gift budgets with anyone. Your budgets are just yours now."), 600);
+}
+function sharingSheet(names) {
+  if (sheet.open) return;
+  const who = peopleNames(names);
+  openSheet(`<h3>${esc(names.length > 1 ? `You, ${who}` : `You and ${who}`)} plan gifts together</h3>
+    <div class="share-split">
+      <div><div class="label">Shared with ${esc(who)}</div><ul><li>Budgets for everyone outside your household</li><li>What each of you bought them</li><li>Where it's hidden and how it's going</li></ul></div>
+      <div><div class="label">Just yours</div><ul><li>Your gift ideas</li><li>Gifts and budgets for each other</li></ul></div>
+    </div>
+    <p class="subtle">The people you shop for never see any of it.</p>
+    <button class="btn primary wide" type="button" id="shareOk" style="margin-top:8px">Got it</button>`, (el) => { $("#shareOk", el).onclick = () => closeSheet(); });
+}
+
 // Settings > Household. Optional: people who live or gift together. Turning a circle on puts the
 // whole household in it, including people added later.
 function householdCard() {
   const hh = state.me.household;
-  if (!hh) return `<button class="btn wide" type="button" id="hhAdd">${PLUS} Add someone to your household</button>`;
+  if (!hh) return `${hhInviteCards()}${hhAskRows(null)}<button class="btn wide" type="button" id="hhAdd"${hhAsks(null).length ? ' style="margin-top:8px"' : ""}>${PLUS} Add someone to your household</button>`;
   const auto = householdAuto(hh.members.map((m) => m.name));
   return `<div id="hhPhoto">${photoRowHtml(hh.label, `h:${hh.id}`)}</div>
     <h4 style="margin-top:14px">${esc(hh.label)}</h4>
     <div style="margin-top:6px">${hh.members.map((m) => `<div class="hh-row">${avatar(m.name, m.id)}<strong>${esc(m.name)}${m.id === state.me.id ? " <small>(you)</small>" : ""}</strong>
       ${hhActs(`${m.id !== state.me.id && m.hasPin ? `<button class="btn small quiet" type="button" data-clear-pin="${esc(m.id)}">Clear PIN</button>` : ""}
-      ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}`)}</div>`).join("")}</div>
+      ${m.id === state.me.id ? "" : `<button class="btn small quiet danger" type="button" data-hh-out="${esc(m.id)}">Remove</button>`}`)}</div>`).join("")}${hhAskRows(hh.id)}</div>
     <button class="btn wide" type="button" id="hhAdd" style="margin-top:8px">${PLUS} Add someone</button>
     <button class="btn wide quiet" type="button" data-open-hh="${esc(hh.id)}" style="margin-top:8px">🐾 Household page and pets</button>
     <hr class="set-div">
@@ -9313,6 +9396,8 @@ function householdCard() {
 
 function wireHousehold(v, reload) {
   const hh = state.me.household;
+  wireHhInvites(v, () => reload());
+  wireHhAsks(v, reload);
   v.querySelectorAll("[data-open-hh]").forEach((b) => (b.onclick = () => openHousehold(b.dataset.openHh)));
   if (hh) wirePhotoRow($("#hhPhoto", v), async (photo) => { await api("household/photo", { photo }); reload(photo ? "Photo saved" : "Photo removed"); });
   $("#hhAdd", v)?.addEventListener("click", () => {
@@ -9328,7 +9413,7 @@ function wireHousehold(v, reload) {
       ${taken.length ? `<p class="subtle" style="margin-top:16px">Already in a household</p>${taken.map((m) => `<button class="pick-person" type="button" disabled>${avatar(m.name, m.id)}<span>${esc(m.name)}<small>${esc(householdLabel(m.householdId))}</small></span></button>`).join("")}` : ""}`,
     (el) => el.querySelectorAll("[data-hh-in]").forEach((b) => (b.onclick = async () => {
       b.disabled = true;
-      try { await api("household/add", { memberId: b.dataset.hhIn }); buzz(); reload(`Added ${personName(b.dataset.hhIn)} to your household`); }
+      try { const r = await api("household/add", { memberId: b.dataset.hhIn }); buzz(); reload(askedMsg(r, personName(b.dataset.hhIn)) || `Added ${personName(b.dataset.hhIn)} to your household`); }
       catch (e) { const err = $(".err", el); err.textContent = e.message; err.hidden = false; b.disabled = false; }
     })));
   });
