@@ -1554,6 +1554,7 @@
   .share-split > div { background: var(--panel); border-radius: 14px; padding: 10px 12px; }
   .share-split ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
   .share-split .label { margin: 0; }
+  .set-by { margin: -4px 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
   .starter strong { display: block; font-size: 17px; }
   .starter p { margin: 2px 0 12px; color: var(--muted); font-size: 15px; }
   .segs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -7228,8 +7229,12 @@ function openBudgetWho(t, after = () => { state.lastLeft = null; renderTracker()
   // Name with avatar. Inside a household section the header already says which household, so no tag there.
   const who = (p, tag) => `<span style="display:flex;align-items:center;gap:10px">${avatar(p.name, p.id, "sm")}<span>${esc(p.name)}${tag ? dupeHtml(everyone().find((x) => x.id === p.id)) : ""}</span></span>`;
   const person = (p, hhOff) => sw(`m:${p.id}`, who(p), "", !hhOff && !skips.has(`m:${p.id}`), ` style="margin-left:18px${hhOff ? ";opacity:.5" : ""}"`, p.householdId);
+  // In a household, a change applies to all of you by default (so you agree who you're buying for).
+  const mates = t.sharedWith || [];
+  let both = mates.length > 0;
   openSheet(`<h3>Who I'm buying for</h3>
-    <p class="subtle">Turn off anyone you've agreed not to exchange gifts with. They come off your budget and gift reminders. Only you see this.</p>
+    <p class="subtle">Turn off anyone you've agreed not to exchange gifts with. They come off the budget and gift reminders.${mates.length ? "" : " Only you see this."}</p>
+    ${mates.length ? `<div id="whoFor" style="margin:4px 0 6px">${seg("Changes are for", [["both", mates.length > 1 ? "All of us" : `Me and ${esc(mates[0].name)}`], ["me", "Just me"]], "both", "two")}</div>` : ""}
     <div id="whoList">${[...byHh].map(([hh, ppl]) => {
       const off = skips.has(`h:${hh}`);
       return `<div class="label" style="margin-top:14px">${esc(householdLabel(hh))}</div>
@@ -7241,6 +7246,7 @@ function openBudgetWho(t, after = () => { state.lastLeft = null; renderTracker()
     <button class="btn primary wide" type="button" id="whoDone" style="margin-top:8px">Done</button>`, (el) => {
     let changed = false;
     $("#whoDone", el).onclick = () => closeSheet();
+    if ($("#whoFor .seg", el)) wireSeg($("#whoFor .seg", el), (v) => { both = v === "both"; buzz(); });
     // Turning a household off greys out its people (they're all off); turning it back on restores their own switches.
     const syncHh = (hh) => el.querySelectorAll(`[data-hh="${CSS.escape(hh)}"]`).forEach((x) => {
       const off = skips.has(`h:${hh}`);
@@ -7254,7 +7260,7 @@ function openBudgetWho(t, after = () => { state.lastLeft = null; renderTracker()
       const skip = !box.checked;
       box.disabled = true;
       try {
-        await api("budget/skip", { target, skip });
+        await api("budget/skip", { target, skip, both });
         skip ? skips.add(target) : skips.delete(target);
         t.skips = [...skips];
         changed = true;
@@ -7634,7 +7640,8 @@ function hhBudgetCard(c, n = 0, still = false) {
     ${isOpen ? `<div class="pcard-body">
       ${buys.length ? `<ul class="buys">${buys.map(({ x, m }, k) => `<li><button type="button" data-hbuy="${k}" aria-label="${esc(x.title)} for ${esc(m.p.name)}, ${STAGES[stageAt(x.status)][1]}. Edit">
           <span>${esc(x.title)}<small>For ${esc(m.p.name)}${x.mine ? "" : ` · ${esc(x.buyerName)} got it`}${x.stash ? ` · ${esc(x.stash)}` : ""}</small></span>${stagePill(x)}<b>${money(x.spent_cents)}</b></button></li>`).join("")}</ul>`
-        : '<p class="subtle">Nothing bought yet.</p>'}
+        : o.unseen ? "" : '<p class="subtle">Nothing bought yet.</p>'}
+      ${o.unseen ? `<p class="subtle unseen-line">${plural(o.unseen.count, "gift", "gifts")} for someone in their household you're not in a circle with · ${money(o.unseen.cents)}</p>` : ""}
       ${ideas.length ? `<div class="stack">${ideas.map(ideaRow).join("")}</div>` : ""}
       <div class="pcard-actions">
         <button class="btn small" type="button" data-budget>${budget != null ? "Change budget" : "Set a budget"}</button>
@@ -7679,6 +7686,7 @@ function editBudget(p, o) {
     <form id="budgetForm" autocomplete="off">
       <div class="err" hidden></div>
       <p class="sheet-note">${esc(budgetNote(p, o))}</p>
+      ${o.budget_by ? `<p class="set-by">${esc(o.budget_by)} set this${o.budget_at ? ` · ${esc(new Date(o.budget_at).toLocaleDateString([], { month: "short", day: "numeric" }))}` : ""}</p>` : ""}
       <label class="field"><span>How much for ${esc(forWhat)}?</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(o.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
       <div class="amt-chips" role="group" aria-label="Quick amounts">${[25, 50, 100, 200, 500].map((n) => `<button class="chip" type="button" data-amt="${n}">$${n}</button>`).join("")}</div>
@@ -7688,9 +7696,24 @@ function editBudget(p, o) {
       </div>
     </form>`, (el) => {
       el.querySelectorAll("[data-amt]").forEach((b) => (b.onclick = () => { const i = $("[name=amount]", el); i.value = b.dataset.amt; i.focus(); }));
-      wireForm($("#budgetForm", el), async ({ amount }) => { await api("budget", { subjectId: p.id, amount, occasion: o.code }); closeSheet(); toast("Budget saved"); render(); });
+      // was: what this sheet showed. If someone else in your household changed it meanwhile, ask before replacing it.
+      const save = async (amount, was = o.budget_cents ?? null) => {
+        try { await api("budget", { subjectId: p.id, amount, occasion: o.code, was }); }
+        catch (e) {
+          const c = e.status === 409 && e.detail?.conflict;
+          if (!c) throw e;
+          const theirs = c.amount_cents == null ? "no budget" : money(c.amount_cents);
+          const mineNow = amount === "" ? "no budget" : money(Math.round(parseFloat(String(amount).replace(/[$,\s]/g, "")) * 100) || 0);
+          closeSheet();
+          if (await ask(`${c.by} just changed this to ${theirs}. Use ${mineNow} instead?`, { yes: amount === "" ? "Clear it" : `Use ${mineNow}`, no: `Keep ${theirs}` })) {
+            await api("budget", { subjectId: p.id, amount, occasion: o.code, was: c.amount_cents });
+          } else { render(); return false; }
+        }
+        return true;
+      };
+      wireForm($("#budgetForm", el), async ({ amount }) => { if (await save(amount)) { closeSheet(); toast("Budget saved"); render(); } });
       $("#clearBudget", el)?.addEventListener("click", async () => {
-        try { await api("budget", { subjectId: p.id, amount: "", occasion: o.code }); closeSheet(); toast("Budget cleared"); render(); } catch (e) { oops(e.message); }
+        try { if (await save("")) { closeSheet(); toast("Budget cleared"); render(); } } catch (e) { oops(e.message); }
       });
     });
 }
