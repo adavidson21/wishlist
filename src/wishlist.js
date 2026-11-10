@@ -47,7 +47,7 @@ function coverValue(v) {
   if (cover && (cover.length > MAX_COVER || !PHOTO_RE.test(cover))) fail(400, "That cover photo didn't work. Try another one.");
   return cover;
 }
-const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, lastName: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, petName: 40, petNotes: 200, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, lastName: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, petName: 40, petNotes: 200, petFavorites: 120, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -1253,12 +1253,13 @@ async function manageableHousehold(env, meId, householdId) {
 }
 
 // ---------- pets ----------
-// Not people: no list, login or birthday, just info for gift-givers (migration 0037). A pet belongs to a household,
+// Not people: no list or login, just info for gift-givers (migration 0037), plus a birthday and favorites for fun
+// (migration 0048; a pet's birthday is never an occasion, so no budgets, marks or reminders). A pet belongs to a household,
 // or to someone who isn't in one. Same visibility as the household or person; edited by the household (or the
 // circle's admin, like the rest of the household), or by the person and whoever looks after them.
 const PET_KINDS = new Set(["dog", "cat", "bird", "fish", "bunny", "reptile", "horse", "other"]);
 const PETS_MAX = 12;
-const petOut = (r) => ({ id: r.id, name: r.name, kind: r.kind, notes: r.notes || null, photo: r.photo_at || null });
+const petOut = (r) => ({ id: r.id, name: r.name, kind: r.kind, notes: r.notes || null, birthday: r.birthday || null, favorites: r.favorites || null, photo: r.photo_at || null });
 // Someone joins household `hh`: their own pets come with them.
 const petsInto = (env, memberId, hh) => env.DB.prepare("UPDATE pets SET household_id = ?, member_id = NULL WHERE member_id = ?").bind(hh, memberId);
 // Pets of these households and people: { "h:<id>": [...], "m:<id>": [...] }, oldest first.
@@ -1267,7 +1268,7 @@ async function petsFor(env, householdIds, memberIds) {
   const run = async (col, prefix, ids) => {
     if (!ids.length) return;
     const { results } = await env.DB.prepare(
-      `SELECT id, household_id, member_id, name, kind, notes, photo_at FROM pets WHERE ${col} IN (${ids.map(() => "?").join(",")}) ORDER BY created_at`,
+      `SELECT id, household_id, member_id, name, kind, notes, birthday, favorites, photo_at FROM pets WHERE ${col} IN (${ids.map(() => "?").join(",")}) ORDER BY created_at`,
     ).bind(...ids).all();
     for (const r of results) (out[`${prefix}:${r[col]}`] ||= []).push(petOut(r));
   };
@@ -5243,14 +5244,17 @@ const handlers = {
   },
 
   // ---------- pets ----------
-  // Add or change a pet. New: { householdId? | as?, name, kind, notes? } (your household by default, or yours if you
-  // aren't in one; as: someone you look after). Existing: { id, name?, kind?, notes? }. photo: data URL, "" removes, absent keeps.
+  // Add or change a pet. New: { householdId? | as?, name, kind, notes?, birthday?, favorites? } (your household by default,
+  // or yours if you aren't in one; as: someone you look after). Existing: { id, name?, kind?, notes?, birthday?, favorites? }.
+  // birthday: "MM-DD" or "" to clear. favorites: one short line. photo: data URL, "" removes, absent keeps.
   async "POST pet/save"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
     const kind = b.kind === undefined ? undefined : PET_KINDS.has(b.kind) ? b.kind : fail(400, "Pick what kind of pet.");
     const name = b.name === undefined ? undefined : text(b.name, LIMITS.petName, "Name", true);
     const notes = b.notes === undefined ? undefined : text(b.notes, LIMITS.petNotes, "Notes");
+    const birthday = b.birthday === undefined ? undefined : birthdayValue(b.birthday);
+    const favorites = b.favorites === undefined ? undefined : text(b.favorites, LIMITS.petFavorites, "Favorites");
     const photo = b.photo === undefined ? undefined : photoValue(b.photo);
     const t = now();
     if (b.id) {
@@ -5259,8 +5263,9 @@ const handlers = {
       if (pet.household_id) await manageableHousehold(env, me.id, pet.household_id);
       else await ownerFor(env, me, pet.member_id);
       await env.DB.prepare(
-        `UPDATE pets SET name = ?, kind = ?, notes = ?, photo = ?, photo_at = ? WHERE id = ?`,
+        `UPDATE pets SET name = ?, kind = ?, notes = ?, birthday = ?, favorites = ?, photo = ?, photo_at = ? WHERE id = ?`,
       ).bind(name ?? pet.name, kind ?? pet.kind, notes === undefined ? pet.notes : notes,
+        birthday === undefined ? pet.birthday : birthday, favorites === undefined ? pet.favorites : favorites,
         photo === undefined ? pet.photo : photo, photo === undefined ? pet.photo_at : photo ? t : null, pet.id).run();
       return { pet: { id: pet.id } };
     }
@@ -5272,8 +5277,8 @@ const handlers = {
     if (n >= PETS_MAX) fail(409, `That's ${PETS_MAX} pets already.`);
     const id = newId();
     await env.DB.prepare(
-      `INSERT INTO pets (id, ${col}, name, kind, notes, photo, photo_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, key, name, kind || "other", notes ?? null, photo ?? null, photo ? t : null, t).run();
+      `INSERT INTO pets (id, ${col}, name, kind, notes, birthday, favorites, photo, photo_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, key, name, kind || "other", notes ?? null, birthday ?? null, favorites ?? null, photo ?? null, photo ? t : null, t).run();
     return { pet: { id } };
   },
 
