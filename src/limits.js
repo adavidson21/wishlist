@@ -42,6 +42,9 @@ export const LIMITS = {
   addKeysPerMemberDay: [20, 86400], // new add keys made for that Shortcut
   // Hidden chat about a person.
   chatSendsPerMember: [[60, 3600], [300, 86400]],
+  // Activity feed: posts, and comments (src/wishlist.js, docs/plans/activity-feed.md).
+  feedPostsPerMember: [[20, 3600], [60, 86400]],
+  feedCommentsPerMember: [[60, 3600], [300, 86400]],
   // Notifications: devices per person (the oldest is dropped past this), test pushes, and group gift alerts started.
   pushSubsPerMember: 15,
   pushTestPerMember: [[10, 3600]],
