@@ -2787,9 +2787,26 @@ function readInvite() {
   const m = location.pathname.match(/^\/join\/([A-Za-z0-9]+)/);
   const q = new URLSearchParams(location.search);
   const code = (m?.[1] || q.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return code ? { code, from: q.get("from") || "", hi: (q.get("hi") || "").replace(/[^A-Za-z0-9]/g, "") } : null;
+  const hi = (q.get("hi") || "").replace(/[^A-Za-z0-9]/g, "");
+  return code || hi ? { code, from: q.get("from") || "", hi } : null;
 }
 let invite = readInvite();
+// Your own sign-in link. No circle code in it, so it works for people who aren't in a circle yet.
+const myLinkUrl = (token) => `${location.origin}/?hi=${encodeURIComponent(token)}`;
+// What someone pasted into "Already on Hints?": a sign-in link, an invite link, or a bare code.
+function readPasted(value) {
+  const v = String(value || "").trim();
+  const hi = v.match(/[?&]hi=([A-Za-z0-9]+)/)?.[1] || "";
+  const code = (v.match(/\/join\/([A-Za-z0-9]+)/)?.[1] || (/^[A-Za-z0-9 -]{3,12}$/.test(v) ? v : "")).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return { hi, code };
+}
+async function useCodeOrLink(value) {
+  const { hi, code } = readPasted(value);
+  if (hi) { invite = { code, from: "", hi }; return renderWelcome("claim"); }
+  if (!code) throw new Error("That doesn't look like an invite code or a Hints link.");
+  const res = await api("lookup", { code });
+  renderWelcome("who", { code, ...res });
+}
 
 const ENVELOPE = `<svg viewBox="0 0 150 118" aria-hidden="true">
   <defs><clipPath id="envClip"><rect x="0" y="-120" width="150" height="234"/></clipPath></defs>
@@ -2842,7 +2859,7 @@ async function renderWelcome(step = "code", info = {}) {
     v.innerHTML = '<div class="loading">Opening your invite...</div>';
     let res;
     try { res = await api("claim/lookup", { token: invite.hi }); }
-    catch (e) { invite.hi = ""; oops(e.message); return renderWelcome("invite"); }
+    catch (e) { invite.hi = ""; oops(e.message); return renderWelcome(invite.code ? "invite" : "code"); }
     const circle = res.circles[0];
     if (res.returning) {
       // Their own sign-in link, used again (a new phone): sign in, with their PIN if they set one.
@@ -2856,7 +2873,7 @@ async function renderWelcome(step = "code", info = {}) {
       </form>`;
       setTimeout(() => $("#backForm").elements.pin.focus(), 300);
       wireForm($("#backForm"), async (d) => finishJoin(await api("invite/claim", { token: invite.hi, pin: d.pin })));
-      $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
+      $("#notMe").onclick = () => { invite.hi = ""; renderWelcome(invite.code ? "invite" : "code"); };
       return;
     }
     setHero(envelope() + heroTitle(res.by ? `${res.by} invited you` : "You're invited", `Hi ${res.name}!`));
@@ -2870,12 +2887,13 @@ async function renderWelcome(step = "code", info = {}) {
       </form>
       <p style="text-align:center;margin-top:14px"><button class="btn quiet" type="button" id="notMe">Not ${esc(res.name)}?</button></p>`;
     wireForm($("#claimForm"), async ({ pin }) => finishJoin(await api("invite/claim", { token: invite.hi, pin }), { joined: circle || "" }));
-    $("#notMe").onclick = () => { invite.hi = ""; renderWelcome("invite"); };
+    $("#notMe").onclick = () => { invite.hi = ""; renderWelcome(invite.code ? "invite" : "code"); };
     return;
   }
 
   // Opened an invite link: the envelope, the family, one big Join button.
   if (step === "invite") {
+    if (!invite?.code) return renderLanding();
     setHero(heroTitle("Hints", "You're invited"));
     v.innerHTML = '<div class="loading">Opening your invite...</div>';
     let res;
@@ -2911,14 +2929,13 @@ async function renderWelcome(step = "code", info = {}) {
           <input class="input code-in" name="code" maxlength="8" value="${esc(bad ? "" : invite?.code || "")}" placeholder="ABC234" autocapitalize="characters" required></label>
         <button class="btn primary wide" type="submit">Continue</button>
       </form>
-      <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="startBtn">Start a new circle</button>
+      <p style="text-align:center;margin-top:18px;color:var(--muted)">No code yet?<br><button class="btn quiet" type="button" id="soloBtn">Just make my own list</button>
+        <br><button class="btn quiet" type="button" id="startBtn">Start a new circle</button>
         <br><button class="btn quiet" type="button" id="aboutBtn">What's Hints?</button></p>`;
     $("#aboutBtn").onclick = () => renderLanding();
-    wireForm($("#codeForm"), async ({ code }) => {
-      const res = await api("lookup", { code });
-      renderWelcome("who", { code, ...res });
-    });
+    wireForm($("#codeForm"), async ({ code }) => useCodeOrLink(code));
     $("#startBtn").onclick = () => renderWelcome("start");
+    $("#soloBtn").onclick = () => renderWelcome("solo");
     return;
   }
 
@@ -3022,6 +3039,35 @@ async function renderWelcome(step = "code", info = {}) {
     return;
   }
 
+  // Just you, no circle: a name and a PIN, and your list is ready. Circles can come later.
+  if (step === "solo") {
+    setHero(backBtn + heroTitle("Free, and takes a minute", "Start your list"));
+    v.innerHTML = `
+      <p class="lead" style="margin-top:0">Add what you'd love, then send one link to anyone. When you're ready, bring your people into a circle.</p>
+      <form class="card slide" id="soloForm" autocomplete="off">
+        <div class="err" hidden></div>
+        <div class="name-preview" id="namePrev">${avatar("?", "new", true)}</div>
+        ${nameFields("Your")}
+        ${pinField()}
+        <button class="btn primary wide" type="submit">Make my list</button>
+        <p class="hint" style="text-align:center;margin:10px 0 0"><a href="/privacy" target="_blank" rel="noopener">How Hints keeps your info private</a></p>
+      </form>`;
+    const nameIn = $("#soloForm").elements.name;
+    let last = "?";
+    nameIn.addEventListener("input", () => {
+      const ch = initial(nameIn.value.trim() || "?");
+      if (ch === last) return;
+      last = ch;
+      $("#namePrev").innerHTML = avatar(ch, nameIn.value.trim() || "new", true).replace('class="avatar big"', 'class="avatar big bump"');
+    });
+    $("#backBtn").onclick = () => renderWelcome("code");
+    wireForm($("#soloForm"), async (d) => {
+      const res = await api("start", { name: d.name, lastName: d.lastName, pin: d.pin });
+      finishJoin(res, { solo: true, link: res.link || "" });
+    });
+    return;
+  }
+
   // Your name (with your avatar updating as you type) and a PIN.
   if (step === "new" || step === "start") {
     const starting = step === "start";
@@ -3086,8 +3132,9 @@ function renderLanding() {
     </div>
 
     <div class="land-cta">
-      ${start("startTop", "Start a circle")}
+      ${start("startTop", "Start your list")}
       <p class="land-fine">Free, no ads, nothing to download. Takes about a minute. <a href="/privacy">Privacy</a></p>
+      <p class="land-fine" style="margin-top:4px"><button class="linkbtn" type="button" id="circleTop">Or start a circle with your people</button></p>
     </div>
 
     <h2 class="land-h">No more "what do you want this year?" texts</h2>
@@ -3102,27 +3149,25 @@ function renderLanding() {
 
     <h2 class="land-h">How it works</h2>
     <ol class="land-steps">
-      <li><b>1</b><span>Start a circle<small>Give it a name, like "Family Christmas", and add your name.</small></span></li>
-      <li><b>2</b><span>Drop a few hints<small>Add things you'd love. You can even start lists for the people you shop for.</small></span></li>
-      <li><b>3</b><span>Send one link<small>Everyone taps it, picks their name and a 4-digit PIN, and they're in. No passwords or emails.</small></span></li>
+      <li><b>1</b><span>Make your list<small>Add your name and a 4-digit PIN, then drop a few hints. No passwords or emails.</small></span></li>
+      <li><b>2</b><span>Share it<small>Send one link to anyone. They see your wishes without signing up.</small></span></li>
+      <li><b>3</b><span>Bring your people in<small>Start a circle when you're ready. Everyone keeps a list and quietly marks what they're getting.</small></span></li>
     </ol>
 
-    <div class="land-cta">${start("startBottom", "Start your circle")}</div>
+    <div class="land-cta">${start("startBottom", "Start your list")}</div>
 
-    <div class="or">Already in a circle?</div>
+    <div class="or">Already on Hints?</div>
     <form class="card land-code" id="codeForm" autocomplete="off">
       <div class="err" hidden></div>
-      <label class="field"><span>Enter your invite code</span>
-        <span class="land-code-row"><input class="input code-in" name="code" maxlength="8" placeholder="ABC234" autocapitalize="characters" required>
-        <button class="btn primary" type="submit">Join</button></span></label>
-      <p class="hint" style="margin:8px 0 0">Got an invite link instead? Just open it. It brings you right in.</p>
+      <label class="field"><span>Invite code or sign-in link</span>
+        <span class="land-code-row"><input class="input code-in" name="code" maxlength="300" placeholder="ABC234" autocapitalize="characters" required>
+        <button class="btn primary" type="submit">Go</button></span></label>
+      <p class="hint" style="margin:8px 0 0">Got a link? Just open it, or paste it here.</p>
     </form>
   </div>`;
-  wireForm($("#codeForm"), async ({ code }) => {
-    const res = await api("lookup", { code });
-    renderWelcome("who", { code, ...res });
-  });
-  $("#startTop").onclick = $("#startBottom").onclick = () => { scrollTo(0, 0); renderWelcome("start"); };
+  wireForm($("#codeForm"), async ({ code }) => useCodeOrLink(code));
+  $("#startTop").onclick = $("#startBottom").onclick = () => { scrollTo(0, 0); renderWelcome("solo"); };
+  $("#circleTop").onclick = () => { scrollTo(0, 0); renderWelcome("start"); };
 }
 
 // Everyone needs a PIN. People from before PINs were required (or whose PIN someone cleared) get this sheet, which
@@ -3363,7 +3408,8 @@ function installHowTo(way) {
   const code = group()?.code;
   const ua = navigator.userAgent;
   const step = (html) => `<li><b></b><span>${html}</span></li>`;
-  const signIn = apple && code ? step(`Open Hints from your home screen and sign in once: invite code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`) : "";
+  const signIn = !apple ? "" : code ? step(`Open Hints from your home screen and sign in once: invite code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`)
+    : step("Open Hints from your home screen and paste your sign-in link under <strong>Already on Hints?</strong> No link? Make one in Settings &gt; Sign-in link first.");
   let title = "Add Hints to your home screen", intro = "", steps = [];
   if (way === "ios") {
     intro = "Safari doesn't have an install button, but it's just a few taps:";
@@ -3485,6 +3531,10 @@ function openTour() {
     !state.me.hasPin && { id: "pin", scene: pinScene(), title: "Add a PIN?",
       text: "Your ideas and budgets are already hidden from the people you shop for. A 4-digit PIN just stops someone else from signing in as you on another phone.",
       extra: '<div class="tour-pin"><input class="input pin-in" id="tourPin" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" aria-label="4-digit PIN" placeholder="····"></div>' },
+    w.solo && w.link && { id: "signin", scene: pinScene(), title: "Save your sign-in link",
+      text: "This link (and your PIN) gets you back into your list on a new phone. Save it somewhere safe, like a note or an email to yourself. It won't be shown again, but you can make a new one in Settings.",
+      extra: `<div class="tour-invite"><div class="input" style="font-size:14px;overflow-wrap:anywhere;user-select:all;text-align:left">${esc(myLinkUrl(w.link))}</div>
+        <button class="btn primary" type="button" id="tourLinkCopy" style="margin-top:12px">${COPY} Copy link</button></div>` },
     !standalone && { id: "install", scene: installScene(), title: "Keep it on your home screen", text: "Open Hints in one tap, like any other app.",
       extra: iOS ? steps([`Tap Share ${SHARE_IOS} in Safari (on newer iPhones, it's in the ${DOTS} menu)`, `Choose <strong>Add to Home Screen</strong> ${ADD_HOME}`])
         : installPrompt ? '<button class="btn primary" type="button" id="installBtn" style="margin-top:18px">Add to home screen</button>'
@@ -3538,6 +3588,9 @@ function openTour() {
     try { installPrompt.prompt(); const r = await installPrompt.userChoice; installPrompt = null; if (r.outcome === "accepted") { party(); go(idx + 1 < slides.length ? idx + 1 : idx); } } catch {}
   });
   if (w.started && group()) wireInviteCard(tourEl, group());
+  $("#tourLinkCopy", tourEl)?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(myLinkUrl(w.link)); buzz(); toast("Link copied"); } catch { toast("Press and hold the link to copy it"); }
+  });
   $("#tourPush", tourEl)?.addEventListener("click", async (e) => {
     const b = e.currentTarget;
     b.disabled = true;
@@ -3854,7 +3907,7 @@ async function renderMine() {
     <div class="maybe-empty slide">
       ${giftBox("Drop a hint")}
       <strong>Nothing on your wish list yet</strong>
-      <p>${drafts.length ? `You have ${plural(drafts.length, "maybe", "maybes")}. Publish one when you're ready for your circles to see it.` : "Drop a hint about something you'd love."}</p>
+      <p>${drafts.length ? `You have ${plural(drafts.length, "maybe", "maybes")}. Publish one when you're ready ${state.groups.length ? "for your circles to see it" : "to share it"}.` : "Drop a hint about something you'd love."}</p>
       ${drafts.length ? `<button class="add" type="button" data-mview="maybe">${LOCK} See my maybes</button>` : `<button class="add" type="button" id="listAdd">${PLUS} Drop a hint</button>`}
     </div>`;
   const nameTwin = !state.me.lastName && everyone().some((x) => x.id !== state.me.id && x.name.toLowerCase() === state.me.name.toLowerCase());
@@ -3915,9 +3968,14 @@ async function renderMine() {
   wireMineTools(v, sideItems, data.items);
   wireReceived(v);
   $("#shareOut", v)?.addEventListener("click", () => shareOutside(state.me.shareToken || null));
+  $("#soloCircle", v)?.addEventListener("click", () => startCircleSheet());
 }
 // The small "share outside your circles" link at the end of My list.
-const shareRow = () => `<p class="hint" style="text-align:center;margin:26px 0 6px"><button class="linkbtn" type="button" id="shareOut">${state.me.shareToken ? "Your share link is on · Manage" : "Share your list with someone outside your circles"}</button></p>`;
+const shareRow = () => !state.groups.length ? `<div class="starter slide" style="margin:22px 0 6px"><strong>Share your list</strong>
+    <p>Send one link to anyone. They can see your wishes without signing up.</p>
+    <div class="actions" style="margin:0"><button class="btn primary" type="button" id="shareOut">${state.me.shareToken ? "Your link · Manage" : "Share my list"}</button></div>
+    <p class="hint" style="margin:12px 0 0">Want people to quietly mark what they're getting, so nobody doubles up? <button class="linkbtn" type="button" id="soloCircle" style="padding:0">Start a circle</button></p></div>`
+  : `<p class="hint" style="text-align:center;margin:26px 0 6px"><button class="linkbtn" type="button" id="shareOut">${state.me.shareToken ? "Your share link is on · Manage" : "Share your list with someone outside your circles"}</button></p>`;
 
 // Clicks on cards: open to edit, Top pick, Publish.
 function wireMineItems(root, all) {
@@ -5465,7 +5523,65 @@ async function openFeedReactions(c) {
   });
 }
 
+// Circles tab for someone who isn't in a circle yet: what a circle is, start one, or join with a code.
+function renderNoCircle() {
+  setHero(heroTitle("Bring your people in", "Circles"));
+  const v = $("#view");
+  const waiting = state.pending.length ? `<div class="starter slide" style="margin:0 0 14px"><strong>Waiting on ${esc(state.pending[0].name)}</strong>
+      <p>${state.pending[0].admin ? esc(state.pending[0].admin) : "The circle's admin"} lets new people in. You'll see everyone's lists once they say yes.</p></div>` : "";
+  v.innerHTML = `${waiting}<div class="maybe-empty slide">
+      ${giftBox("Start a circle")}
+      <strong>A circle is the group you swap gifts with</strong>
+      <p>Your family, your friends, your book club. Everyone keeps a list, quietly marks what they're getting so nobody doubles up, and you never see what's for you.</p>
+      <button class="add big shine" type="button" id="ncStart">${PLUS} Start a circle</button>
+    </div>
+    <div class="or">Got an invite?</div>
+    <form class="card" id="ncJoin" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Invite code</span>
+        <span class="land-code-row"><input class="input code-in" name="code" maxlength="300" placeholder="ABC234" autocapitalize="characters" required>
+        <button class="btn primary" type="submit">Join</button></span></label>
+      <p class="hint" style="margin:8px 0 0">Your list comes with you. Anything in Maybe stays private.</p>
+    </form>
+    <p class="hint" style="text-align:center;margin-top:18px"><button class="linkbtn" type="button" id="ncShare">Or just share your list with a link</button></p>`;
+  wireGiftBox(v, () => startCircleSheet());
+  $("#ncStart").onclick = () => startCircleSheet();
+  $("#ncShare").onclick = () => shareOutside(state.me.shareToken || null);
+  wireForm($("#ncJoin"), async ({ code }) => {
+    const c = readPasted(code).code;
+    if (!c) throw new Error("That doesn't look like an invite code.");
+    const { group: g, pending } = await api("family/join", { code: c });
+    if (pending) toast(`Asked to join ${g.name}. You're in once the admin says yes.`);
+    else { party(); toast(`You joined ${g.name}`); }
+    state.stale = true;
+    render();
+  });
+}
+
+// Start a circle while signed in (Settings, the Circles tab, My list). Then the invite sheet, so the next step is
+// sending the link.
+function startCircleSheet() {
+  openSheet(`
+    <h3>Start a new circle</h3>
+    <p class="subtle">Name it, then send everyone one link. Your list comes with you.</p>
+    <form id="startForm" autocomplete="off">
+      <div class="err" hidden></div>
+      <label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>
+      <button class="btn primary wide" type="submit">Create circle</button>
+    </form>`, (el) => wireForm($("#startForm", el), async ({ groupName: n }) => {
+      const { group: g } = await api("family/start", { groupName: n });
+      closeSheet();
+      party();
+      state.stale = true;
+      await render();
+      const made = state.groups.find((x) => x.id === g.id);
+      if (made) openInvite(made);
+      else toast(`Started ${g.name}. Code: ${g.code}`);
+    }));
+}
+
 async function renderFamily() {
+  if (!state.groups.length) return renderNoCircle();
   // Fresh wish counts (and "new" badges) every time, not the ones from when the app opened.
   // render() may have just fetched it; skip a second /me call right after.
   const isLive = renderLive();
@@ -7794,7 +7910,7 @@ function shareOutside(token, as = null, asName = "", saved = (t) => { state.me.s
   const whose = as ? `${esc(asName)}'s` : "your";
   const link = (t) => `${location.origin}/s/${t}`;
   openSheet(`<h3>Share ${whose} list</h3>
-    <p class="subtle">For people outside ${as ? "the" : "your"} circles, like a coworker or a friend. They see wishes, gift cards, sizes and loves. Never what's been bought, and nothing in Maybe or hidden from a circle.</p>
+    <p class="subtle">${!as && !state.groups.length ? "For anyone you like: family, friends, a coworker." : `For people outside ${as ? "the" : "your"} circles, like a coworker or a friend.`} They see wishes, gift cards, sizes and loves. Never what's been bought, and nothing in Maybe or hidden from a circle.</p>
     <div id="shareBody"></div>`, (el) => {
     const body = $("#shareBody", el);
     const set = async (on, msg) => {
@@ -8728,8 +8844,7 @@ async function paintPush(card) {
 // right then, replaced or turned off, never shown again later.
 function paintMyLink(card, fresh = null) {
   if (!card) return;
-  const code = group()?.code;
-  const link = fresh && code ? `${location.origin}/join/${encodeURIComponent(code)}?hi=${encodeURIComponent(fresh)}` : "";
+  const link = fresh ? myLinkUrl(fresh) : "";
   card.innerHTML = fresh ? `<p class="sub">Save this somewhere safe, like a note or an email to yourself. It won't be shown again.</p>
       <div class="input" style="font-size:14px;overflow-wrap:anywhere;user-select:all">${esc(link)}</div>
       <div class="actions" style="margin-top:12px"><button class="btn primary" type="button" id="myLinkCopy">${COPY} Copy</button></div>`
@@ -8889,20 +9004,20 @@ async function renderSettings() {
     </div>
 `,
     circles: `
-    <div class="label">${multi() ? "Your circles" : "Your circle"}${tip(multi() ? "Every circle sees the same list. To hide a wish from one, open it and turn that circle off." : "Do gifts with another group too? Join their circle and keep one list for all of them.")}</div>
+    <div class="label">${multi() ? "Your circles" : state.groups.length ? "Your circle" : "Circles"}${tip(multi() ? "Every circle sees the same list. To hide a wish from one, open it and turn that circle off." : "Do gifts with another group too? Join their circle and keep one list for all of them.")}</div>
     <div class="set-card">
       ${state.groups.map((g) => `<div class="fam">
           ${tileAvatar(g.name, `g:${g.id}`)}
           <span class="who"><strong>${esc(g.name)}</strong><small>Code <span class="code-sm">${esc(g.code)}</span> · ${plural(g.members.length, "person", "people")}${isAdmin(g) ? " · You're the admin" : g.createdBy ? ` · Admin: ${esc(personName(g.createdBy))}` : ""}</small></span>
           <button class="btn small" type="button" data-share="${esc(g.id)}">Invite</button>
-          ${multi() ? `<button class="btn small quiet danger" type="button" data-leave="${esc(g.id)}">Leave</button>` : ""}
+          <button class="btn small quiet danger" type="button" data-leave="${esc(g.id)}">Leave</button>
         </div>`).join("")}
-      <p class="sub" style="margin-top:8px">${multi()
-        ? "Every circle sees the same list. To hide a wish from one circle, open it and turn that circle off."
+      <p class="sub" style="margin-top:8px">${!state.groups.length ? "You're not in a circle yet. Start one, or join with an invite code. Your list comes with you."
+        : multi() ? "Every circle sees the same list. To hide a wish from one circle, open it and turn that circle off."
         : "Also do gifts with friends, coworkers or your partner's family? Join their circle here and keep one list for all of them."}</p>
       <form id="joinForm" autocomplete="off">
         <div class="err" hidden></div>
-        <label class="field"><span>Join another circle</span>
+        <label class="field"><span>${state.groups.length ? "Join another circle" : "Join a circle"}</span>
           <input class="input code-in" name="code" maxlength="8" placeholder="ABC234" autocapitalize="characters" required></label>
         <div class="actions">
           <button class="btn" type="button" id="startFam">Start a new one</button>
@@ -9019,23 +9134,15 @@ async function renderSettings() {
     v.querySelectorAll("[data-leave]").forEach((b) => (b.onclick = async () => {
       const name = groupName(b.dataset.leave);
       const admin = isAdmin(state.groups.find((g) => g.id === b.dataset.leave)) ? " You're its admin, so that passes to whoever has been in it longest. To pick who, use Manage on the Circles tab first." : "";
-      if (!(await ask(`Leave ${name}? They won't see your list anymore. Your list stays the same for your other circles.${admin}`, { yes: "Leave", danger: true }))) return;
+      const rest = multi() ? "Your list stays the same for your other circles." : "You keep your list, and can still share it with a link.";
+      if (!(await ask(`Leave ${name}? They won't see your list anymore. ${rest}${admin}`, { yes: "Leave", danger: true }))) return;
       try { await api("family/leave", { groupId: b.dataset.leave }); reload(`Left ${name}`); } catch (e) { oops(e.message); }
     }));
     wireForm($("#joinForm", v), async ({ code }) => {
       const { group: g, pending } = await api("family/join", { code });
       reload(pending ? `Asked to join ${g.name}. You're in once the admin says yes.` : `Joined ${g.name}`);
     });
-    $("#startFam", v).onclick = () => openSheet(`
-      <h3>Start a new circle</h3>
-      <form id="startForm" autocomplete="off">
-        <div class="err" hidden></div>
-        <label class="field"><span>Circle name</span><input class="input" name="groupName" maxlength="60" placeholder="Family Christmas, Book club" required></label>
-        <button class="btn primary wide" type="submit">Create circle</button>
-      </form>`, (el2) => wireForm($("#startForm", el2), async ({ groupName: n }) => {
-        const { group: g } = await api("family/start", { groupName: n });
-        reload(`Started ${g.name}. Code: ${g.code}`);
-      }));
+    $("#startFam", v).onclick = () => startCircleSheet();
   }
   if (sec === "household") wireHousehold(v, reload);
   if (sec === "inbox") paintInbox($("#inbox", v));

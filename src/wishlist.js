@@ -342,7 +342,7 @@ async function auth(request, env) {
   )
     .bind(token)
     .first();
-  if (!me) fail(401, "Signed out. Join your circle again.");
+  if (!me) fail(401, "Signed out. Open your invite or sign-in link again.");
   // Touch last_seen at most once a day to keep writes low.
   await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE token = ? AND last_seen < ?")
     .bind(now(), token, new Date(Date.now() - 86_400_000).toISOString())
@@ -1138,13 +1138,20 @@ async function adminOf(env, groupId) {
 }
 
 // Signs out (on every device) someone who's in no circle and waiting on no request: there's nothing to show them.
-async function signOutIfNowhere(env, memberId) {
-  const inOne = await env.DB.prepare("SELECT 1 FROM group_members WHERE member_id = ? UNION ALL SELECT 1 FROM join_requests WHERE member_id = ? LIMIT 1").bind(memberId, memberId).first();
-  if (inOne) return;
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM push_subs WHERE member_id = ?").bind(memberId),
-    env.DB.prepare("DELETE FROM devices WHERE member_id = ?").bind(memberId),
-  ]);
+// Just you, no circle (POST start without a circle name). Your personal sign-in link is made right away (link
+// + PIN is how you get back in on a new phone until you're in a circle).
+async function startSolo(req, env, b) {
+  const name = text(b.name, LIMITS.name, "Your first name", true);
+  const lastName = lastNameOf(b.lastName);
+  const pin = pinValue(b.pin);
+  if (!pin) fail(428, "Pick a 4-digit PIN. You'll use it to sign in on a new phone.");
+  await rateLimit(env, `start:ip:${ipOf(req)}`, ABUSE.startPerIp, "Too many new lists from here today. Try again tomorrow.");
+  await newMemberAllowed(env, req);
+  const id = newId();
+  const link = newLinkToken();
+  await env.DB.prepare("INSERT INTO members (id, name, last_name, pin_hash, claim_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(id, name, lastName, await hashPin(id, pin), await sha256(link), now()).run();
+  return { token: await signIn(env, id), link };
 }
 
 // Removes a person and everything that is theirs or about them (account/delete).
@@ -2800,9 +2807,12 @@ const handlers = {
     return { token: await signIn(env, id), pending: !!group.ask_to_join };
   },
 
-  // Start a new family: creates the group, its join code, and you as its first member.
+  // Start on Hints. With groupName: a new circle, its join code, and you as its first member. Without it: just you
+  // and your list (no circle yet), plus your personal sign-in link, since there's no circle to tap your name in on a
+  // new phone. Returns { token, link? }.
   async "POST start"(req, env) {
     const b = await body(req);
+    if (!String(b.groupName || "").trim()) return startSolo(req, env, b);
     const groupName = text(b.groupName, LIMITS.group, "Circle name", true);
     const name = text(b.name, LIMITS.name, "Your first name", true);
     const lastName = lastNameOf(b.lastName);
@@ -2959,7 +2969,7 @@ const handlers = {
     }
     return {
       me: {
-        id: me.id, name: me.name, lastName: me.lastName, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || null,
+        id: me.id, name: me.name, lastName: me.lastName, hasPin: me.hasPin, onboarded: me.onboarded, photo: people.find((p) => p.id === me.id)?.photo_at || (await env.DB.prepare("SELECT photo_at FROM members WHERE id = ?").bind(me.id).first())?.photo_at || null,
         // Someone cleared your forgotten PIN (see "POST pin/clear"). Shown once as a notice.
         pinCleared,
         profile: await profileOf(env, me.id), household: myHousehold,
@@ -4264,7 +4274,7 @@ const handlers = {
 
   // Take someone out of a circle. Only the circle's admin, and not themselves (they use Leave).
   // Someone whose household is in the circle comes out with the household instead (Manage households).
-  // If it was their only circle they're signed out everywhere, since there'd be nothing left to show them.
+  // If it was their only circle they keep their list on their own (no circle), still signed in.
   async "POST family/remove"(req, env) {
     const me = await auth(req, env);
     const { groupId, memberId } = await body(req);
@@ -4279,22 +4289,19 @@ const handlers = {
       const viaHousehold = await env.DB.prepare("SELECT 1 FROM group_households WHERE group_id = ? AND household_id = ?").bind(groupId, them.household_id).first();
       if (viaHousehold) fail(409, `${them.name}'s household is in this circle. Take them out of the household first, or take the whole household out.`);
     }
-    const others = await env.DB.prepare("SELECT COUNT(*) AS n FROM group_members WHERE member_id = ? AND group_id != ?").bind(memberId, groupId).first();
     await env.DB.batch([
       env.DB.prepare("DELETE FROM group_members WHERE group_id = ? AND member_id = ?").bind(groupId, memberId),
       env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ? AND item_id IN (SELECT id FROM items WHERE owner_id = ?)").bind(groupId, memberId),
-      ...(others.n ? [] : [env.DB.prepare("DELETE FROM devices WHERE member_id = ?").bind(memberId)]),
     ]);
     return { ok: true };
   },
 
-  // Leave one of your families (not your last one). Your list stays; that family just stops seeing it.
+  // Leave a circle (your last one too). Your list stays; that circle just stops seeing it.
   async "POST family/leave"(req, env) {
     const me = await auth(req, env);
     const { groupId } = await body(req);
     const mine = await myGroupIds(env, me.id);
     if (!mine.includes(groupId)) fail(404, "Circle not found.");
-    if (mine.length < 2) fail(400, "You can't leave your only circle.");
     const viaHousehold = await env.DB.prepare(
       "SELECT 1 FROM group_households gh JOIN members m ON m.household_id = gh.household_id WHERE gh.group_id = ? AND m.id = ?",
     ).bind(groupId, me.id).first();
@@ -5130,17 +5137,15 @@ const handlers = {
       return { ok: true };
     }
     await env.DB.prepare("DELETE FROM join_requests WHERE group_id = ? AND member_id = ?").bind(groupId, r.member_id).run();
-    await signOutIfNowhere(env, r.member_id);
     return { ok: true };
   },
 
-  // Take back your own request to join (all of them without groupId). Someone in no circle is signed out.
+  // Take back your own request to join (all of them without groupId). Your list stays, circle or not.
   async "POST join/cancel"(req, env) {
     const me = await auth(req, env);
     const { groupId } = await body(req);
     await env.DB.prepare(groupId ? "DELETE FROM join_requests WHERE member_id = ? AND group_id = ?" : "DELETE FROM join_requests WHERE member_id = ?")
       .bind(...(groupId ? [me.id, groupId] : [me.id])).run();
-    await signOutIfNowhere(env, me.id);
     return { ok: true };
   },
 
