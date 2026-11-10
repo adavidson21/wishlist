@@ -37,7 +37,8 @@ test("both people in a household see the same spent for a household, even gifts 
   const a = await occ(w, alexis, maria), m = await occ(w, mike, maria);
   assert.equal(a.spent_cents, 8000);
   assert.equal(m.spent_cents, 8000);
-  assert.deepEqual(a.unseen, { count: 1, cents: 5000 }, "Alexis sees an amount for Nolan, no title");
+  assert.deepEqual({ count: a.unseen.count, cents: a.unseen.cents }, { count: 1, cents: 5000 }, "Alexis sees an amount for Nolan, no title");
+  assert.deepEqual(a.unseen.byBuyer, { [mike.id]: 5000 });
   assert.ok(!a.purchases.some((x) => x.title === "Drill"));
 });
 
