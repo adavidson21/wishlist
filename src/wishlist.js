@@ -459,6 +459,12 @@ const ITEM_VISIBLE = `i.draft = 0 AND i.held_season IS NULL AND i.received_at IS
   SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
    WHERE x.member_id = ? AND y.member_id = i.owner_id
      AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = x.group_id))`;
+// SQL: item `i`, with the viewer's own mark joined as `c`, is one the viewer may look things up for (price guess, photo,
+// live price): one they marked, else their own while it's on their list, else one they can see. Bind the viewer twice
+// (owner check, then ITEM_VISIBLE). A removed wish is "not found" for its owner whether or not anyone marked it:
+// removing keeps a marked wish (soft-removed, for its buyer) and deletes an unmarked one, so answering differently
+// would tell the owner it was marked.
+const ITEM_LOOKUP = `(c.item_id IS NOT NULL OR CASE WHEN i.owner_id = ? THEN i.removed_at IS NULL ELSE ${ITEM_VISIBLE} END)`;
 
 // ---------- linked wishes ("Goes with") ----------
 // bundle_id: wishes that share one are all or nothing. needs_id: only wanted along with that wish (one way).
@@ -3686,7 +3692,8 @@ const handlers = {
     const item = await env.DB.prepare(`SELECT i.id, i.owner_id, i.title, i.removed_at, i.quantity, ${ITEM_VISIBLE} AS visible FROM items i WHERE i.id = ?`)
       .bind(me.id, itemId)
       .first();
-    if (!item) fail(404, "Item not found.");
+    // A removed wish of yours is "not found" either way (see ITEM_LOOKUP): it only still exists if someone marked it.
+    if (!item || (item.owner_id === me.id && item.removed_at)) fail(404, "Item not found.");
     if (item.owner_id === me.id) fail(400, "You can't mark your own items.");
     const t = today();
     const { results: rows } = await env.DB.prepare("SELECT buyer_id, season, qty, chip_in FROM claims WHERE item_id = ? AND season >= ? ORDER BY created_at, buyer_id")
@@ -4028,7 +4035,7 @@ const handlers = {
       row = await env.DB.prepare(
         `SELECT i.id, i.title, i.url, i.brand, i.size, i.color, i.price_cents, i.price_est_cents FROM items i
            LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
-          WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+          WHERE i.id = ? AND ${ITEM_LOOKUP}`,
       ).bind(me.id, id, me.id, me.id).first();
     } else if (kind === "idea") {
       const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
@@ -4057,7 +4064,7 @@ const handlers = {
       row = await env.DB.prepare(
         `SELECT i.id, i.url, i.image_url, i.image_checked_at, i.price_cents, i.price_checked_at FROM items i
            LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
-          WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+          WHERE i.id = ? AND ${ITEM_LOOKUP}`,
       ).bind(me.id, id, me.id, me.id).first();
     } else if (kind === "idea") {
       const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
@@ -4095,7 +4102,7 @@ const handlers = {
       if (kind === "item") {
         row = await env.DB.prepare(
           `SELECT i.id, i.url, i.price_cents, i.price_auto FROM items i LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
-            WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+            WHERE i.id = ? AND ${ITEM_LOOKUP}`,
         ).bind(me.id, id, me.id, me.id).first();
       } else if (kind === "idea") {
         const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
