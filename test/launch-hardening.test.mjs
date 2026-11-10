@@ -1,4 +1,4 @@
-// Getting ready for strangers (migration 0045, docs/plans/public-launch.md): set-up lists and the circle link,
+// Getting ready for strangers (migration 0046, docs/plans/public-launch.md): set-up lists and the circle link,
 // wrong-PIN warnings and lockdown, Turnstile, the PIN pepper, Gemini allowances, passkeys and the owner's delete.
 import { test } from "node:test";
 import assert from "node:assert/strict";

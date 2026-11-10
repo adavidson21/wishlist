@@ -9487,9 +9487,13 @@ function wireHhInvites(root, after = () => render()) {
     const answer = async (accept, btn) => {
       btn.disabled = true;
       try {
-        await api("household/answer", { id, accept });
+        const r = await api("household/answer", { id, accept });
         await refreshMe();
-        if (accept) { buzz(); party(); } else toast("Okay, you're not in their household.");
+        if (accept) {
+          buzz(); party();
+          // Your budgets for people outside it moved in, except where the household already had one.
+          if (r.kept?.length) setTimeout(() => toast(`Your household already had a budget for ${peopleNames(r.kept)}, so that one stays.`), 900);
+        } else toast("Okay, you're not in their household.");
         after();
       } catch (e) { const err = $(".err", card); err.textContent = e.message; err.hidden = false; btn.disabled = false; }
     };

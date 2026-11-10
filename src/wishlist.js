@@ -1110,12 +1110,23 @@ async function leaveHousehold(env, memberId) {
   rows.push(env.DB.prepare("UPDATE members SET household_id = NULL WHERE id = ?").bind(memberId));
   // Requests they sent for this household go with them.
   rows.push(env.DB.prepare("DELETE FROM household_requests WHERE household_id = ? AND invited_by = ?").bind(hh, memberId));
+  // Anyone not doing gifts with this household still isn't doing gifts with them.
+  rows.push(env.DB.prepare(
+    "INSERT INTO budget_skips (author_id, target, created_at) SELECT author_id, 'm:' || ?, ? FROM budget_skips WHERE target = 'h:' || ? AND author_id != ? ON CONFLICT DO NOTHING",
+  ).bind(memberId, now(), hh, memberId));
   await env.DB.batch(rows);
   const still = await env.DB.prepare("SELECT 1 FROM members WHERE household_id = ? LIMIT 1").bind(hh).first();
   if (!still) {
     await env.DB.batch([
       // The last one out takes the pets.
       env.DB.prepare("UPDATE pets SET member_id = ?, household_id = NULL WHERE household_id = ?").bind(memberId, hh),
+      // Budgets other households set for this household's Christmas now belong to the last one out.
+      env.DB.prepare(
+        `INSERT INTO household_budgets (household_id, target, season, amount_cents, updated_by, updated_at)
+         SELECT household_id, 'm:' || ?, season, amount_cents, updated_by, updated_at FROM household_budgets WHERE target = 'h:' || ?
+         ON CONFLICT (household_id, target, season) DO UPDATE SET amount_cents = amount_cents + excluded.amount_cents`,
+      ).bind(memberId, hh),
+      env.DB.prepare("DELETE FROM household_budgets WHERE target = 'h:' || ?").bind(hh),
       ...dropHousehold(env, hh),
     ]);
   }
@@ -1125,6 +1136,9 @@ async function leaveHousehold(env, memberId) {
 function dropHousehold(env, hh) {
   return [
     env.DB.prepare("DELETE FROM household_requests WHERE household_id = ?").bind(hh),
+    // Nobody's left to share these. (Leaving starts you fresh, so nothing is copied out.)
+    env.DB.prepare("DELETE FROM household_budgets WHERE household_id = ?").bind(hh),
+    env.DB.prepare("DELETE FROM budget_skips WHERE target = 'h:' || ?").bind(hh),
     env.DB.prepare("DELETE FROM group_households WHERE household_id = ?").bind(hh),
     env.DB.prepare("DELETE FROM households WHERE id = ?").bind(hh),
   ];
@@ -1151,9 +1165,58 @@ async function joinHousehold(env, memberId, hh) {
     // Joined: any other household they were asked to join is moot.
     env.DB.prepare("DELETE FROM household_requests WHERE member_id = ?").bind(memberId),
   ]);
+  return budgetsOnJoin(env, memberId, hh);
 }
 
-// ---------- household requests (migration 0045) ----------
+// Budgets follow people (household budgets plan, rule 4). `memberId` just joined household `hh` (from none):
+//   - Their personal budgets for people outside it move into the household's shared ones. Where the household
+//     already has one for that person and occasion, the household's stays. Returns those: [{ target, season }].
+//   - Budgets the household had for them as an outsider become the personal budget of whoever set them.
+//   - Other households' Christmas budgets for them add into the one for their new household.
+async function budgetsOnJoin(env, memberId, hh) {
+  const t = today();
+  const stamp = now();
+  const { results: mine } = await env.DB.prepare(
+    `SELECT b.subject_id, b.season, b.amount_cents, s.household_id FROM budgets b JOIN members s ON s.id = b.subject_id
+      WHERE b.author_id = ? AND b.season >= ? AND (s.household_id IS NULL OR s.household_id != ?)`,
+  ).bind(memberId, t, hh).all();
+  const moved = new Map();
+  for (const r of mine) {
+    const key = `${budgetTarget({ id: r.subject_id, household_id: r.household_id }, r.season)}|${r.season}`;
+    moved.set(key, (moved.get(key) || 0) + r.amount_cents);
+  }
+  const kept = [];
+  for (const [key, amount] of moved) {
+    const [target, season] = key.split("|");
+    const res = await env.DB.prepare(
+      "INSERT INTO household_budgets (household_id, target, season, amount_cents, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+    ).bind(hh, target, Number(season), amount, memberId, stamp).run();
+    if (!res.meta?.changes) kept.push({ target, season: Number(season) });
+  }
+  await env.DB.batch([
+    env.DB.prepare(
+      "DELETE FROM budgets WHERE author_id = ? AND season >= ? AND subject_id IN (SELECT id FROM members WHERE household_id IS NULL OR household_id != ?)",
+    ).bind(memberId, t, hh),
+    // They're family now: what the household had set for them becomes the setter's own budget.
+    env.DB.prepare(
+      `INSERT INTO budgets (author_id, subject_id, season, amount_cents)
+       SELECT hb.updated_by, ?, hb.season, hb.amount_cents FROM household_budgets hb JOIN members u ON u.id = hb.updated_by AND u.household_id = ?
+        WHERE hb.household_id = ? AND hb.target = 'm:' || ? AND hb.updated_by != ? ON CONFLICT DO NOTHING`,
+    ).bind(memberId, hh, hh, memberId, memberId),
+    env.DB.prepare("DELETE FROM household_budgets WHERE household_id = ? AND target = 'm:' || ?").bind(hh, memberId),
+    // Other households planned their Christmas as one person; now it's their household's.
+    env.DB.prepare(
+      `INSERT INTO household_budgets (household_id, target, season, amount_cents, updated_by, updated_at)
+       SELECT household_id, 'h:' || ?, season, amount_cents, updated_by, updated_at FROM household_budgets
+        WHERE target = 'm:' || ? AND season % 10000 = 1225
+       ON CONFLICT (household_id, target, season) DO UPDATE SET amount_cents = amount_cents + excluded.amount_cents`,
+    ).bind(hh, memberId),
+    env.DB.prepare("DELETE FROM household_budgets WHERE target = 'm:' || ? AND season % 10000 = 1225").bind(memberId),
+  ]);
+  return kept;
+}
+
+// ---------- household requests (migration 0044) ----------
 // Joining a household shares its budgets and purchases both ways, so someone who uses Hints is asked first.
 // People who don't use the app (managed) are added directly.
 const usesApp = async (env, memberId) => !!(await env.DB.prepare("SELECT 1 FROM members WHERE id = ? AND managed_by IS NULL").bind(memberId).first());
@@ -2859,7 +2922,7 @@ async function notManaged(env, member) {
   fail(409, `${member.name}'s list is looked after by ${by?.name || "someone in this circle"}. Ask them to tap "Let ${member.name} sign in" on ${member.name}'s list first.`);
 }
 
-// ---------- passkeys (docs/plans/public-launch.md, migration 0045) ----------
+// ---------- passkeys (docs/plans/public-launch.md, migration 0046) ----------
 // Sign in with Face ID or a fingerprint. The passkey lives in iCloud Keychain or Google Password Manager, so a new
 // phone has it, which is how a solo person who lost their sign-in link and phone gets back in. Passkey sign-in
 // skips the PIN (it's stronger than one). The relying party is whichever Hints domain the page is on.
@@ -3176,7 +3239,7 @@ const handlers = {
           WHERE r.group_id IN (${runIds.map(() => "?").join(",")}) ORDER BY r.created_at`,
       ).bind(...runIds).all()
       : { results: [] };
-    // Household requests (migration 0045): ones asking you, and ones you can see waiting on someone (that you sent,
+    // Household requests (migration 0044): ones asking you, and ones you can see waiting on someone (that you sent,
     // for your household, or for a household in a circle you run).
     const { results: askRows } = await env.DB.prepare(
       `SELECT r.id, r.household_id, r.invited_by, m.name AS by_name FROM household_requests r JOIN members m ON m.id = r.invited_by
@@ -4735,6 +4798,7 @@ const handlers = {
             "INSERT INTO group_members (group_id, member_id, joined_at, direct) SELECT group_id, ?, ?, 0 FROM group_households WHERE household_id = ? ON CONFLICT DO NOTHING",
           ).bind(id, now(), to.household_id),
         ]);
+        await budgetsOnJoin(env, id, to.household_id);
       }
     }
     await env.DB.prepare("UPDATE members SET managed_by = ?, claim_hash = NULL, claim_expires = NULL WHERE id = ?").bind(to.id, id).run();
@@ -4931,6 +4995,7 @@ const handlers = {
       env.DB.prepare("INSERT INTO group_households (group_id, household_id, added_at) VALUES (?, ?, ?)").bind(groupId, hh, t),
       ...direct.flatMap((id) => [env.DB.prepare("UPDATE members SET household_id = ? WHERE id = ?").bind(hh, id), petsInto(env, id, hh)]),
     ]);
+    for (const id of direct) await budgetsOnJoin(env, id, hh);
     for (const id of ask) await askToJoinHousehold(env, me, id, hh);
     return { household: { id: hh }, asked: ask.length };
   },
@@ -5042,7 +5107,7 @@ const handlers = {
         ]);
       }
     }
-    await joinHousehold(env, me.id, hh);
+    const kept = await joinHousehold(env, me.id, hh);
     // Tell the people already in it (the sharing sheet in the app explains the rest).
     const { results: mates } = await env.DB.prepare("SELECT id FROM members WHERE household_id = ? AND id != ? AND managed_by IS NULL").bind(hh, me.id).all();
     for (const m of mates) {
@@ -5050,7 +5115,18 @@ const handlers = {
       await pushTo(env, m.id, { title: `${nick || me.name} joined your household`, body: "You'll plan gifts together for everyone outside it.", url: "/#budget", tag: `hhjoin:${me.id}` })
         .catch((err) => console.error("household join push", err));
     }
-    return { ok: true, household: { id: hh } };
+    // Your budgets for people outside it moved in, except where the household already had one: say which.
+    const keptFor = [];
+    for (const k of kept) {
+      const [kind, id] = [k.target.slice(0, 2), k.target.slice(2)];
+      if (kind === "m:") keptFor.push((await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(id).first())?.name);
+      else {
+        const h = await env.DB.prepare("SELECT name FROM households WHERE id = ?").bind(id).first();
+        const { results } = await env.DB.prepare("SELECT name FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE").bind(id).all();
+        keptFor.push(householdLabel(h?.name, results.map((r) => r.name)));
+      }
+    }
+    return { ok: true, household: { id: hh }, kept: [...new Set(keptFor.filter(Boolean))] };
   },
 
   // Take back a request to join a household: whoever asked, anyone in that household, or a circle admin who
