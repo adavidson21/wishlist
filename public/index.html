@@ -1828,6 +1828,57 @@
   .chat-form .btn { flex: none; }
   .chat-form .err { margin: 8px 0 0; }
   .row.chat-flash { animation: chatFlash 1.6s ease both; }
+
+  /* Activity feed (Circles tab) */
+  .c-switch { margin: 0 0 16px; }
+  .fc-compose { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: var(--r); background: var(--card);
+    box-shadow: var(--shadow); color: var(--muted); font-size: 16px; text-align: left; margin-bottom: 14px; }
+  .fc-compose .avatar { width: 40px; height: 40px; font-size: 17px; }
+  .fc-compose .fc-ph { flex: 1; padding: 10px 14px; border-radius: 999px; background: var(--panel); }
+  .fc-list > * + * { margin-top: 14px; }
+  .fcard { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); padding: 14px 16px 6px; animation: rise .35s var(--spring) both; }
+  .fc-head { display: flex; align-items: center; gap: 12px; }
+  .fc-who { border: 0; background: none; padding: 0; border-radius: 50%; }
+  .fc-who .avatar { width: 44px; height: 44px; font-size: 19px; }
+  .fc-txt { flex: 1; min-width: 0; }
+  .fc-txt p { margin: 0; font-size: 16px; line-height: 1.3; }
+  .fc-txt small { color: var(--muted); font-size: 13px; }
+  .fc-menu { width: 36px; height: 36px; border: 0; background: none; color: var(--muted); }
+  .fc-body { margin: 12px 0 0; font-size: 17px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .fc-wishes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin-top: 12px; }
+  .fc-wish { border: 0; background: var(--panel); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; text-align: left; color: var(--ink); min-width: 0; }
+  .fc-wish .tile { width: 100%; height: auto; aspect-ratio: 1; border-radius: 10px; }
+  .fc-wish span { font-weight: 600; font-size: 14px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .fc-wish small { color: var(--muted); font-size: 13px; font-weight: 700; }
+  .fc-more { border: 1.5px dashed var(--line); background: none; border-radius: 14px; font-weight: 700; color: var(--brand); min-height: 60px; }
+  .fc-fields { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding: 10px 12px; border: 0; border-radius: 14px; background: var(--panel); text-align: left; color: var(--ink); }
+  .fc-see { margin-left: auto; display: inline-flex; align-items: center; color: var(--brand); font-weight: 700; font-size: 14px; }
+  .fc-see .chev { width: 16px; height: 16px; }
+  .fc-shared { margin-top: 12px; padding: 12px; border-radius: 14px; border: 1.5px solid var(--line); }
+  .fc-shared.gone { color: var(--muted); font-style: italic; }
+  .fc-shared .fc-wish, .fc-shared .fc-fields { background: var(--bg); }
+  .fc-shead { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+  .fc-shead .avatar { width: 26px; height: 26px; font-size: 12px; }
+  .fc-stats { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; min-height: 32px; }
+  .fc-rx { border: 0; background: none; padding: 0; font-size: 16px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; min-height: 32px; }
+  .fc-rx span { font-size: 14px; font-weight: 700; }
+  .fc-bar { display: flex; border-top: 1px solid var(--line); margin-top: 8px; }
+  .fc-bar button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 0; background: none; color: var(--muted); font-weight: 700; font-size: 15px; border-radius: 10px; }
+  .fc-bar button.on { color: var(--brand); }
+  .fc-emo { font-size: 18px; line-height: 1; }
+  .fc-pick { display: flex; justify-content: space-around; gap: 4px; padding: 6px; margin: 2px 0 6px; border-radius: 999px; background: var(--panel); animation: rise .25s var(--spring) both; }
+  .fc-pick button { border: 0; background: none; font-size: 26px; width: 48px; height: 48px; border-radius: 50%; transition: transform .15s var(--spring); }
+  .fc-pick button:active { transform: scale(1.3); }
+  .fc-pick button[aria-pressed="true"] { background: var(--gold-soft); box-shadow: inset 0 0 0 2px var(--gold); }
+  .fc-cmts { border-top: 1px solid var(--line); padding: 10px 0 6px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .fc-cmt { display: flex; gap: 8px; align-items: flex-start; }
+  .fc-cmt .avatar { width: 28px; height: 28px; font-size: 12px; }
+  .fc-cmt p { margin: 0; padding: 6px 12px; border-radius: 16px; background: var(--panel); font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+  .fc-cdel { font-size: 12px; min-height: 24px; padding: 0; }
+  .fc-rxrow { display: flex; align-items: center; gap: 12px; }
+  .fc-rxrow strong { flex: 1; }
+  .fc-rxrow .fc-emo { font-size: 24px; }
+  .fc-circles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
   @keyframes chatFlash { 0%, 60% { box-shadow: 0 0 0 4px var(--gold); } 100% { box-shadow: var(--shadow); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; } }
   :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after, :root[data-motion="off"] ::backdrop { animation: none !important; transition: none !important; }
@@ -5155,6 +5206,265 @@ function updateAppBadge() {
   (total ? navigator.setAppBadge(total) : navigator.clearAppBadge()).catch(() => {});
 }
 
+// ---------- activity feed (Circles tab) ----------
+// docs/plans/activity-feed.md. Cards come from the server already filtered for privacy: wishes added, profile
+// updates and posts. Posts and comments are seen by everyone in the circle, including who they're about.
+const FEED_FIELD_LABELS = { photo: "New photo", cover: "New cover", bio: "Bio", likes: "Loves", dislikes: "Nopes", sizes: "Sizes",
+  colors: "Favorite colors", brands: "Brands", giftStyle: "Gift style", owns: "Already has" };
+const FEED_EMOJI = ["❤️", "😂", "😍", "🎁", "🔥"];
+const HEART = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+const SHARE_IC = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/></svg>';
+const viewKey = "wishlist-circles-view";
+const circlesView = () => { try { return localStorage.getItem(viewKey) === "people" ? "people" : "feed"; } catch { return "feed"; } };
+// "now", "5m", "3h", "Yesterday", "Nov 2".
+function feedTime(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (ms < 60_000) return "now";
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
+  return chatDay(iso);
+}
+const openPersonOrMe = (id) => (id === state.me.id ? setTab("profile") : setTab("family", id));
+// After opening a list, flash the wish once its card has drawn.
+function flashWhenReady(itemId, tries = 0) {
+  if (document.querySelector(`#view [data-key="item:${CSS.escape(itemId)}"], #view .row[data-id="${CSS.escape(itemId)}"]`)) return gotoLinked(itemId);
+  if (tries < 25) setTimeout(() => flashWhenReady(itemId, tries + 1), 160);
+}
+// Avatar for someone on a card: your own shows your initial, not the "Y" of "You".
+const feedAv = (p, size) => avatar(p.id === state.me.id ? state.me.name : p.name, p.id, size);
+function feedWhat(c) {
+  if (c.kind === "wishes") return c.count === 1 ? "added a wish" : `added ${c.count} wishes`;
+  if (c.kind === "profile") return c.actor.id === state.me.id ? "updated your profile" : "updated their profile";
+  return c.shared && !c.shared.gone ? `shared ${c.shared.actor.id === c.actor.id ? (c.actor.id === state.me.id ? "your own" : "their own") : `${esc(c.shared.actor.name)}'s`} ${c.shared.kind === "wishes" ? (c.shared.count === 1 ? "wish" : "wishes") : "profile update"}` : "";
+}
+// The part of a card that shows what happened (also used for a shared card inside a post).
+function feedInner(c) {
+  if (c.kind === "wishes") {
+    return `<div class="fc-wishes">${c.items.map((i) => `<button class="fc-wish" type="button" data-wish="${esc(c.actor.id)}:${esc(i.id)}" aria-label="${esc(i.title)}">
+      ${i.image_url ? photoTile(i.image_url, i.title, i.id) : iconTile(i.title, i.id)}<span>${esc(i.title)}</span>${i.price_cents != null ? `<small>${money(i.price_cents)}</small>` : ""}</button>`).join("")}
+      ${c.more ? `<button class="fc-more" type="button" data-person="${esc(c.actor.id)}">+${c.more} more</button>` : ""}</div>`;
+  }
+  if (c.kind === "profile") {
+    return `<button class="fc-fields" type="button" data-person="${esc(c.actor.id)}">${c.fields.map((f) => `<span class="pchip">${esc(FEED_FIELD_LABELS[f] || f)}</span>`).join("")}<span class="fc-see">See profile ${CHEV}</span></button>`;
+  }
+  return "";
+}
+function feedCardHtml(c) {
+  const r = c.reactions, top = Object.entries(r.counts).sort((a, b) => b[1] - a[1]).map(([e]) => e).slice(0, 3).join("");
+  const shared = c.kind === "post" && c.shared ? (c.shared.gone
+    ? `<div class="fc-shared gone">This isn't available anymore.</div>`
+    : `<div class="fc-shared"><div class="fc-shead">${feedAv(c.shared.actor, "xs")}<span><strong>${esc(c.shared.actor.name)}</strong> ${feedWhat(c.shared)}</span></div>${feedInner(c.shared)}</div>`) : "";
+  const latest = c.comments.latest.map((m) => `<div class="fc-cmt">${feedAv(m.author, "xs")}<p><strong>${esc(m.author.name)}</strong> ${esc(m.body)}</p></div>`).join("");
+  return `<article class="fcard" data-fid="${esc(c.id)}">
+    <header class="fc-head">
+      <button class="fc-who" type="button" data-person="${esc(c.actor.id)}">${feedAv(c.actor)}</button>
+      <div class="fc-txt"><p><strong>${esc(c.actor.name)}</strong> ${feedWhat(c)}</p><small>${feedTime(c.at)}${c.edited ? " · edited" : ""}${c.circle ? ` · ${esc(c.circle.name)} only` : ""}</small></div>
+      ${c.mine ? `<button class="iconbtn fc-menu" type="button" data-menu aria-label="Post options">${DOTS}</button>` : ""}
+    </header>
+    ${c.kind === "post" && c.body ? `<p class="fc-body">${esc(c.body)}</p>` : ""}
+    ${c.kind === "post" ? shared : feedInner(c)}
+    ${r.total || c.comments.count ? `<div class="fc-stats">${r.total ? `<button class="fc-rx" type="button" data-who>${top} <span>${r.total}</span></button>` : "<span></span>"}${c.comments.count ? `<button class="linkbtn" type="button" data-comments>${plural(c.comments.count, "comment", "comments")}</button>` : ""}</div>` : ""}
+    <div class="fc-bar">
+      <button type="button" data-react class="${r.mine ? "on" : ""}" aria-expanded="false">${r.mine ? `<span class="fc-emo">${r.mine}</span>` : HEART} React</button>
+      <button type="button" data-comments>${MSG} Comment</button>
+      ${c.kind !== "post" ? `<button type="button" data-share>${SHARE_IC} Share</button>` : ""}
+    </div>
+    <div class="fc-pick" hidden role="group" aria-label="Pick a reaction">${FEED_EMOJI.map((e) => `<button type="button" data-emoji="${e}" aria-pressed="${r.mine === e}">${e}</button>`).join("")}</div>
+    ${latest ? `<div class="fc-cmts">${latest}${c.comments.count > 2 ? `<button class="linkbtn" type="button" data-comments>View all ${c.comments.count} comments</button>` : ""}</div>` : ""}
+  </article>`;
+}
+
+// Draws the feed into box. Keeps the last answer on screen while the new one loads, so it doesn't flicker.
+async function renderFeed(box) {
+  const isLive = renderLive();
+  const paint = () => {
+    const f = state.feed;
+    const me = state.me;
+    box.innerHTML = `<button class="fc-compose" type="button" data-compose>${avatar(me.name, me.id)}<span class="fc-ph">Share something with your circle...</span></button>
+      ${!f ? `<p class="footnote" style="text-align:center">Loading...</p>`
+        : f.cards.length ? `<div class="fc-list">${f.cards.map(feedCardHtml).join("")}</div>${f.next ? `<button class="btn wide quiet" type="button" data-feed-more>Show more</button>` : ""}`
+        : `<div class="empty">${giftBox("Nothing yet")}<strong>Nothing here yet</strong><p>When your people add wishes or update their profiles, it shows up here. Or share something first!</p></div>`}`;
+    wireFeed(box);
+  };
+  paint();
+  try {
+    const r = await api("feed");
+    if (!isLive() || !document.body.contains(box)) return;
+    state.feed = { cards: r.cards, next: r.next };
+    paint();
+  } catch (e) {
+    if (!state.feed && isLive()) box.querySelector(".footnote")?.replaceWith(Object.assign(document.createElement("p"), { className: "footnote", textContent: e.message }));
+  }
+}
+function feedReplace(box, card) {
+  const f = state.feed;
+  if (!f) return;
+  const i = f.cards.findIndex((c) => c.id === card.id);
+  if (i >= 0) f.cards[i] = card;
+  const el = box.querySelector(`[data-fid="${CSS.escape(card.id)}"]`);
+  if (el) { el.outerHTML = feedCardHtml(card); wireFeed(box); }
+}
+function wireFeed(box) {
+  const cardOf = (el) => state.feed?.cards.find((c) => c.id === el.closest("[data-fid]")?.dataset.fid);
+  box.querySelector("[data-compose]").onclick = () => openFeedComposer(box);
+  const more = box.querySelector("[data-feed-more]");
+  if (more) more.onclick = async () => {
+    more.disabled = true;
+    try {
+      const r = await api(`feed?before=${encodeURIComponent(state.feed.next)}`);
+      const have = new Set(state.feed.cards.map((c) => c.id));
+      state.feed.cards.push(...r.cards.filter((c) => !have.has(c.id)));
+      state.feed.next = r.next;
+      const y = scrollY;
+      renderFeedPaintOnly(box);
+      scrollTo(0, y);
+    } catch (e) { oops(e.message); more.disabled = false; }
+  };
+  box.querySelectorAll("[data-person]").forEach((b) => (b.onclick = () => openPersonOrMe(b.dataset.person)));
+  box.querySelectorAll("[data-wish]").forEach((b) => (b.onclick = () => {
+    const [owner, item] = b.dataset.wish.split(":");
+    if (owner === state.me.id) setTab("mine"); else setTab("family", owner);
+    flashWhenReady(item);
+  }));
+  box.querySelectorAll("[data-react]").forEach((b) => (b.onclick = () => {
+    const pick = b.closest(".fcard").querySelector(".fc-pick");
+    box.querySelectorAll(".fc-pick").forEach((p) => { if (p !== pick) p.hidden = true; });
+    pick.hidden = !pick.hidden;
+    b.setAttribute("aria-expanded", String(!pick.hidden));
+  }));
+  box.querySelectorAll("[data-emoji]").forEach((b) => (b.onclick = async () => {
+    const c = cardOf(b);
+    buzz();
+    try { const r = await api("feed/react", { id: c.id, emoji: b.dataset.emoji }); if (r.card) feedReplace(box, r.card); }
+    catch (e) { oops(e.message); }
+  }));
+  box.querySelectorAll("[data-who]").forEach((b) => (b.onclick = () => openFeedReactions(cardOf(b))));
+  box.querySelectorAll("[data-comments]").forEach((b) => (b.onclick = () => openFeedComments(box, cardOf(b))));
+  box.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openFeedComposer(box, { share: cardOf(b) })));
+  box.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = () => {
+    const c = cardOf(b);
+    openSheet(`<h3>${c.kind === "post" ? "Your post" : "Your update"}</h3>
+      ${c.kind === "post" ? `<button class="btn wide" type="button" id="fcEdit" style="margin-bottom:8px">Edit</button>` : `<p class="subtle">Hints made this when you ${c.kind === "wishes" ? "added wishes" : "updated your profile"}. You can take it off the feed.</p>`}
+      <button class="btn wide danger" type="button" id="fcDel">Remove from the feed</button>`, (el) => {
+      $("#fcEdit", el)?.addEventListener("click", () => openFeedComposer(box, { edit: c }));
+      $("#fcDel", el).onclick = async () => {
+        try {
+          await api("feed/delete", { id: c.id });
+          state.feed.cards = state.feed.cards.filter((x) => x.id !== c.id);
+          closeSheet(); renderFeedPaintOnly(box); toast("Removed");
+        } catch (e) { oops(e.message); }
+      };
+    });
+  }));
+}
+// Redraws from what's already loaded (no fetch).
+function renderFeedPaintOnly(box) {
+  const list = state.feed;
+  box.querySelector(".fc-list")?.remove();
+  box.querySelector("[data-feed-more]")?.remove();
+  box.querySelector(".empty")?.remove();
+  box.insertAdjacentHTML("beforeend", list.cards.length ? `<div class="fc-list">${list.cards.map(feedCardHtml).join("")}</div>${list.next ? `<button class="btn wide quiet" type="button" data-feed-more>Show more</button>` : ""}`
+    : `<div class="empty"><strong>Nothing here yet</strong><p>When your people add wishes or update their profiles, it shows up here.</p></div>`);
+  wireFeed(box);
+}
+
+// New post, sharing a card (opts.share), or editing your post (opts.edit).
+function openFeedComposer(box, opts = {}) {
+  const editing = opts.edit || null;
+  const share = editing ? (editing.shared && !editing.shared.gone ? editing.shared : null) : opts.share || null;
+  let circle = editing?.circle?.id || "";
+  openSheet(`<h3>${editing ? "Edit your post" : share ? "Share with your circle" : "Share something"}</h3>
+    <form id="fcForm" autocomplete="off"><div class="err" hidden></div>
+      <textarea class="input fc-ta" name="body" maxlength="500" placeholder="${share ? "Say something about it (optional)" : "What's on your mind?"}">${esc(editing?.body || "")}</textarea>
+      ${share ? `<div class="fc-shared"><div class="fc-shead">${feedAv(share.actor, "xs")}<span><strong>${esc(share.actor.name)}</strong> ${feedWhat(share)}</span></div>${feedInner(share)}</div>` : ""}
+      ${multi() && !editing ? `<div class="label" style="margin-top:14px;font-size:15px">Who sees it</div><div class="chips fc-circles" role="group" aria-label="Who sees it">
+        <button class="chip" type="button" data-c="" aria-pressed="true">All my circles</button>${state.groups.map((g) => `<button class="chip" type="button" data-c="${esc(g.id)}" aria-pressed="false">${esc(g.name)}</button>`).join("")}</div>` : ""}
+      <p class="hint">Everyone in the circle sees posts and comments, including anyone they're about. For surprises, use the chat on their page.</p>
+      <div class="actions"><button class="btn" type="button" id="fcCancel">Cancel</button><button class="btn primary" type="submit">${editing ? "Save" : "Post"}</button></div>
+    </form>`, (el) => {
+    el.querySelectorAll(".fc-wish, .fc-more, .fc-fields").forEach((b) => (b.disabled = true));
+    const ta = $(".fc-ta", el);
+    setTimeout(() => ta.focus(), 300);
+    $("#fcCancel", el).onclick = closeSheet;
+    el.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => {
+      circle = b.dataset.c;
+      el.querySelectorAll("[data-c]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    }));
+    wireForm($("#fcForm", el), async ({ body }) => {
+      if (!body.trim() && !share) throw new Error("Write something first.");
+      const r = editing ? await api("feed/edit", { id: editing.id, body })
+        : await api("feed/post", { body, shareId: share?.id, groupId: circle || undefined });
+      closeSheet();
+      if (editing) feedReplace(box, r.card);
+      else {
+        state.feed = state.feed || { cards: [], next: null };
+        state.feed.cards.unshift(r.card);
+        renderFeedPaintOnly(box);
+        toast("Posted");
+      }
+    });
+  });
+}
+
+function openFeedComments(box, c) {
+  let comments = null;
+  openSheet(`<div class="chat-sheet">
+    <h3>Comments</h3>
+    <p class="chat-lock">Everyone who can see this post sees comments, including ${esc(c.actor.id === state.me.id ? "you" : c.actor.name)}.</p>
+    <div class="chat-list fc-clist" id="fcList"><p class="chat-empty">Loading...</p></div>
+    <div class="chat-compose"><form class="chat-form" id="fcCForm">
+      <textarea id="fcCText" rows="1" maxlength="500" placeholder="Add a comment" aria-label="Comment"></textarea>
+      <button class="btn primary" type="submit">Send</button></form><p class="err" id="fcCErr" hidden></p></div>
+  </div>`, (root) => {
+    const list = $("#fcList", root), ta = $("#fcCText", root), err = $("#fcCErr", root);
+    const showErr = (m) => { err.textContent = m; err.hidden = !m; };
+    const sync = () => {
+      // Keep the card's count and latest two in step without refetching the feed.
+      c.comments = { count: comments.length, latest: comments.slice(-2) };
+      feedReplace(box, c);
+    };
+    const paint = () => {
+      list.innerHTML = comments.length ? comments.map((m) => `<div class="msg${m.mine ? " mine" : ""}">${m.mine ? "" : feedAv(m.author)}
+        <div class="msg-b">${m.mine ? "" : `<span class="msg-who">${esc(m.author.name)}</span>`}<p>${esc(m.body)}</p>
+          <span class="msg-meta">${feedTime(m.at)}${m.canDelete ? ` · <button class="linkbtn fc-cdel" type="button" data-cdel="${esc(m.id)}">Remove</button>` : ""}</span></div></div>`).join("")
+        : `<div class="chat-empty"><strong>No comments yet</strong>Say something nice!</div>`;
+      list.scrollTop = list.scrollHeight;
+      list.querySelectorAll("[data-cdel]").forEach((b) => (b.onclick = async () => {
+        try { comments = (await api("feed/comment/delete", { id: b.dataset.cdel })).comments; paint(); sync(); }
+        catch (e) { showErr(e.message); }
+      }));
+    };
+    api(`feed/comments?id=${encodeURIComponent(c.id)}`).then((r) => { comments = r.comments; paint(); }, (e) => { list.innerHTML = ""; showErr(e.message); });
+    const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(140, ta.scrollHeight) + "px"; };
+    ta.addEventListener("input", grow);
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && matchMedia("(pointer: fine)").matches) { e.preventDefault(); $("#fcCForm", root).requestSubmit(); }
+    });
+    $("#fcCForm", root).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = ta.value.trim();
+      if (!text) return;
+      showErr("");
+      const btn = root.querySelector('#fcCForm [type="submit"]');
+      btn.disabled = true;
+      try { comments = (await api("feed/comment", { id: c.id, body: text })).comments; ta.value = ""; grow(); paint(); sync(); }
+      catch (e2) { showErr(e2.message); }
+      finally { btn.disabled = false; }
+    });
+    if (!matchMedia("(pointer: coarse)").matches) setTimeout(() => ta.focus(), 300);
+  });
+}
+
+async function openFeedReactions(c) {
+  openSheet(`<h3>Reactions</h3><div id="fcRx"><p class="subtle">Loading...</p></div>`, async (el) => {
+    try {
+      const { people } = await api(`feed/reactions?id=${encodeURIComponent(c.id)}`);
+      $("#fcRx", el).innerHTML = people.length ? `<div class="stack">${people.map((p) => `<div class="fc-rxrow">${feedAv(p)}<strong>${esc(p.name)}</strong><span class="fc-emo">${p.emoji}</span></div>`).join("")}</div>`
+        : `<p class="subtle">No reactions yet.</p>`;
+    } catch (e) { $("#fcRx", el).innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  });
+}
+
 async function renderFamily() {
   // Fresh wish counts (and "new" badges) every time, not the ones from when the app opened.
   // render() may have just fetched it; skip a second /me call right after.
@@ -5256,7 +5566,14 @@ async function renderFamily() {
       <span class="req-btns"><button class="btn small quiet" type="button" data-req="${esc(r.g.id)}:${esc(r.id)}" data-allow="">Decline</button>
       <button class="btn small primary" type="button" data-req="${esc(r.g.id)}:${esc(r.id)}" data-allow="1">Let in</button></span></div>`).join("")}</div>` : "";
 
-  if (multi()) {
+  // Feed / People switch (remembered on this device). Feed is the social side; People is the list of everyone.
+  // While it's just you, there's no feed to show yet, so the invite screen shows instead.
+  const feedMode = all.length > 0 && circlesView() === "feed";
+  const switchHtml = all.length ? `<div class="c-switch">${seg("Show", [["feed", "Feed"], ["people", "People"]], feedMode ? "feed" : "people", "two")}</div>` : "";
+  if (feedMode) {
+    v.innerHTML = `${requestsHtml}${catchUpHtml}${switchHtml}<div id="feedBox"></div>`;
+    renderFeed($("#feedBox", v));
+  } else if (multi()) {
     // In more than one circle: a section per circle. Someone in two of them shows in both.
     // With a filter on, circles with no one matching are left out.
     const shown = state.groups.filter((fam) => !state.circleFilter || fam.members.some((m) => m.id !== state.me.id && shows(m)));
@@ -5265,17 +5582,19 @@ async function renderFamily() {
       return `<section class="csection">${head(fam, !n && !catchUpHtml && !controls)}
         ${ppl.length ? groupsHtml(ppl) : `<p class="footnote" style="margin:12px 0 0">Just you so far. Tap Invite to send ${esc(fam.name)} the link.</p>`}</section>`;
     }).join("");
-    v.innerHTML = `${requestsHtml}${catchUpHtml}${controls ? `<div class="c-top${catchUpHtml ? "" : " first"}">${controls}</div>` : ""}${sections}
+    v.innerHTML = `${requestsHtml}${catchUpHtml}${switchHtml}${controls ? `<div class="c-top${catchUpHtml ? "" : " first"}">${controls}</div>` : ""}${sections}
       <p class="footnote c-nomatch" hidden>No one by that name.</p>${addRow}`;
   } else {
-    v.innerHTML = `${requestsHtml}${catchUpHtml}${g ? head(g, !catchUpHtml && !requestsHtml) : ""}
+    v.innerHTML = `${requestsHtml}${catchUpHtml}${switchHtml}${g ? head(g, !catchUpHtml && !requestsHtml && !switchHtml) : ""}
       ${people.length ? `${controls}<div class="csection">${groupsHtml(people)}</div><p class="footnote c-nomatch" hidden>No one by that name.</p>` : `
         <div class="empty">${giftBox("Invite your people")}<strong>Just you so far</strong><p>Their lists show up here once they join.</p></div>
         <div style="margin-top:12px">${g ? inviteCard(g) : ""}</div>`}
       ${addRow}
       <p class="footnote">In another circle too, like friends or your partner's family? Join it from Settings and keep one list for both.</p>`;
   }
-  v.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
+  const sw = v.querySelector(".c-switch .seg");
+  if (sw) wireSeg(sw, (val) => { try { localStorage.setItem(viewKey, val); } catch {} renderFamily(); });
+  v.querySelectorAll(".member[data-id]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.id)));
   v.querySelectorAll("[data-cu]").forEach((b) => (b.onclick = () => {
     if (b.hasAttribute("data-cu-chat")) state.chatOnLoad = true;
     setTab("family", b.dataset.cu);
@@ -5317,10 +5636,10 @@ async function renderFamily() {
     if (cu) { cu.hidden = !!q; cu.previousElementSibling.hidden = !!q; }
     $(".c-nomatch", v).hidden = any || !q;
   };
-  if (g && !multi()) wireInviteCard(v, g);
+  if (g && !multi() && !feedMode) wireInviteCard(v, g);
   v.querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => openInvite(state.groups.find((x) => x.id === b.dataset.share))));
   v.querySelectorAll("[data-manage]").forEach((b) => (b.onclick = () => openCircleManage(b.dataset.manage)));
-  wireGiftBox(v, () => {
+  if (!feedMode) wireGiftBox(v, () => {
     const card = $("[data-ticket]", v);
     if (!card) return openInvite(g);
     card.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" });
@@ -8268,7 +8587,8 @@ const PUSH_KINDS = [["wishes", "New wishes", "When someone adds to their list (a
   ["groupGifts", "Group gifts", "When someone starts one you can chip in on"],
   ["chat", "Chats", "New messages in a chat about someone (once until you read it)"],
   ["chatText", "Show message text", "Put what was said in chat notifications. Off, they just say \"New message about Mom\", in case they see your lock screen"],
-  ["reminders", "Your list", "Once in November if your list hasn't changed since last year"]];
+  ["reminders", "Your list", "Once in November if your list hasn't changed since last year"],
+  ["feed", "Comments", "When someone comments on your posts and updates in the feed"]];
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 function keyBytes(b64) {
   const t = b64.replace(/-/g, "+").replace(/_/g, "/");

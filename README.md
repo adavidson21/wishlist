@@ -30,6 +30,7 @@ A few more things you can do:
 - ⭐ **Mark top picks** so people know what you want most.
 - 🔗 **Link wishes that go together**, like a coloring book and pencils: both or neither, or "only with that one".
 - 📝 **Keep private gift ideas** for someone. Only you can see them.
+- 📰 **See what your people are up to** in the feed on the Circles tab: new wishes, profile updates, and posts. React, comment, or share a wish with a note ("this is SO you").
 - 💬 **Chat about someone's gifts** ("Is she still a size M?"). Everyone in the circle can read it except that person.
 - 🎂 **Get a heads up** before birthdays and Christmas, and when someone adds new wishes.
 - 💰 **Track a budget** for each person, so you know what you've spent.
@@ -89,6 +90,7 @@ Hints pays Google for this, and under Google's paid terms, **what we send isn't 
 
 - **Surprises are protected for real.** Hints doesn't just hide things on the screen. It refuses to send them to the person a gift is for in the first place, so there's no way for them to peek.
 - **Hide a wish from a circle.** In more than one circle (say, family and friends)? Each wish has a "Who can see this" switch.
+- **The feed is not secret.** Posts and comments in the feed are seen by everyone in the circle, including the person they're about. It never shows who's getting what. For surprises, use the chat.
 - **Phone notifications stay vague.** A chat notification just says "New message about Sam" unless you turn on message text. That way Sam can't read it over your shoulder on your lock screen.
 
 ### What Hints doesn't do

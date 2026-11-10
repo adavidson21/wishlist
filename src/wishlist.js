@@ -742,6 +742,185 @@ async function chatCounts(env, meId, subjectId) {
   return out;
 }
 
+// ---------- activity feed (Circles tab) ----------
+// docs/plans/activity-feed.md. Cards: 'wishes' (someone added wishes), 'profile' (they updated their profile) and
+// 'post' (something someone shared, optionally with another card). Who may see a card, and which of its wishes,
+// is decided when the feed is read, so a wish hidden or removed later drops out of old cards too.
+// Never anything about claims, purchases, budgets, ideas or the hidden chat.
+const FEED_KEEP_DAYS = 180;
+const FEED_PAGE = 20;
+const FEED_EMOJI = ["❤️", "😂", "😍", "🎁", "🔥"];
+const FEED_WISH_JOIN_MS = 2 * 3600_000, FEED_WISH_SPAN_MS = 12 * 3600_000, FEED_PROFILE_JOIN_MS = 6 * 3600_000;
+const FEED_WISHES_MAX = 30;
+// Profile columns worth a card, and the name the app shows for each.
+const FEED_FIELDS = { photo_at: "photo", cover_at: "cover", bio: "bio", likes: "likes", dislikes: "dislikes", sizes: "sizes",
+  colors: "colors", brands: "brands", gift_style: "giftStyle", owns: "owns" };
+const feedCutoff = () => new Date(Date.now() - FEED_KEEP_DAYS * 86_400_000).toISOString();
+const feedMeta = (r) => { try { return JSON.parse(r.meta || "{}") || {}; } catch { return {}; } };
+
+// Adds to the actor's latest card of this kind when it's recent enough, otherwise starts a new one.
+async function feedJoin(env, actorId, kind, joinMs, add) {
+  const t = now();
+  const last = await env.DB.prepare(
+    "SELECT id, meta, created_at FROM feed WHERE actor_id = ? AND kind = ? AND deleted_at IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT 1",
+  ).bind(actorId, kind, new Date(Date.now() - joinMs).toISOString()).first();
+  if (last && (kind !== "wishes" || Date.now() - Date.parse(last.created_at) < FEED_WISH_SPAN_MS)) {
+    await env.DB.prepare("UPDATE feed SET meta = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(add(feedMeta(last))), t, last.id).run();
+    return last.id;
+  }
+  const id = newId();
+  await env.DB.prepare("INSERT INTO feed (id, actor_id, kind, meta, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(id, actorId, kind, JSON.stringify(add({})), t, t).run();
+  return id;
+}
+// A wish just went on someone's list (published, or saved straight to it for someone you look after).
+async function feedWish(env, ownerId, itemId) {
+  await feedJoin(env, ownerId, "wishes", FEED_WISH_JOIN_MS, (m) => {
+    const items = (m.items || []).filter((x) => x !== itemId);
+    items.unshift(itemId);
+    return { items: items.slice(0, FEED_WISHES_MAX) };
+  }).catch((err) => console.error("feed wish", err));
+}
+const feedProfileCols = Object.keys(FEED_FIELDS).join(", ");
+const feedProfileSnap = (env, id) => env.DB.prepare(`SELECT ${feedProfileCols} FROM members WHERE id = ?`).bind(id).first();
+// What changed between two snapshots. Only something new counts: clearing a field (or removing a photo) doesn't.
+const feedBlank = (v) => v == null || v === "" || v === "[]" || v === "{}";
+async function feedProfile(env, who, before, after) {
+  if (!before || !after) return;
+  const fields = Object.entries(FEED_FIELDS).filter(([col]) => !feedBlank(after[col]) && after[col] !== before[col]).map(([, k]) => k);
+  if (!fields.length) return;
+  await feedJoin(env, who, "profile", FEED_PROFILE_JOIN_MS, (m) => ({ fields: [...new Set([...fields, ...(m.fields || [])])] }))
+    .catch((err) => console.error("feed profile", err));
+}
+
+// SQL: feed row f is for the viewer (?1): the actor shares a circle with them (the post's circle, if it has one).
+const FEED_SEES = `f.deleted_at IS NULL AND EXISTS (SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
+   WHERE x.member_id = ?1 AND y.member_id = f.actor_id AND (f.group_id IS NULL OR x.group_id = f.group_id))`;
+// SQL: member column `col` is the viewer (?1) or shares a circle with them.
+const FEED_KNOWS = (col) => `(${col} = ?1 OR EXISTS (SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id WHERE x.member_id = ?1 AND y.member_id = ${col}))`;
+
+async function feedRowFor(env, meId, id) {
+  const r = await env.DB.prepare(`SELECT f.* FROM feed f WHERE f.id = ?2 AND ${FEED_SEES}`).bind(meId, String(id || "")).first();
+  if (!r) fail(404, "That post isn't there anymore.");
+  return r;
+}
+
+// Turns feed rows into cards for one viewer. Wishes go through ITEM_VISIBLE (yours: just published and not removed).
+// A wishes card with nothing left is dropped, and so is a shared card the viewer can no longer see (it shows as gone).
+async function feedCards(env, meId, rows) {
+  if (!rows.length) return [];
+  const shareIds = [...new Set(rows.filter((r) => r.share_id).map((r) => r.share_id))];
+  const shared = new Map();
+  for (let i = 0; i < shareIds.length; i += 50) {
+    const ids = shareIds.slice(i, i + 50);
+    const { results } = await env.DB.prepare(`SELECT f.* FROM feed f WHERE f.id IN (${ids.map(() => "?").join(",")}) AND ${FEED_SEES.replace(/\?1/g, "?" + (ids.length + 1))}`)
+      .bind(...ids, meId).all();
+    for (const r of results) shared.set(r.id, r);
+  }
+  const all = [...rows, ...shared.values()];
+  const itemIds = [...new Set(all.filter((r) => r.kind === "wishes").flatMap((r) => feedMeta(r).items || []))];
+  const items = new Map();
+  for (let i = 0; i < itemIds.length; i += 80) {
+    const ids = itemIds.slice(i, i + 80);
+    const { results } = await env.DB.prepare(
+      `SELECT i.id, i.owner_id, i.title, i.image_url, i.price_cents FROM items i WHERE i.id IN (${ids.map(() => "?").join(",")}) AND i.removed_at IS NULL
+         AND (i.owner_id = ?${ids.length + 1} AND i.draft = 0 OR ${ITEM_VISIBLE.replace("?", "?" + (ids.length + 1))})`,
+    ).bind(...ids, meId).all();
+    for (const r of results) items.set(r.id, r);
+  }
+  const ids = [...new Set(all.map((r) => r.id))];
+  const reacts = new Map(), comments = new Map();
+  for (let i = 0; i < ids.length; i += 80) {
+    const part = ids.slice(i, i + 80), q = part.map(() => "?").join(","), me = `?${part.length + 1}`;
+    const { results: rr } = await env.DB.prepare(
+      `SELECT r.feed_id, r.member_id, r.emoji FROM feed_reactions r WHERE r.feed_id IN (${q}) AND ${FEED_KNOWS("r.member_id").replace(/\?1/g, me)}`,
+    ).bind(...part, meId).all();
+    for (const r of rr) (reacts.get(r.feed_id) || reacts.set(r.feed_id, []).get(r.feed_id)).push(r);
+    const { results: cr } = await env.DB.prepare(
+      `SELECT c.id, c.feed_id, c.author_id, c.body, c.created_at, m.name AS author_name FROM feed_comments c JOIN members m ON m.id = c.author_id
+        WHERE c.feed_id IN (${q}) AND c.deleted_at IS NULL AND ${FEED_KNOWS("c.author_id").replace(/\?1/g, me)} ORDER BY c.created_at`,
+    ).bind(...part, meId).all();
+    for (const c of cr) (comments.get(c.feed_id) || comments.set(c.feed_id, []).get(c.feed_id)).push(c);
+  }
+  const names = new Map();
+  const actorIds = [...new Set(all.map((r) => r.actor_id))];
+  if (actorIds.length) {
+    const { results } = await env.DB.prepare(`SELECT id, name FROM members WHERE id IN (${actorIds.map(() => "?").join(",")})`).bind(...actorIds).all();
+    for (const r of results) names.set(r.id, r.name);
+  }
+  const groupIds = [...new Set(all.map((r) => r.group_id).filter(Boolean))];
+  const groups = new Map();
+  if (groupIds.length) {
+    const { results } = await env.DB.prepare(`SELECT id, name FROM groups WHERE id IN (${groupIds.map(() => "?").join(",")})`).bind(...groupIds).all();
+    for (const r of results) groups.set(r.id, r.name);
+  }
+  const nicks = await nicknamesFor(env, meId);
+  const who = (id, name) => ({ id, name: id === meId ? "You" : nicks.get(id) || name || "Someone" });
+  const commentOut = (c, owner) => ({ id: c.id, author: who(c.author_id, c.author_name), body: c.body, at: c.created_at,
+    mine: c.author_id === meId, canDelete: c.author_id === meId || owner === meId });
+  const card = (r, inner) => {
+    const base = { id: r.id, kind: r.kind, actor: who(r.actor_id, names.get(r.actor_id)), at: r.updated_at, created: r.created_at, mine: r.actor_id === meId,
+      circle: r.group_id ? { id: r.group_id, name: groups.get(r.group_id) || "" } : null };
+    if (r.kind === "wishes") {
+      const shown = (feedMeta(r).items || []).map((id) => items.get(id)).filter(Boolean);
+      if (!shown.length) return null;
+      Object.assign(base, { items: shown.slice(0, 4).map((i) => ({ id: i.id, title: i.title, image_url: i.image_url || null, price_cents: i.price_cents })), count: shown.length, more: Math.max(0, shown.length - 4) });
+    } else if (r.kind === "profile") {
+      base.fields = feedMeta(r).fields || [];
+    } else {
+      base.body = r.body || "";
+      base.edited = !!r.edited_at;
+      if (r.share_id && !inner) base.shared = (shared.has(r.share_id) && card(shared.get(r.share_id), true)) || { gone: true };
+    }
+    if (inner) return base;
+    const rx = reacts.get(r.id) || [];
+    const counts = {};
+    for (const x of rx) counts[x.emoji] = (counts[x.emoji] || 0) + 1;
+    base.reactions = { counts, total: rx.length, mine: rx.find((x) => x.member_id === meId)?.emoji || null };
+    const cs = comments.get(r.id) || [];
+    base.comments = { count: cs.length, latest: cs.slice(-2).map((c) => commentOut(c, r.actor_id)) };
+    return base;
+  };
+  return rows.map((r) => card(r, false)).filter(Boolean);
+}
+async function feedCommentsFor(env, meId, row) {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.author_id, c.body, c.created_at, m.name AS author_name FROM feed_comments c JOIN members m ON m.id = c.author_id
+      WHERE c.feed_id = ?2 AND c.deleted_at IS NULL AND ${FEED_KNOWS("c.author_id")} ORDER BY c.created_at LIMIT 500`,
+  ).bind(meId, row.id).all();
+  const nicks = await nicknamesFor(env, meId);
+  return results.map((c) => ({ id: c.id, author: { id: c.author_id, name: c.author_id === meId ? "You" : nicks.get(c.author_id) || c.author_name },
+    body: c.body, at: c.created_at, mine: c.author_id === meId, canDelete: c.author_id === meId || row.actor_id === meId }));
+}
+// Someone commented on your card: one notification, replaced by the next (same tag). Never for your own comment.
+async function feedCommented(env, author, row, textBody) {
+  if (row.actor_id === author.id) return;
+  const r = await env.DB.prepare(`SELECT m.notify FROM members m WHERE m.id = ? AND m.managed_by IS NULL
+      AND EXISTS (SELECT 1 FROM push_subs s WHERE s.member_id = m.id AND ${LIVE_SUB})`).bind(row.actor_id).first();
+  if (!r || !notifyPrefs(r.notify).feed) return;
+  const nicks = await nicknamesFor(env, row.actor_id);
+  const what = row.kind === "post" ? "your post" : row.kind === "wishes" ? "your new wishes" : "your profile update";
+  await pushTo(env, row.actor_id, {
+    title: `${nicks.get(author.id) || author.name} commented on ${what}`,
+    body: textBody.length > 140 ? `${textBody.slice(0, 137)}...` : textBody,
+    url: "/#family", tag: `feed:${row.id}`,
+  });
+}
+// Everything feed that belongs to a person (account deleted).
+const feedForget = (env, id) => [
+  env.DB.prepare("DELETE FROM feed_reactions WHERE member_id = ?1 OR feed_id IN (SELECT id FROM feed WHERE actor_id = ?1)").bind(id),
+  env.DB.prepare("DELETE FROM feed_comments WHERE author_id = ?1 OR feed_id IN (SELECT id FROM feed WHERE actor_id = ?1)").bind(id),
+  env.DB.prepare("DELETE FROM feed WHERE actor_id = ?1").bind(id),
+];
+async function feedSweep(env) {
+  const cut = feedCutoff();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM feed_reactions WHERE feed_id IN (SELECT id FROM feed WHERE updated_at < ?1 OR deleted_at IS NOT NULL)").bind(cut),
+    env.DB.prepare("DELETE FROM feed_comments WHERE created_at < ?1 OR feed_id IN (SELECT id FROM feed WHERE updated_at < ?1 OR deleted_at IS NOT NULL)").bind(cut),
+    env.DB.prepare("DELETE FROM feed WHERE updated_at < ?1 OR deleted_at < ?1").bind(cut),
+  ]);
+}
+
 async function myGroupIds(env, memberId) {
   const { results } = await env.DB.prepare("SELECT group_id FROM group_members WHERE member_id = ?").bind(memberId).all();
   return results.map((r) => r.group_id);
@@ -998,6 +1177,7 @@ async function deleteMember(env, id) {
       env.DB.prepare("DELETE FROM item_hidden WHERE group_id = ?").bind(c.group_id),
       env.DB.prepare("DELETE FROM chat_reads WHERE group_id = ?").bind(c.group_id),
       env.DB.prepare("DELETE FROM chat_messages WHERE group_id = ?").bind(c.group_id),
+      env.DB.prepare("UPDATE feed SET deleted_at = ? WHERE group_id = ?").bind(now(), c.group_id),
       env.DB.prepare("DELETE FROM group_households WHERE group_id = ?").bind(c.group_id),
       env.DB.prepare("DELETE FROM join_requests WHERE group_id = ?").bind(c.group_id),
       env.DB.prepare("DELETE FROM group_members WHERE group_id = ?").bind(c.group_id),
@@ -1016,6 +1196,7 @@ async function deleteMember(env, id) {
   q("DELETE FROM gift_cards WHERE member_id = ?1");
   q("DELETE FROM chat_messages WHERE author_id = ?1 OR subject_id = ?1");
   q("DELETE FROM chat_reads WHERE member_id = ?1 OR subject_id = ?1");
+  rows.push(...feedForget(env, id));
   q("DELETE FROM push_subs WHERE member_id = ?1");
   q("DELETE FROM push_later WHERE member_id = ?1");
   q("DELETE FROM list_seen WHERE viewer_id = ?1 OR owner_id = ?1");
@@ -2174,7 +2355,7 @@ async function estimatePrice(env, row) {
 // you share a circle with, only wishes you can see, never anything about your own gifts.
 // Quiet hours: nothing is sent between 9 pm and 8 am New York time. Instant ones (group gifts, chat) wait in
 // push_later and go out with the 8 am run; the wish digest just waits for the morning.
-const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts", "chat", "reminders"];
+const NOTIFY_KINDS = ["wishes", "birthdays", "groupGifts", "chat", "reminders", "feed"];
 function notifyPrefs(v) {
   let o = {};
   try { o = JSON.parse(v || "{}") || {}; } catch {}
@@ -2493,6 +2674,7 @@ export async function runSchedule(env) {
     // Problems and notes: handled ones after 90 days, problems that stopped happening after 90 days.
     const old = new Date(Date.now() - 90 * 86_400_000).toISOString();
     await env.DB.prepare("DELETE FROM reports WHERE done_at < ?1 OR (kind = 'error' AND last_at < ?1)").bind(old).run().catch(() => {});
+    await feedSweep(env).catch((err) => console.error("feed sweep", err));
   }
   await settleReceived(env).catch((err) => console.error("settle", err));
   await snapshotGifts(env).catch((err) => console.error("history", err));
@@ -2879,6 +3061,123 @@ const handlers = {
     return { ok: true };
   },
 
+  // ---------- activity feed (Circles tab, docs/plans/activity-feed.md) ----------
+  // Newest cards first. before: the `next` cursor from the last page. Cards whose wishes all went out of view are
+  // skipped, so a page can come back with fewer than 20 while there's still more.
+  async "GET feed"(req, env, url) {
+    const me = await auth(req, env);
+    const before = url.searchParams.get("before") || "9999";
+    const { results } = await env.DB.prepare(
+      `SELECT f.* FROM feed f WHERE ${FEED_SEES} AND f.updated_at < ?2 AND f.updated_at > ?3 ORDER BY f.updated_at DESC LIMIT ${FEED_PAGE + 1}`,
+    ).bind(me.id, String(before), feedCutoff()).all();
+    const page = results.slice(0, FEED_PAGE);
+    return { cards: await feedCards(env, me.id, page), next: results.length > FEED_PAGE ? page[page.length - 1].updated_at : null, emoji: FEED_EMOJI };
+  },
+
+  // { body, shareId?, groupId? }. groupId: just that circle (one of yours); absent = all your circles.
+  // Sharing a card is allowed with no text. Posts can't be shared again.
+  async "POST feed/post"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const share = b.shareId ? await feedRowFor(env, me.id, b.shareId) : null;
+    if (share?.kind === "post") fail(400, "Posts can't be shared again.");
+    const msg = text(b.body, LIMITS.chat, "Post", !share);
+    let groupId = null;
+    if (b.groupId) {
+      if (!(await myGroupIds(env, me.id)).includes(String(b.groupId))) fail(400, "Pick one of your circles.");
+      groupId = String(b.groupId);
+    }
+    await rateLimit(env, `feed:p:${me.id}`, ABUSE.feedPostsPerMember);
+    const id = newId(), t = now();
+    await env.DB.prepare("INSERT INTO feed (id, actor_id, kind, group_id, body, share_id, created_at, updated_at) VALUES (?, ?, 'post', ?, ?, ?, ?, ?)")
+      .bind(id, me.id, groupId, msg || null, share?.id || null, t, t).run();
+    const row = await env.DB.prepare("SELECT * FROM feed WHERE id = ?").bind(id).first();
+    return { card: (await feedCards(env, me.id, [row]))[0] };
+  },
+
+  // Fix your own post. { id, body }
+  async "POST feed/edit"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const r = await feedRowFor(env, me.id, b.id);
+    if (r.actor_id !== me.id || r.kind !== "post") fail(404, "That post isn't there anymore.");
+    const msg = text(b.body, LIMITS.chat, "Post", !r.share_id);
+    await env.DB.prepare("UPDATE feed SET body = ?, edited_at = ? WHERE id = ?").bind(msg || null, now(), r.id).run();
+    const row = await env.DB.prepare("SELECT * FROM feed WHERE id = ?").bind(r.id).first();
+    return { card: (await feedCards(env, me.id, [row]))[0] };
+  },
+
+  // Take one of your cards off the feed (a post, or an automatic one you'd rather not show). { id }
+  async "POST feed/delete"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const r = await feedRowFor(env, me.id, b.id);
+    if (r.actor_id !== me.id) fail(403, "You can only remove your own posts.");
+    await env.DB.prepare("UPDATE feed SET deleted_at = ? WHERE id = ?").bind(now(), r.id).run();
+    return { ok: true };
+  },
+
+  // { id, emoji }: one reaction per person. The same emoji again, or null, takes it back.
+  async "POST feed/react"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const r = await feedRowFor(env, me.id, b.id);
+    const cur = await env.DB.prepare("SELECT emoji FROM feed_reactions WHERE feed_id = ? AND member_id = ?").bind(r.id, me.id).first();
+    const emoji = b.emoji == null || b.emoji === cur?.emoji ? null : String(b.emoji);
+    if (emoji && !FEED_EMOJI.includes(emoji)) fail(400, "Pick one of the reactions.");
+    if (emoji) {
+      await env.DB.prepare(
+        "INSERT INTO feed_reactions (feed_id, member_id, emoji, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (feed_id, member_id) DO UPDATE SET emoji = excluded.emoji, created_at = excluded.created_at",
+      ).bind(r.id, me.id, emoji, now()).run();
+    } else {
+      await env.DB.prepare("DELETE FROM feed_reactions WHERE feed_id = ? AND member_id = ?").bind(r.id, me.id).run();
+    }
+    return { card: (await feedCards(env, me.id, [r]))[0] || null };
+  },
+
+  // Who reacted to a card (people you share a circle with).
+  async "GET feed/reactions"(req, env, url) {
+    const me = await auth(req, env);
+    const r = await feedRowFor(env, me.id, url.searchParams.get("id"));
+    const { results } = await env.DB.prepare(
+      `SELECT x.member_id, x.emoji, m.name FROM feed_reactions x JOIN members m ON m.id = x.member_id
+        WHERE x.feed_id = ?2 AND ${FEED_KNOWS("x.member_id")} ORDER BY x.created_at`,
+    ).bind(me.id, r.id).all();
+    const nicks = await nicknamesFor(env, me.id);
+    return { people: results.map((x) => ({ id: x.member_id, name: x.member_id === me.id ? "You" : nicks.get(x.member_id) || x.name, emoji: x.emoji })) };
+  },
+
+  async "GET feed/comments"(req, env, url) {
+    const me = await auth(req, env);
+    const r = await feedRowFor(env, me.id, url.searchParams.get("id"));
+    return { comments: await feedCommentsFor(env, me.id, r) };
+  },
+
+  // { id, body }
+  async "POST feed/comment"(req, env, url, ctx) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const r = await feedRowFor(env, me.id, b.id);
+    const msg = text(b.body, LIMITS.chat, "Comment", true);
+    await rateLimit(env, `feed:c:${me.id}`, ABUSE.feedCommentsPerMember);
+    await env.DB.prepare("INSERT INTO feed_comments (id, feed_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(newId(), r.id, me.id, msg, now()).run();
+    ctx?.waitUntil(feedCommented(env, me, r, msg).catch((err) => console.error("feed push", err)));
+    return { comments: await feedCommentsFor(env, me.id, r) };
+  },
+
+  // Your own comment, or any comment on your card. { id }
+  async "POST feed/comment/delete"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const c = await env.DB.prepare("SELECT id, feed_id, author_id FROM feed_comments WHERE id = ? AND deleted_at IS NULL").bind(String(b.id || "")).first();
+    if (!c) fail(404, "That comment isn't there anymore.");
+    const r = await feedRowFor(env, me.id, c.feed_id);
+    if (c.author_id !== me.id && r.actor_id !== me.id) fail(403, "You can only remove your own comments.");
+    await env.DB.prepare("UPDATE feed_comments SET deleted_at = ?, body = '' WHERE id = ?").bind(now(), c.id).run();
+    return { comments: await feedCommentsFor(env, me.id, r) };
+  },
+
   // A member's wish list. Purchased marks are included only when you are not the owner.
   async "GET list"(req, env, url) {
     const me = await auth(req, env);
@@ -3052,6 +3351,7 @@ const handlers = {
       ...sizeColorRows(env, id, b),
     ]);
     await markUnfilled(env, "items", id, b, fields[1]);
+    if (!isDraft) await feedWish(env, owner, id);
     return { id };
   },
 
@@ -3098,6 +3398,7 @@ const handlers = {
       .bind(t, t, id, me.id)
       .run();
     if (!res.meta.changes) fail(404, "Item not found or already on your list.");
+    await feedWish(env, me.id, String(id));
     return { ok: true };
   },
 
@@ -4517,6 +4818,7 @@ const handlers = {
     // as: someone you look after. Their PIN is never set from here (they don't sign in).
     const who = await ownerFor(env, me, b.as);
     if (who !== me.id && b.pin !== undefined) fail(400, "Only they can set their own PIN.");
+    const feedBefore = await feedProfileSnap(env, who);
     // Name and optional last name. Nobody in their circles and their household slot may end up with the same name.
     if (b.name !== undefined || b.lastName !== undefined) {
       const row = await env.DB.prepare("SELECT name, last_name, household_id FROM members WHERE id = ?").bind(who).first();
@@ -4631,6 +4933,7 @@ const handlers = {
       const cover = coverValue(b.cover);
       await env.DB.prepare("UPDATE members SET cover = ?, cover_at = ? WHERE id = ?").bind(cover, cover ? now() : null, who).run();
     }
+    await feedProfile(env, who, feedBefore, await feedProfileSnap(env, who));
     return { ok: true };
   },
 
