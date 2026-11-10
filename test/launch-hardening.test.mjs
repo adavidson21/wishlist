@@ -1,4 +1,4 @@
-// Getting ready for strangers (migration 0046, docs/plans/public-launch.md): set-up lists and the circle link,
+// Getting ready for strangers (migration 0049, docs/plans/public-launch.md): set-up lists and the circle link,
 // wrong-PIN warnings and lockdown, Turnstile, the PIN pepper, Gemini allowances, passkeys and the owner's delete.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -174,6 +174,6 @@ test("the owner can raise and lower someone's AI limits; existing accounts start
   await w.api(owner, "POST owner/trust", { memberId: sam.id, on: false });
   assert.equal(w.sql("SELECT ai_trusted AS t FROM members WHERE id = ?", sam.id)[0].t, 0);
   // The migration marks everyone already there as trusted (UPDATE runs before anyone new signs up).
-  const sql = (await import("node:fs")).readFileSync(new URL("../migrations/0046_launch_hardening.sql", import.meta.url), "utf8");
+  const sql = (await import("node:fs")).readFileSync(new URL("../migrations/0049_launch_hardening.sql", import.meta.url), "utf8");
   assert.match(sql, /UPDATE members SET ai_trusted = 1;/);
 });

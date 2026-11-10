@@ -48,7 +48,7 @@ function coverValue(v) {
   if (cover && (cover.length > MAX_COVER || !PHOTO_RE.test(cover))) fail(400, "That cover photo didn't work. Try another one.");
   return cover;
 }
-const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, lastName: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, petName: 40, petNotes: 200, title: 200, url: 2000, notes: 1000 };
+const LIMITS = { chat: 500, tag: 40, tags: 30, bio: 100, stash: 80, color: 40, household: 40, loves: 200, nickname: 40, name: 40, lastName: 40, size: 30, avoid: 300, brand: 40, brands: 20, giftCards: 60, group: 60, petName: 40, petNotes: 200, petFavorites: 120, title: 200, url: 2000, notes: 1000 };
 // Wish categories. Must match CATS in public/index.html. NULL means "guess from the title" (done in the app).
 const CATEGORIES = new Set(["beauty", "tech", "clothing", "shoes", "accessories", "home", "kitchen", "books", "toys", "outdoors", "treats", "experiences", "other"]);
 const category = (v) => (typeof v === "string" && CATEGORIES.has(v) ? v : null);
@@ -551,6 +551,12 @@ const ITEM_VISIBLE = `i.draft = 0 AND i.held_season IS NULL AND i.received_at IS
   SELECT 1 FROM group_members x JOIN group_members y ON y.group_id = x.group_id
    WHERE x.member_id = ? AND y.member_id = i.owner_id
      AND NOT EXISTS (SELECT 1 FROM item_hidden h WHERE h.item_id = i.id AND h.group_id = x.group_id))`;
+// SQL: item `i`, with the viewer's own mark joined as `c`, is one the viewer may look things up for (price guess, photo,
+// live price): one they marked, else their own while it's on their list, else one they can see. Bind the viewer twice
+// (owner check, then ITEM_VISIBLE). A removed wish is "not found" for its owner whether or not anyone marked it:
+// removing keeps a marked wish (soft-removed, for its buyer) and deletes an unmarked one, so answering differently
+// would tell the owner it was marked.
+const ITEM_LOOKUP = `(c.item_id IS NOT NULL OR CASE WHEN i.owner_id = ? THEN i.removed_at IS NULL ELSE ${ITEM_VISIBLE} END)`;
 
 // ---------- linked wishes ("Goes with") ----------
 // bundle_id: wishes that share one are all or nothing. needs_id: only wanted along with that wish (one way).
@@ -1066,6 +1072,42 @@ async function mateSees(env, meId, myHh) {
   return new Set(results.map((r) => r.id));
 }
 const sharedFor = (myHh, seen, subject) => sharesBudget(myHh, subject) && seen.has(subject.id);
+// `total` cents across `n` people in whole dollars, the leftover dollars to the first ones (and any odd cents to the
+// first): 10000 across 3 is [3400, 3300, 3300].
+function splitEvenly(total, n) {
+  if (!n) return [];
+  const dollars = Math.floor(total / 100), cents = total - dollars * 100;
+  const base = Math.floor(dollars / n), extra = dollars - base * n;
+  return Array.from({ length: n }, (_, i) => (base + (i < extra ? 1 : 0)) * 100 + (i === 0 ? cents : 0));
+}
+// One person's amount in a split household budget (null clears it), with the conflict check, then the total
+// becomes the sum again. Returns the API answer.
+async function setSplitAmount(env, me, myHh, target, season, memberId, value, b) {
+  const row = await env.DB.prepare("SELECT amount_cents, updated_by FROM household_budget_people WHERE household_id = ? AND target = ? AND season = ? AND member_id = ?")
+    .bind(myHh, target, season, memberId).first();
+  if ("was" in b) {
+    const was = b.was == null ? null : Number(b.was);
+    const cur = row?.amount_cents ?? null;
+    if (cur !== was && row?.updated_by && row.updated_by !== me.id) {
+      return json({ error: "Someone changed this budget.", detail: { conflict: { amount_cents: cur, by: await setterName(env, me.id, row.updated_by) || "Someone" } } }, 409);
+    }
+  }
+  const stamp = now();
+  await env.DB.batch([
+    value === null
+      ? env.DB.prepare("DELETE FROM household_budget_people WHERE household_id = ? AND target = ? AND season = ? AND member_id = ?").bind(myHh, target, season, memberId)
+      : env.DB.prepare(
+        `INSERT INTO household_budget_people (household_id, target, season, member_id, amount_cents, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (household_id, target, season, member_id) DO UPDATE SET amount_cents = excluded.amount_cents, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+      ).bind(myHh, target, season, memberId, value, me.id, stamp),
+    env.DB.prepare(
+      `UPDATE household_budgets SET amount_cents = (SELECT COALESCE(SUM(amount_cents), 0) FROM household_budget_people p
+         WHERE p.household_id = household_budgets.household_id AND p.target = household_budgets.target AND p.season = household_budgets.season),
+         updated_by = ?, updated_at = ? WHERE household_id = ? AND target = ? AND season = ?`,
+    ).bind(me.id, stamp, myHh, target, season),
+  ]);
+  return { ok: true };
+}
 // "Mike" for a household budget someone else last set (null when it was you or nobody's recorded).
 async function setterName(env, meId, id) {
   if (!id || id === meId) return null;
@@ -1129,6 +1171,21 @@ async function leaveHousehold(env, memberId) {
   rows.push(env.DB.prepare("UPDATE members SET household_id = NULL WHERE id = ?").bind(memberId));
   // Requests they sent for this household go with them.
   rows.push(env.DB.prepare("DELETE FROM household_requests WHERE household_id = ? AND invited_by = ?").bind(hh, memberId));
+  // Split budgets other households have for this one: their amount goes with them (their own Christmas budget
+  // from then on), and the household's total drops by it.
+  rows.push(
+    env.DB.prepare(
+      `INSERT INTO household_budgets (household_id, target, season, amount_cents, updated_by, updated_at)
+       SELECT household_id, 'm:' || member_id, season, amount_cents, updated_by, updated_at FROM household_budget_people WHERE target = 'h:' || ? AND member_id = ?
+       ON CONFLICT (household_id, target, season) DO UPDATE SET amount_cents = amount_cents + excluded.amount_cents`,
+    ).bind(hh, memberId),
+    env.DB.prepare(
+      `UPDATE household_budgets SET amount_cents = amount_cents - COALESCE((SELECT p.amount_cents FROM household_budget_people p
+         WHERE p.household_id = household_budgets.household_id AND p.target = household_budgets.target AND p.season = household_budgets.season AND p.member_id = ?), 0)
+        WHERE target = 'h:' || ? AND split = 1`,
+    ).bind(memberId, hh),
+    env.DB.prepare("DELETE FROM household_budget_people WHERE target = 'h:' || ? AND member_id = ?").bind(hh, memberId),
+  );
   // Anyone not doing gifts with this household still isn't doing gifts with them.
   rows.push(env.DB.prepare(
     "INSERT INTO budget_skips (author_id, target, created_at) SELECT author_id, 'm:' || ?, ? FROM budget_skips WHERE target = 'h:' || ? AND author_id != ? ON CONFLICT DO NOTHING",
@@ -1156,6 +1213,7 @@ function dropHousehold(env, hh) {
   return [
     env.DB.prepare("DELETE FROM household_requests WHERE household_id = ?").bind(hh),
     // Nobody's left to share these. (Leaving starts you fresh, so nothing is copied out.)
+    env.DB.prepare("DELETE FROM household_budget_people WHERE household_id = ?1 OR target = 'h:' || ?1").bind(hh),
     env.DB.prepare("DELETE FROM household_budgets WHERE household_id = ?").bind(hh),
     env.DB.prepare("DELETE FROM budget_skips WHERE target = 'h:' || ?").bind(hh),
     env.DB.prepare("DELETE FROM group_households WHERE household_id = ?").bind(hh),
@@ -1223,7 +1281,15 @@ async function budgetsOnJoin(env, memberId, hh) {
         WHERE hb.household_id = ? AND hb.target = 'm:' || ? AND hb.updated_by != ? ON CONFLICT DO NOTHING`,
     ).bind(memberId, hh, hh, memberId, memberId),
     env.DB.prepare("DELETE FROM household_budgets WHERE household_id = ? AND target = 'm:' || ?").bind(hh, memberId),
-    // Other households planned their Christmas as one person; now it's their household's.
+    // Other households planned their Christmas as one person; now it's their household's. Where that household's
+    // budget is split, it's their own amount in it (the total below still adds up).
+    env.DB.prepare(
+      `INSERT INTO household_budget_people (household_id, target, season, member_id, amount_cents, updated_by, updated_at)
+       SELECT m.household_id, 'h:' || ?1, m.season, ?2, m.amount_cents, m.updated_by, m.updated_at FROM household_budgets m
+         JOIN household_budgets h ON h.household_id = m.household_id AND h.target = 'h:' || ?1 AND h.season = m.season AND h.split = 1
+        WHERE m.target = 'm:' || ?2 AND m.season % 10000 = 1225
+       ON CONFLICT (household_id, target, season, member_id) DO UPDATE SET amount_cents = amount_cents + excluded.amount_cents`,
+    ).bind(hh, memberId),
     env.DB.prepare(
       `INSERT INTO household_budgets (household_id, target, season, amount_cents, updated_by, updated_at)
        SELECT household_id, 'h:' || ?, season, amount_cents, updated_by, updated_at FROM household_budgets
@@ -1279,12 +1345,13 @@ async function manageableHousehold(env, meId, householdId) {
 }
 
 // ---------- pets ----------
-// Not people: no list, login or birthday, just info for gift-givers (migration 0037). A pet belongs to a household,
+// Not people: no list or login, just info for gift-givers (migration 0037), plus a birthday and favorites for fun
+// (migration 0048; a pet's birthday is never an occasion, so no budgets, marks or reminders). A pet belongs to a household,
 // or to someone who isn't in one. Same visibility as the household or person; edited by the household (or the
 // circle's admin, like the rest of the household), or by the person and whoever looks after them.
 const PET_KINDS = new Set(["dog", "cat", "bird", "fish", "bunny", "reptile", "horse", "other"]);
 const PETS_MAX = 12;
-const petOut = (r) => ({ id: r.id, name: r.name, kind: r.kind, notes: r.notes || null, photo: r.photo_at || null });
+const petOut = (r) => ({ id: r.id, name: r.name, kind: r.kind, notes: r.notes || null, birthday: r.birthday || null, favorites: r.favorites || null, photo: r.photo_at || null });
 // Someone joins household `hh`: their own pets come with them.
 const petsInto = (env, memberId, hh) => env.DB.prepare("UPDATE pets SET household_id = ?, member_id = NULL WHERE member_id = ?").bind(hh, memberId);
 // Pets of these households and people: { "h:<id>": [...], "m:<id>": [...] }, oldest first.
@@ -1293,7 +1360,7 @@ async function petsFor(env, householdIds, memberIds) {
   const run = async (col, prefix, ids) => {
     if (!ids.length) return;
     const { results } = await env.DB.prepare(
-      `SELECT id, household_id, member_id, name, kind, notes, photo_at FROM pets WHERE ${col} IN (${ids.map(() => "?").join(",")}) ORDER BY created_at`,
+      `SELECT id, household_id, member_id, name, kind, notes, birthday, favorites, photo_at FROM pets WHERE ${col} IN (${ids.map(() => "?").join(",")}) ORDER BY created_at`,
     ).bind(...ids).all();
     for (const r of results) (out[`${prefix}:${r[col]}`] ||= []).push(petOut(r));
   };
@@ -1447,6 +1514,8 @@ async function deleteMember(env, id) {
   q("UPDATE household_budgets SET updated_by = NULL WHERE updated_by = ?1");
   q("DELETE FROM budget_skips WHERE author_id = ?1 OR target = 'm:' || ?1");
   q("DELETE FROM household_requests WHERE member_id = ?1 OR invited_by = ?1");
+  q("DELETE FROM household_budget_people WHERE member_id = ?1");
+  q("UPDATE household_budget_people SET updated_by = NULL WHERE updated_by = ?1");
   q("DELETE FROM gift_history WHERE buyer_id = ?1 OR subject_id = ?1");
   q("DELETE FROM pets WHERE member_id = ?1");
   q("UPDATE reports SET member_id = NULL WHERE member_id = ?1");
@@ -1598,6 +1667,25 @@ const itemOut = (r) => ({
 });
 
 // Expects the idea row joined with its claim (buyer_id, buyer_name, paid_cents) and author_name.
+// Who a gift idea is for: the person it was added for first, then anyone else in their household it's also for
+// (private_ideas.also_for, migration 0047). Its price counts evenly against each of them.
+function ideaFor(row) {
+  let more = [];
+  try { more = JSON.parse(row?.also_for || "[]"); } catch {}
+  return [row.subject_id, ...(Array.isArray(more) ? more : []).filter((x) => typeof x === "string" && x !== row.subject_id)];
+}
+// alsoFor from the app: others in the same household as `subjectId` that you share a circle with. JSON or null.
+async function alsoForValue(env, meId, subjectId, v) {
+  const ids = [...new Set((Array.isArray(v) ? v : []).map(String))].filter((x) => x && x !== subjectId && x !== meId);
+  if (!ids.length) return null;
+  if (ids.length > 12) fail(400, "That's a lot of people for one gift.");
+  const hh = await householdOf(env, subjectId);
+  if (!hh) fail(400, "A gift for several people has to be for one household.");
+  for (const id of ids) {
+    if ((await householdOf(env, id)) !== hh || !(await sharesGroup(env, meId, id))) fail(400, "A gift for several people has to be for one household.");
+  }
+  return JSON.stringify(ids);
+}
 const ideaOut = (r, meId) => ({
   id: r.id,
   subject_id: r.subject_id,
@@ -1617,6 +1705,8 @@ const ideaOut = (r, meId) => ({
   price_est: r.price_est_cents > 0 ? r.price_est_cents : null,
   est_checked: r.price_est_cents != null,
   updated_at: r.updated_at,
+  // Everyone it's for, when it's for more than one person.
+  ...(r.also_for ? { for_ids: ideaFor(r) } : {}),
   claim: r.buyer_id
     ? { buyerId: r.buyer_id, buyerName: r.buyer_name, mine: r.buyer_id === meId, price_cents: r.paid_cents, occasion: r.claim_season }
     : null,
@@ -2941,7 +3031,7 @@ async function notManaged(env, member) {
   fail(409, `${member.name}'s list is looked after by ${by?.name || "someone in this circle"}. Ask them to tap "Let ${member.name} sign in" on ${member.name}'s list first.`);
 }
 
-// ---------- passkeys (docs/plans/public-launch.md, migration 0046) ----------
+// ---------- passkeys (docs/plans/public-launch.md, migration 0049) ----------
 // Sign in with Face ID or a fingerprint. The passkey lives in iCloud Keychain or Google Password Manager, so a new
 // phone has it, which is how a solo person who lost their sign-in link and phone gets back in. Passkey sign-in
 // skips the PIN (it's stronger than one). The relying party is whichever Hints domain the page is on.
@@ -3840,7 +3930,8 @@ const handlers = {
     const item = await env.DB.prepare(`SELECT i.id, i.owner_id, i.title, i.removed_at, i.quantity, ${ITEM_VISIBLE} AS visible FROM items i WHERE i.id = ?`)
       .bind(me.id, itemId)
       .first();
-    if (!item) fail(404, "Item not found.");
+    // A removed wish of yours is "not found" either way (see ITEM_LOOKUP): it only still exists if someone marked it.
+    if (!item || (item.owner_id === me.id && item.removed_at)) fail(404, "Item not found.");
     if (item.owner_id === me.id) fail(400, "You can't mark your own items.");
     const t = today();
     const { results: rows } = await env.DB.prepare("SELECT buyer_id, season, qty, chip_in FROM claims WHERE item_id = ? AND season >= ? ORDER BY created_at, buyer_id")
@@ -3988,6 +4079,10 @@ const handlers = {
         .bind(image, fields[1], t, fields[0], fields[2], fields[3], fields[4], id, me.id)
         .run();
       if (!res.meta.changes) fail(404, "Idea not found.");
+      if ("alsoFor" in b) {
+        const subject = (await env.DB.prepare("SELECT subject_id FROM private_ideas WHERE id = ?").bind(id).first()).subject_id;
+        await env.DB.prepare("UPDATE private_ideas SET also_for = ? WHERE id = ?").bind(await alsoForValue(env, me.id, subject, b.alsoFor), id).run();
+      }
     } else {
       if (!b.subjectId || b.subjectId === me.id || !(await sharesGroup(env, me.id, b.subjectId))) fail(400, "Pick who this idea is for.");
       const { n: ideaCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM private_ideas WHERE author_id = ?").bind(me.id).first();
@@ -3998,6 +4093,7 @@ const handlers = {
       )
         .bind(id, me.id, b.subjectId, ...fields, t, t, image, image ? t : null)
         .run();
+      if (b.alsoFor) await env.DB.prepare("UPDATE private_ideas SET also_for = ? WHERE id = ?").bind(await alsoForValue(env, me.id, b.subjectId, b.alsoFor), id).run();
     }
     await env.DB.prepare("UPDATE private_ideas SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), id).run();
     await markUnfilled(env, "private_ideas", id, b, fields[1]);
@@ -4098,6 +4194,46 @@ const handlers = {
   // Set (amount) or clear (empty amount) your budget for one person for one occasion
   // (occasion: YYYYMMDD of their Christmas or birthday; absent = the soonest). For someone outside your
   // household this is your household's shared budget (their whole household's at Christmas).
+  // Split a household's Christmas budget per person (on), or go back to one total (off).
+  // { subjectId: anyone in that household, occasion, on }. On divides the current total evenly in whole dollars,
+  // the leftover to the first people by name ($100 across 3: $34, $33, $33). Off keeps the current sum.
+  async "POST budget/split"(req, env) {
+    const me = await auth(req, env);
+    const { subjectId, occasion, on } = await body(req);
+    if (!subjectId || !(await sharesGroup(env, me.id, subjectId))) fail(400, "Pick whose budget to split.");
+    const s = await pickOccasion(env, subjectId, occasion);
+    const [myHh, subject] = await Promise.all([
+      householdOf(env, me.id),
+      env.DB.prepare("SELECT id, household_id FROM members WHERE id = ?").bind(String(subjectId)).first(),
+    ]);
+    if (!isXmasCode(s) || !subject?.household_id || !sharesBudget(myHh, subject)) fail(400, "Only a household's Christmas budget can be split.");
+    const target = `h:${subject.household_id}`;
+    const row = await env.DB.prepare("SELECT amount_cents, split FROM household_budgets WHERE household_id = ? AND target = ? AND season = ?").bind(myHh, target, s).first();
+    const stamp = now();
+    if (!on) {
+      await env.DB.batch([
+        env.DB.prepare("UPDATE household_budgets SET split = 0, updated_by = ?, updated_at = ? WHERE household_id = ? AND target = ? AND season = ?").bind(me.id, stamp, myHh, target, s),
+        env.DB.prepare("DELETE FROM household_budget_people WHERE household_id = ? AND target = ? AND season = ?").bind(myHh, target, s),
+      ]);
+      return { ok: true };
+    }
+    if (row?.split) return { ok: true };
+    const { results: ppl } = await env.DB.prepare("SELECT id FROM members WHERE household_id = ? ORDER BY name COLLATE NOCASE, id").bind(subject.household_id).all();
+    const total = row?.amount_cents || 0;
+    const shares = splitEvenly(total, ppl.length);
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO household_budgets (household_id, target, season, amount_cents, updated_by, updated_at, split) VALUES (?, ?, ?, ?, ?, ?, 1)
+         ON CONFLICT (household_id, target, season) DO UPDATE SET split = 1`,
+      ).bind(myHh, target, s, total, me.id, stamp),
+      env.DB.prepare("DELETE FROM household_budget_people WHERE household_id = ? AND target = ? AND season = ?").bind(myHh, target, s),
+      ...(total ? ppl.map((p, i) => env.DB.prepare(
+        "INSERT INTO household_budget_people (household_id, target, season, member_id, amount_cents, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).bind(myHh, target, s, p.id, shares[i], me.id, stamp)) : []),
+    ]);
+    return { ok: true };
+  },
+
   // was: the amount (cents, or null for none) the app showed when you opened it. When it's sent and someone else in
   // your household changed a shared budget since, nothing is saved and the answer is 409 with detail.conflict
   // { amount_cents, by }, so the app can ask. Older apps don't send it and save as before.
@@ -4121,6 +4257,9 @@ const handlers = {
     }
     if (shared) {
       const target = budgetTarget(subject, s);
+      // A split household Christmas: this sets their own amount, and the total follows.
+      const split = target.startsWith("h:") && (await env.DB.prepare("SELECT split FROM household_budgets WHERE household_id = ? AND target = ? AND season = ?").bind(myHh, target, s).first())?.split;
+      if (split) return setSplitAmount(env, me, myHh, target, s, subject.id, value, b);
       if ("was" in b) {
         const row = await env.DB.prepare("SELECT amount_cents, updated_by FROM household_budgets WHERE household_id = ? AND target = ? AND season = ?")
           .bind(myHh, target, s).first();
@@ -4182,7 +4321,7 @@ const handlers = {
       row = await env.DB.prepare(
         `SELECT i.id, i.title, i.url, i.brand, i.size, i.color, i.price_cents, i.price_est_cents FROM items i
            LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
-          WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+          WHERE i.id = ? AND ${ITEM_LOOKUP}`,
       ).bind(me.id, id, me.id, me.id).first();
     } else if (kind === "idea") {
       const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
@@ -4211,7 +4350,7 @@ const handlers = {
       row = await env.DB.prepare(
         `SELECT i.id, i.url, i.image_url, i.image_checked_at, i.price_cents, i.price_checked_at FROM items i
            LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
-          WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+          WHERE i.id = ? AND ${ITEM_LOOKUP}`,
       ).bind(me.id, id, me.id, me.id).first();
     } else if (kind === "idea") {
       const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
@@ -4249,7 +4388,7 @@ const handlers = {
       if (kind === "item") {
         row = await env.DB.prepare(
           `SELECT i.id, i.url, i.price_cents, i.price_auto FROM items i LEFT JOIN claims c ON c.item_id = i.id AND c.buyer_id = ?
-            WHERE i.id = ? AND (i.owner_id = ? OR ${ITEM_VISIBLE} OR c.item_id IS NOT NULL)`,
+            WHERE i.id = ? AND ${ITEM_LOOKUP}`,
         ).bind(me.id, id, me.id, me.id).first();
       } else if (kind === "idea") {
         const idea = await env.DB.prepare(`${IDEA_SELECT} WHERE p.id = ?`).bind(today(), id).first();
@@ -4396,14 +4535,14 @@ const handlers = {
       ).bind(me.id, me.id).all(),
       env.DB.prepare("SELECT subject_id, season, amount_cents FROM budgets WHERE author_id = ? AND season >= ?").bind(me.id, t).all(),
       myHh
-        ? env.DB.prepare("SELECT target, season, amount_cents, updated_by, updated_at FROM household_budgets WHERE household_id = ? AND season >= ?").bind(myHh, t).all()
+        ? env.DB.prepare("SELECT target, season, amount_cents, updated_by, updated_at, split FROM household_budgets WHERE household_id = ? AND season >= ?").bind(myHh, t).all()
         : Promise.resolve({ results: [] }),
       env.DB.prepare(
         `SELECT i.owner_id AS subject_id, i.id, i.title, i.url, i.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.qty, c.chip_in, c.buyer_id
            FROM claims c JOIN items i ON i.id = c.item_id WHERE c.buyer_id IN (${inTeam}) AND c.season >= ? ORDER BY c.created_at`,
       ).bind(...teamIds, t).all(),
       env.DB.prepare(
-        `SELECT p.subject_id, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.buyer_id,
+        `SELECT p.subject_id, p.also_for, p.id, p.title, p.url, p.price_cents AS list_cents, c.price_cents AS paid_cents, c.created_at, c.season, c.status, c.stash, c.buyer_id,
                 p.author_id, a.name AS author_name
            FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id JOIN members a ON a.id = p.author_id
           WHERE c.buyer_id IN (${inTeam}) AND c.season >= ? ORDER BY c.created_at`,
@@ -4450,7 +4589,11 @@ const handlers = {
       buyerId: r.buyer_id,
       buyerName: buyerName(r.buyer_id),
       from: kind === "item" ? (r.chip_in ? "Group gift" : "Their list") : r.author_id === me.id ? "My idea" : r.author_id === r.buyer_id ? `${buyerName(r.author_id)}'s idea` : `Suggested by ${nicks.get(r.author_id) || r.author_name}`,
+      ...(kind === "idea" && r.also_for ? { for_ids: ideaFor(r) } : {}),
     });
+    // A gift for several people counts evenly against each of them (shares in cents, not rounded). total_cents
+    // keeps what it cost; the app shows it once on the Purchases tab.
+    const each = (x) => (x.for_ids?.length > 1 ? x.for_ids.map((id) => ({ ...x, subject_id: id, spent_cents: x.spent_cents / x.for_ids.length, total_cents: x.spent_cents })) : [x]);
     const cardBuy = (r) => ({
       kind: "giftcard",
       id: r.brand,
@@ -4470,7 +4613,8 @@ const handlers = {
       buyerName: buyerName(r.buyer_id),
       from: "Gift card",
     });
-    const purchases = [...itemBuys.results.filter(counts).map(purchase("item")), ...ideaBuys.results.filter(counts).map(purchase("idea")), ...cardGifts.results.filter(counts).map(cardBuy)]
+    const purchases = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea")), ...cardGifts.results.map(cardBuy)]
+      .flatMap(each).filter((x) => counts({ buyer_id: x.buyerId, subject_id: x.subject_id }))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const sharedRow = (target, code) => shared.results.find((b) => b.target === target && b.season === code) || null;
     const sharedBudget = (target, code) => sharedRow(target, code)?.amount_cents ?? null;
@@ -4481,7 +4625,28 @@ const handlers = {
       return r ? { budget_by: r.updated_by && r.updated_by !== me.id ? names.get(r.updated_by) || "Someone" : null, budget_at: r.updated_at || null } : {};
     };
     // Purchases by your household for people in a household you can't see (amount only, no titles).
-    const everyBuy = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea")), ...cardGifts.results.map(cardBuy)];
+    const everyBuy = [...itemBuys.results.map(purchase("item")), ...ideaBuys.results.map(purchase("idea")), ...cardGifts.results.map(cardBuy)].flatMap(each);
+    // Per-person amounts for households whose Christmas budget is split (migration 0047).
+    const { results: splitRows } = myHh && shared.results.some((b) => b.split)
+      ? await env.DB.prepare("SELECT target, season, member_id, amount_cents, updated_by, updated_at FROM household_budget_people WHERE household_id = ? AND season >= ?").bind(myHh, t).all()
+      : { results: [] };
+    // { split: true, people: { id: { budget_cents, spent_cents, budget_by, budget_at } } } for a split household's
+    // Christmas, for the people in it you can see (people with no amount yet have budget_cents null).
+    const splitOf = (hh, code) => {
+      const row = sharedRow(`h:${hh}`, code);
+      if (!row?.split) return {};
+      const out = {};
+      for (const id of hhAll.get(hh) || []) {
+        if (!byId.has(id)) continue;
+        const r = splitRows.find((x) => x.target === `h:${hh}` && x.season === code && x.member_id === id);
+        out[id] = {
+          budget_cents: r ? r.amount_cents : null,
+          spent_cents: everyBuy.filter((x) => x.occasion === code && x.subject_id === id).reduce((n, x) => n + x.spent_cents, 0),
+          ...(r ? { budget_by: r.updated_by && r.updated_by !== me.id ? names.get(r.updated_by) || "Someone" : null, budget_at: r.updated_at || null } : {}),
+        };
+      }
+      return { split: true, people: out };
+    };
     const unseenBuys = (hh, code) => {
       const visible = new Set(people.results.map((p) => p.id));
       const all = new Set(hhAll.get(hh) || []);
@@ -4549,7 +4714,7 @@ const handlers = {
               // same number for everyone in your household.
               const target = `h:${p.household_id}`;
               const unseen = unseenBuys(p.household_id, o.code);
-              return { ...o, shared: true, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), spent_cents: hhSpent(p.household_id, o.code), own_spent_cents: ownSpent, household: p.household_id, purchases: bought, ...(unseen.count ? { unseen } : {}) };
+              return { ...o, shared: true, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), ...splitOf(p.household_id, o.code), spent_cents: hhSpent(p.household_id, o.code), own_spent_cents: ownSpent, household: p.household_id, purchases: bought, ...(unseen.count ? { unseen } : {}) };
             }
             if (!sharesOwn) {
               // Personal. Someone only you can see who still has an older shared budget keeps showing it until you set one.
@@ -5304,14 +5469,17 @@ const handlers = {
   },
 
   // ---------- pets ----------
-  // Add or change a pet. New: { householdId? | as?, name, kind, notes? } (your household by default, or yours if you
-  // aren't in one; as: someone you look after). Existing: { id, name?, kind?, notes? }. photo: data URL, "" removes, absent keeps.
+  // Add or change a pet. New: { householdId? | as?, name, kind, notes?, birthday?, favorites? } (your household by default,
+  // or yours if you aren't in one; as: someone you look after). Existing: { id, name?, kind?, notes?, birthday?, favorites? }.
+  // birthday: "MM-DD" or "" to clear. favorites: one short line. photo: data URL, "" removes, absent keeps.
   async "POST pet/save"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
     const kind = b.kind === undefined ? undefined : PET_KINDS.has(b.kind) ? b.kind : fail(400, "Pick what kind of pet.");
     const name = b.name === undefined ? undefined : text(b.name, LIMITS.petName, "Name", true);
     const notes = b.notes === undefined ? undefined : text(b.notes, LIMITS.petNotes, "Notes");
+    const birthday = b.birthday === undefined ? undefined : birthdayValue(b.birthday);
+    const favorites = b.favorites === undefined ? undefined : text(b.favorites, LIMITS.petFavorites, "Favorites");
     const photo = b.photo === undefined ? undefined : photoValue(b.photo);
     const t = now();
     if (b.id) {
@@ -5320,8 +5488,9 @@ const handlers = {
       if (pet.household_id) await manageableHousehold(env, me.id, pet.household_id);
       else await ownerFor(env, me, pet.member_id);
       await env.DB.prepare(
-        `UPDATE pets SET name = ?, kind = ?, notes = ?, photo = ?, photo_at = ? WHERE id = ?`,
+        `UPDATE pets SET name = ?, kind = ?, notes = ?, birthday = ?, favorites = ?, photo = ?, photo_at = ? WHERE id = ?`,
       ).bind(name ?? pet.name, kind ?? pet.kind, notes === undefined ? pet.notes : notes,
+        birthday === undefined ? pet.birthday : birthday, favorites === undefined ? pet.favorites : favorites,
         photo === undefined ? pet.photo : photo, photo === undefined ? pet.photo_at : photo ? t : null, pet.id).run();
       return { pet: { id: pet.id } };
     }
@@ -5333,8 +5502,8 @@ const handlers = {
     if (n >= PETS_MAX) fail(409, `That's ${PETS_MAX} pets already.`);
     const id = newId();
     await env.DB.prepare(
-      `INSERT INTO pets (id, ${col}, name, kind, notes, photo, photo_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, key, name, kind || "other", notes ?? null, photo ?? null, photo ? t : null, t).run();
+      `INSERT INTO pets (id, ${col}, name, kind, notes, birthday, favorites, photo, photo_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, key, name, kind || "other", notes ?? null, birthday ?? null, favorites ?? null, photo ?? null, photo ? t : null, t).run();
     return { pet: { id } };
   },
 

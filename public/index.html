@@ -714,6 +714,17 @@
   .pet-txt small { color: var(--muted); font-weight: 600; font-size: 14px; }
   .pet-txt p { margin: 4px 0 0; font-size: 15px; overflow-wrap: break-word; }
   .pet .btn { flex: none; }
+  .pet-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .pet-meta .pf-pill { font-size: 13px; padding: 4px 10px; }
+  .pet-favs { margin-top: 8px; }
+  .pet-favs .tags { gap: 6px; }
+  .pet-favs .tag { min-height: 32px; font-size: 14px; padding-right: 12px; }
+  /* A pet's birthday: a party hat on the avatar, and tapping it throws confetti. */
+  .pet-bday { position: relative; flex: none; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; }
+  .pet-bday-field { margin-bottom: 16px; }
+  .pet-bday-field > span { display: block; font-size: 16px; font-weight: 700; margin-bottom: 7px; }
+  .pet-bday-field > span em { font-style: normal; font-weight: 500; color: var(--faint); }
+  .pet-bday::after { content: "🥳"; position: absolute; right: -6px; top: -8px; font-size: 20px; line-height: 1; }
   .hh-link { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: var(--r); background: var(--card); box-shadow: var(--shadow); text-align: left; font-size: 15px; color: var(--muted); }
   .hh-link .avatar { width: 40px; height: 40px; font-size: 17px; }
   .hh-link .mg-txt { flex: 1; min-width: 0; }
@@ -1586,6 +1597,20 @@
   .recent-line { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 13px; color: var(--muted); font-weight: 600; text-align: left; }
   .buys li > button > .avatar.xs { flex: none; }
   .unseen-line { margin-top: 8px; font-size: 13px; }
+  .hh-who.split { gap: 6px 10px; }
+  .hh-who.split .who-dot { gap: 5px; align-items: center; }
+  .hh-who.split .who-dot small { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .hh-who.split .who-dot small.over { color: var(--err); }
+  .hh-who.split .who-dot i { left: 13px; right: auto; }
+  .split-nudge { display: inline-block; margin-top: 6px; font-size: 12.5px; font-weight: 800; color: var(--brand); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .field.split-row { display: grid; grid-template-columns: minmax(0, 1fr) 132px; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .field.split-row > span { display: flex; align-items: center; gap: 8px; margin: 0; flex-wrap: wrap; }
+  .field.split-row > span small { flex-basis: 100%; color: var(--muted); font-weight: 600; font-size: 12px; margin-left: 30px; }
+  #alsoFor .field > span { display: block; font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .also-chips { margin-top: 6px; }
+  .also-chips .chip { display: inline-flex; align-items: center; gap: 6px; }
+  .split-total { display: flex; justify-content: space-between; font-weight: 700; padding: 6px 2px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
+  .buys b small { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); text-align: right; }
   .starter strong { display: block; font-size: 17px; }
   .starter p { margin: 2px 0 12px; color: var(--muted); font-size: 15px; }
   .segs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -6112,6 +6137,21 @@ function budgetMini(p) {
     <span>${over ? `${money(o.spent_cents - o.budget_cents)} over` : `${money(o.spent_cents)} of ${money(o.budget_cents)}`}${tag}</span></span>`;
 }
 
+// ---------- gifts for several people ----------
+// A gift idea or purchase can be for several people in one household (for_ids). The tracker lists it under each of
+// them with their even share (spent_cents) and what it cost (total_cents). Shown once where gifts are listed.
+const buyKey = (x) => `${x.kind}:${x.id}:${x.buyerId}:${x.occasion}`;
+function dedupeBuys(list, get = (b) => b.x) {
+  const seen = new Set();
+  return list.filter((b) => { const x = get(b); if (!x.for_ids || x.for_ids.length < 2) return true; const k = buyKey(x); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+// "Everyone", "Maria and Nolan" for a gift for several people in household `hhIds` (all of its people when known).
+function forWho(x, hhIds) {
+  if (!x.for_ids || x.for_ids.length < 2) return null;
+  if (hhIds && hhIds.length && hhIds.every((id) => x.for_ids.includes(id))) return "everyone";
+  return peopleNames(x.for_ids.map((id) => personName(id)));
+}
+
 // ---------- shopping as a household ----------
 // The color someone has everywhere (their avatar), so "You $120 · Mike $80" matches the faces.
 const personColor = (id) => AV_COLORS[hash(id) % AV_COLORS.length];
@@ -6490,7 +6530,7 @@ async function renderPerson(id) {
 }
 
 // ---------- pets and household pages ----------
-// Pets aren't people (no list, login or birthday): a name, what kind, one line of notes and a photo, so gift-givers
+// Pets aren't people (no list or login): a name, what kind, one line of notes and a photo, so gift-givers
 // know about them. They live on a household, or on someone who isn't in one (src/wishlist.js, migration 0037).
 // state.pets: { "h:<householdId>": [...], "m:<memberId>": [...] }.
 const PET_KINDS = [["dog", "Dog", "🐕"], ["cat", "Cat", "🐈"], ["bird", "Bird", "🐦"], ["fish", "Fish", "🐟"], ["bunny", "Bunny", "🐇"], ["reptile", "Reptile", "🦎"], ["horse", "Horse", "🐎"], ["other", "Other", "🐾"]];
@@ -6504,8 +6544,22 @@ function petAvatar(pet, size) {
   const pic = PHOTOS.has(key) ? `<img src="${esc(photoUrl(key))}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `<span class="avatar pet-av${size ? ` ${size}` : ""}" aria-hidden="true">${petEmoji(pet)}${pic}</span>`;
 }
-// "🐕 Biscuit · 🐈 Max"
-const petNames = (pets) => pets.map((p) => `${petEmoji(p)} ${esc(p.name)}`).join(" · ");
+// Days until a pet's birthday, or null when it has none. Just for fun: never an occasion, budget or reminder.
+const petBdayIn = (pet) => (pet?.birthday ? bdayIn(pet.birthday) : null);
+// A pet's favorite things, one line split on commas: "squeaky ducks, peanut butter" -> two chips.
+const petFavs = (pet) => String(pet?.favorites || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 8);
+// "🐕 Biscuit · 🐈 Max", with 🎂 in the week before a birthday and 🥳 on the day.
+const petNames = (pets) => pets.map((p) => {
+  const n = petBdayIn(p);
+  return `${petEmoji(p)} ${esc(p.name)}${n === 0 ? " 🥳" : n != null && n <= 7 ? " 🎂" : ""}`;
+}).join(" · ");
+// "🎂 March 14 · in 5 days", gold in the month before.
+function petBdayPill(pet) {
+  if (!pet.birthday) return "";
+  const n = bdayIn(pet.birthday);
+  const soon = n === 0 ? "today!" : n === 1 ? "tomorrow" : n <= 30 ? `in ${n} days` : "";
+  return `<span class="pf-pill${soon ? " gold" : ""}"><span aria-hidden="true">🎂</span>${esc(bdayText(pet.birthday))}${soon ? ` · ${soon}` : ""}</span>`;
+}
 // Who can change a household: the people in it, and the admin of a circle someone in it is in (the API checks too).
 const canEditHousehold = (id) => !!id && (id === myHouseholdId()
   || state.groups.some((g) => g.createdBy === state.me.id && g.members.some((m) => m.householdId === id)));
@@ -6522,8 +6576,10 @@ function petsCard(pets, { edit, title = "Pets", empty = "" } = {}) {
   if (!pets.length && !edit) return "";
   return `<section class="hcard" data-pets>
     <h3 class="hcard-h"><span class="ico" style="background:var(--gold-soft);color:var(--gold-ink)">🐾</span>${esc(title)}${pets.length ? ` <small>${pets.length}</small>` : ""}</h3>
-    ${pets.length ? `<div class="pets">${pets.map((p) => `<div class="pet">${petAvatar(p)}<div class="pet-txt"><strong>${esc(p.name)}</strong>
-        <small>${esc((PET_KIND[p.kind] || PET_KIND.other).label)}</small>${p.notes ? `<p>${esc(p.notes)}</p>` : ""}</div>
+    ${pets.length ? `<div class="pets">${pets.map((p) => `<div class="pet">${petBdayIn(p) === 0
+          ? `<button class="pet-bday" type="button" data-pet-party aria-label="It's ${esc(p.name)}'s birthday!">${petAvatar(p)}</button>` : petAvatar(p)}<div class="pet-txt"><strong>${esc(p.name)}</strong>
+        <small>${esc((PET_KIND[p.kind] || PET_KIND.other).label)}</small>${p.birthday ? `<div class="pet-meta">${petBdayPill(p)}</div>` : ""}
+        ${p.notes ? `<p>${esc(p.notes)}</p>` : ""}${petFavs(p).length ? `<div class="pet-favs">${tagList(petFavs(p), "love")}</div>` : ""}</div>
         ${edit ? `<button class="btn small quiet" type="button" data-pet-edit="${esc(p.id)}">Edit</button>` : ""}</div>`).join("")}</div>
       ${edit ? `<button class="btn small" type="button" data-pet-add style="margin-top:14px">${PLUS} Add a pet</button>` : ""}`
     : `<div class="hcard-empty">${esc(empty || "Got pets? Add them so your people can spoil them too.")}
@@ -6534,12 +6590,17 @@ function wirePetsCard(root, pets, owner) {
   const card = root.querySelector("[data-pets]");
   if (!card) return;
   card.querySelectorAll("[data-pet-add]").forEach((b) => (b.onclick = () => editPet(null, owner)));
+  card.querySelectorAll("[data-pet-party]").forEach((b) => (b.onclick = () => {
+    const r = b.getBoundingClientRect();
+    party(r.left + r.width / 2, r.top + r.height / 2, 28); buzz();
+  }));
   card.querySelectorAll("[data-pet-edit]").forEach((b) => (b.onclick = () => editPet(pets.find((p) => p.id === b.dataset.petEdit), owner)));
 }
 
 // Add or change a pet. The photo is kept until Save, so a new pet can have one from the start.
 function editPet(pet, owner) {
   let kind = pet?.kind || "dog";
+  const [pbm, pbd] = pet?.birthday ? pet.birthday.split("-").map(Number) : [0, 0];
   let photo; // undefined: unchanged, "": remove, data URL: new
   const preview = () => {
     const had = pet && PHOTOS.has(`p:${pet.id}`) && photo === undefined;
@@ -6555,6 +6616,10 @@ function editPet(pet, owner) {
       <label class="field"><span>Name</span><input class="input" name="name" maxlength="40" required value="${esc(pet?.name || "")}" placeholder="Biscuit"></label>
       <div class="kind-field"><span>What kind?</span><div class="kind-pick" role="group" aria-label="What kind of pet">
         ${PET_KINDS.map(([k, label, emoji]) => `<button class="chip" type="button" data-kind="${k}" aria-pressed="${k === kind}">${emoji} ${label}</button>`).join("")}</div></div>
+      <div class="field pet-bday-field"><span>Birthday <em>(optional)</em></span><div class="bday" style="margin:0">
+        <select class="input" name="bm" aria-label="Birthday month"><option value="">Month</option>${MONTHS.map((m, k) => `<option value="${k + 1}"${pbm === k + 1 ? " selected" : ""}>${m}</option>`).join("")}</select>
+        <select class="input" name="bd" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, k) => `<option value="${k + 1}"${pbd === k + 1 ? " selected" : ""}>${k + 1}</option>`).join("")}</select></div></div>
+      <label class="field"><span>Favorite things <em>(optional)</em></span><input class="input" name="favorites" maxlength="120" value="${esc(pet?.favorites || "")}" placeholder="Squeaky ducks, peanut butter, belly rubs"></label>
       <label class="field"><span>Good to know <em>(optional)</em></span><input class="input" name="notes" maxlength="200" value="${esc(pet?.notes || "")}" placeholder="Size L harness, destroys plush toys"></label>
       <button class="btn primary wide" type="submit">${pet ? "Save" : "Add pet"}</button>
       ${pet ? '<button class="btn wide quiet danger" type="button" id="petDel" style="margin-top:8px">Remove pet</button>' : ""}
@@ -6579,8 +6644,10 @@ function editPet(pet, owner) {
     }));
     if (!pet) setTimeout(() => $("#petForm", el).elements.name.focus(), 300);
     const done = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
-    wireForm($("#petForm", el), async ({ name, notes }) => {
-      await api("pet/save", { ...(pet ? { id: pet.id } : owner), name, notes, kind, ...(photo === undefined ? {} : { photo }) });
+    wireForm($("#petForm", el), async ({ name, notes, favorites, bm, bd }) => {
+      if (!!bm !== !!bd) throw new Error("Pick a month and a day, or leave both empty.");
+      const birthday = bm ? `${String(bm).padStart(2, "0")}-${String(bd).padStart(2, "0")}` : "";
+      await api("pet/save", { ...(pet ? { id: pet.id } : owner), name, notes, favorites, birthday, kind, ...(photo === undefined ? {} : { photo }) });
       buzz();
       done(pet ? "Saved" : `${name.trim()} added`);
     });
@@ -7301,7 +7368,7 @@ const STAGES = [[null, "Ordered", "On the way", ""], ["home", "Have it", "To wra
 const stageAt = (status) => Math.max(0, STAGES.findIndex((s) => s[0] === (status || null)));
 const PIN = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
 // Every purchase for an upcoming occasion, with who it's for and the occasion, soonest occasion first.
-const allBuys = (t) => t.people.flatMap((p) => p.occasions.flatMap((o) => o.purchases.map((x) => ({ x, p, o }))))
+const allBuys = (t) => dedupeBuys(t.people.flatMap((p) => p.occasions.flatMap((o) => o.purchases.map((x) => ({ x: x.total_cents != null ? { ...x, spent_cents: x.total_cents } : x, p, o })))))
   .sort((a, b) => a.o.code - b.o.code || String(a.x.date).localeCompare(String(b.x.date)));
 const occLabel = (p, o) => (o.christmas && !o.birthday ? `Christmas ${occParts(o)[0]}` : `${p.name}'s ${occName(o)} · ${occDay(o)}`);
 const stagePill = (x) => { const n = stageAt(x.status); return `<span class="stage s${n}">${STAGES[n][1]}</span>`; };
@@ -7578,7 +7645,7 @@ function buyRow({ x, p }, n, still) {
     <div class="row-top">${avatar(p.name, p.id)}
       <div class="row-main">
         <div class="row-head"><span class="row-title">${esc(x.title)}${x.qty > 1 ? ` <small>×${x.qty}</small>` : ""}</span>${x.spent_cents ? `<span class="row-price">${money(x.spent_cents)}</span>` : ""}</div>
-        <span class="from">For ${esc(p.name)}${x.mine === false ? ` · ${esc(x.buyerName)} got it` : ` · ${esc(x.from)}`}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(host(x.url))}</a>` : ""}</span>
+        <span class="from">For ${esc(forWho(x) || p.name)}${x.mine === false ? ` · ${esc(x.buyerName)} got it` : ` · ${esc(x.from)}`}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(host(x.url))}</a>` : ""}</span>
         ${x.stash ? `<span class="stash">${PIN}${esc(x.stash)}</span>` : ""}
       </div>
     </div>
@@ -7621,7 +7688,7 @@ function editPurchase(x, p, o) {
         <div class="seg stages" role="radiogroup" aria-label="How's it going" data-stage>${STAGES.map((s, n) =>
           `<button type="button" role="radio" data-v="${n}" aria-checked="${n === at}">${s[1]}</button>`).join("")}</div></div>
       <label class="field"><span>Where it's hidden</span><input class="input" name="stash" maxlength="80" value="${esc(x.stash)}" placeholder="Hall closet, top shelf"></label>
-      ${theirs ? `<p class="subtle">${x.spent_cents ? `${money(x.spent_cents)}. ` : ""}Only ${esc(x.buyerName)} can change the price or take it back.</p>` : `<label class="field"><span>${x.kind === "giftcard" ? "Amount" : "Price you paid"}</span>
+      ${theirs ? `<p class="subtle">${(x.total_cents ?? x.spent_cents) ? `${money(x.total_cents ?? x.spent_cents)}. ` : ""}Only ${esc(x.buyerName)} can change the price or take it back.</p>` : `<label class="field"><span>${x.kind === "giftcard" ? "Amount" : "Price you paid"}</span>
         <div class="input money-in"><span>$</span><input name="paid" inputmode="decimal" value="${esc(priceIn(x.paid_cents ?? x.list_cents))}" aria-label="Price you paid"></div></label>`}
       <div class="actions">
         ${theirs ? "" : '<button class="btn danger" type="button" id="unbuy">Not getting it</button>'}
@@ -7856,10 +7923,10 @@ function coachTour(allSteps, label, brief = false) {
 
 // The "+ Set budget" pill sits inside the card's expand button, so it handles its own tap (and Enter/Space).
 function wireSetBudget(card, open) {
-  const el = card.querySelector("[data-setbudget]");
-  if (!el) return;
-  el.addEventListener("click", (e) => { e.stopPropagation(); open(); });
-  el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); open(); } });
+  card.querySelectorAll("[data-setbudget]").forEach((el) => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); open(); });
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); open(); } });
+  });
 }
 
 // One Christmas card for a household you plan for as a whole: c = { h, o, members: [{ p, o }] }.
@@ -7873,22 +7940,28 @@ function hhBudgetCard(c, n = 0, still = false) {
   const pct = budget ? Math.min(100, Math.round((o.spent_cents / budget) * 100)) : 100;
   const pill = budget == null ? `<span class="pill set" role="button" tabindex="0" data-setbudget aria-label="Set a budget for ${esc(h.label)}">+ Budget</span>`
     : over ? `<span class="pill over">${money(o.spent_cents - budget)} over</span>` : `<span class="pill">${money(budget - o.spent_cents)} left</span>`;
-  const buys = members.flatMap((m) => m.o.purchases.map((x) => ({ x, m })));
-  const ideas = members.flatMap((m) => m.p.ideas);
+  const buys = dedupeBuys(members.flatMap((m) => m.o.purchases.map((x) => ({ x, m }))));
+  const ideas = [...new Map(members.flatMap((m) => m.p.ideas).map((i) => [i.id, i])).values()];
+  const ids = members.map((m) => m.p.id);
+  // Split per person: each face shows "$40 of $100"; anyone with no amount yet gets a nudge.
+  const per = o.split ? o.people || {} : null;
+  const unset = per ? members.filter((m) => per[m.p.id]?.budget_cents == null) : [];
   return `<div class="pcard${isOpen ? " is-open" : ""}${still ? "" : " slide"}" style="animation-delay:${n * 0.06}s" data-household="${esc(h.id)}">
     <button class="pcard-head" type="button" data-toggle aria-expanded="${isOpen}">
       <span class="pcard-top">${tileAvatar(h.label, `h:${h.id}`)}
         <span class="pcard-who"><strong>${esc(h.label)}</strong><small>${money(o.spent_cents)}${budget != null ? ` of ${money(budget)}` : " spent"}</small>
-          <span class="hh-who">${members.map((m) => { const has = m.o.purchases.length > 0;
-            return `<span class="who-dot${has ? " has" : ""}" title="${esc(has ? `${m.p.name} has a gift` : `${m.p.name} still needs one`)}">${avatar(m.p.name, m.p.id, "xs")}${has ? `<i>${CHECK}</i>` : ""}</span>`; }).join("")}
-            ${members.some((m) => !m.o.purchases.length) && members.some((m) => m.o.purchases.length) ? `<em>${esc(peopleNames(members.filter((m) => !m.o.purchases.length).map((m) => m.p.name)))} still ${members.filter((m) => !m.o.purchases.length).length === 1 ? "needs" : "need"} one</em>` : ""}</span></span>
+          <span class="hh-who${per ? " split" : ""}">${members.map((m) => { const has = m.o.purchases.length > 0; const pp = per?.[m.p.id];
+            const over = pp && pp.budget_cents != null && pp.spent_cents > pp.budget_cents;
+            return `<span class="who-dot${has ? " has" : ""}" title="${esc(has ? `${m.p.name} has a gift` : `${m.p.name} still needs one`)}">${avatar(m.p.name, m.p.id, "xs")}${has ? `<i>${CHECK}</i>` : ""}${per ? `<small class="${over ? "over" : ""}">${esc(m.p.name)} ${money(pp?.spent_cents || 0)}${pp?.budget_cents != null ? ` of ${money(pp.budget_cents)}` : ""}</small>` : ""}</span>`; }).join("")}
+            ${!per && members.some((m) => !m.o.purchases.length) && members.some((m) => m.o.purchases.length) ? `<em>${esc(peopleNames(members.filter((m) => !m.o.purchases.length).map((m) => m.p.name)))} still ${members.filter((m) => !m.o.purchases.length).length === 1 ? "needs" : "need"} one</em>` : ""}</span>
+          ${unset.length ? `<span class="split-nudge" role="button" tabindex="0" data-setbudget>Set an amount for ${esc(peopleNames(unset.map((m) => m.p.name)))}</span>` : ""}</span>
         ${pill}${CHEV_D}</span>
-      ${sharedMeter(o, buys.map((b) => b.x), still)}
+      ${sharedMeter(o, buys.map((b) => (b.x.total_cents != null ? { ...b.x, spent_cents: b.x.total_cents } : b.x)), still)}
       ${recentLine(buys.map((b) => b.x))}
     </button>
     ${isOpen ? `<div class="pcard-body">
       ${buys.length ? `<ul class="buys">${buys.map(({ x, m }, k) => `<li><button type="button" data-hbuy="${k}" aria-label="${esc(x.title)} for ${esc(m.p.name)}, ${STAGES[stageAt(x.status)][1]}. Edit">
-          ${x.mine ? "" : avatar(x.buyerName, x.buyerId, "xs")}<span>${esc(x.title)}<small>For ${esc(m.p.name)}${x.mine ? "" : ` · ${esc(x.buyerName)} got it`}${x.stash ? ` · ${esc(x.stash)}` : ""}</small></span>${stagePill(x)}<b>${money(x.spent_cents)}</b></button></li>`).join("")}</ul>`
+          ${x.mine ? "" : avatar(x.buyerName, x.buyerId, "xs")}<span>${esc(x.title)}<small>For ${esc(forWho(x, ids) || m.p.name)}${x.mine ? "" : ` · ${esc(x.buyerName)} got it`}${x.stash ? ` · ${esc(x.stash)}` : ""}</small></span>${stagePill(x)}<b>${money(x.total_cents ?? x.spent_cents)}${per && x.total_cents != null ? `<small>${money(x.spent_cents)} each</small>` : ""}</b></button></li>`).join("")}</ul>`
         : o.unseen ? "" : '<p class="subtle">Nothing bought yet.</p>'}
       ${o.unseen ? `<p class="subtle unseen-line">${plural(o.unseen.count, "gift", "gifts")} for someone in their household you're not in a circle with · ${money(o.unseen.cents)}</p>` : ""}
       ${ideas.length ? `<div class="stack">${ideas.map(ideaRow).join("")}</div>` : ""}
@@ -7903,18 +7976,18 @@ function hhBudgetCard(c, n = 0, still = false) {
 function wireHhBudgetCard(card, c) {
   if (!card || !c) return;
   const key = `hh:${c.h.id}`;
-  const buys = c.members.flatMap((m) => m.o.purchases.map((x) => ({ x, m })));
-  wireSetBudget(card, () => editBudget(c.members[0].p, c.o));
+  const buys = dedupeBuys(c.members.flatMap((m) => m.o.purchases.map((x) => ({ x, m }))));
+  wireSetBudget(card, () => editBudget(c.members[0].p, c.o, c.members));
   card.querySelector("[data-toggle]").onclick = (e) => {
     if (e.target.closest("[data-setbudget]")) return;
     if (state.openPeople.has(key)) state.openPeople.delete(key); else state.openPeople.add(key);
     card.outerHTML = hhBudgetCard(c, 0, true);
     wireHhBudgetCard($(`.pcard[data-household="${CSS.escape(c.h.id)}"]`), c);
   };
-  card.querySelector("[data-budget]")?.addEventListener("click", () => editBudget(c.members[0].p, c.o));
+  card.querySelector("[data-budget]")?.addEventListener("click", () => editBudget(c.members[0].p, c.o, c.members));
   card.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => setTab("family", b.dataset.open)));
   card.querySelectorAll("[data-hbuy]").forEach((b) => (b.onclick = () => { const { x, m } = buys[+b.dataset.hbuy]; editPurchase(x, m.p, m.o); }));
-  wireIdeaRows(card, c.members.flatMap((m) => m.p.ideas));
+  wireIdeaRows(card, [...new Map(c.members.flatMap((m) => m.p.ideas).map((i) => [i.id, i])).values()]);
 }
 
 // One plain sentence under the budget sheet's title: what the budget covers and who sees it.
@@ -7927,14 +8000,73 @@ function budgetNote(p, o) {
 }
 
 // p: a tracker person, o: the occasion the budget is for (for a household's Christmas, any one of them).
-function editBudget(p, o) {
+// Ask before replacing a change someone else in your household just made (409 from POST budget). Resolves true
+// once saved, false when you keep theirs.
+async function saveBudget(subjectId, amount, occasion, was, closeFirst = true) {
+  try { await api("budget", { subjectId, amount, occasion, was }); return true; }
+  catch (e) {
+    const c = e.status === 409 && e.detail?.conflict;
+    if (!c) throw e;
+    const theirs = c.amount_cents == null ? "no budget" : money(c.amount_cents);
+    const mineNow = amount === "" ? "no budget" : money(Math.round(parseFloat(String(amount).replace(/[$,\s]/g, "")) * 100) || 0);
+    if (closeFirst) closeSheet();
+    if (await ask(`${c.by} just changed this to ${theirs}. Use ${mineNow} instead?`, { yes: amount === "" ? "Clear it" : `Use ${mineNow}`, no: `Keep ${theirs}` })) {
+      await api("budget", { subjectId, amount, occasion, was: c.amount_cents });
+      return true;
+    }
+    return false;
+  }
+}
+
+// Split per person (a household's Christmas, shared): each person gets their own amount and the total is their
+// sum. members: [{ p, o }] from the household card.
+function editSplitBudget(p, o, members) {
   const h = hhOf(o);
+  const per = o.people || {};
+  const sum = () => [...document.querySelectorAll("#splitForm [data-per]")].reduce((n, i) => n + (Math.round(parseFloat(i.value.replace(/[$,\s]/g, "")) * 100) || 0), 0);
+  openSheet(`
+    <h3>Our budget for ${esc(h.label)}${lockTip(`${budgetPrivacy(p).replace(` ${p.name} never sees it.`, " They never see it.")} Resets after Christmas.`)}</h3>
+    ${swRow("splitSw", "Split per person", "Each person gets their own amount", true)}
+    <form id="splitForm" autocomplete="off">
+      <div class="err" hidden></div>
+      ${members.map((m) => { const pp = per[m.p.id] || {};
+        return `<label class="field split-row"><span>${avatar(m.p.name, m.p.id, "xs")} ${esc(m.p.name)}${pp.budget_by ? `<small>${esc(pp.budget_by)} set this</small>` : ""}</span>
+          <div class="input money-in"><span>$</span><input data-per="${esc(m.p.id)}" inputmode="decimal" value="${esc(priceIn(pp.budget_cents))}" placeholder="0" aria-label="Amount for ${esc(m.p.name)}"></div></label>`; }).join("")}
+      <p class="split-total">Total <b id="splitSum">${money(o.budget_cents || 0)}</b></p>
+      <div class="actions"><button class="btn primary" type="submit">Save</button></div>
+    </form>`, (el) => {
+    const upd = () => { $("#splitSum", el).textContent = money(sum()); };
+    el.querySelectorAll("[data-per]").forEach((i) => (i.oninput = upd));
+    $("#splitSw", el).onclick = async (e) => {
+      e.currentTarget.disabled = true;
+      try { await api("budget/split", { subjectId: p.id, occasion: o.code, on: false }); closeSheet(); toast(`One budget for ${h.label} again`); render(); }
+      catch (err) { oops(err.message); e.currentTarget.disabled = false; }
+    };
+    wireForm($("#splitForm", el), async () => {
+      // Only the amounts you changed are sent, each checked against what this sheet showed.
+      for (const i of el.querySelectorAll("[data-per]")) {
+        const was = per[i.dataset.per]?.budget_cents ?? null;
+        const now = i.value.trim() === "" ? null : Math.round(parseFloat(i.value.replace(/[$,\s]/g, "")) * 100);
+        if (now === was) continue;
+        if (!(await saveBudget(i.dataset.per, i.value.trim(), o.code, was))) { render(); return; }
+      }
+      closeSheet(); toast("Budget saved"); render();
+    });
+  });
+}
+
+function editBudget(p, o, members = null) {
+  const h = hhOf(o);
+  // A household's Christmas you plan together can be split per person.
+  const canSplit = !!(h && o.shared && members?.length > 1);
+  if (canSplit && o.split) return editSplitBudget(p, o, members);
   const forWhat = o.christmas && !o.birthday ? `Christmas ${occParts(o)[0]}` : `${p.name}'s ${occName(o)} (${occDay(o)})`;
   openSheet(`
     <h3>${o.shared && sharedNames().length ? "Our budget" : "Budget"} for ${esc(h ? h.label : p.name)}${lockTip(`${budgetPrivacy(p).replace(` ${p.name} never sees it.`, h ? " They never see it." : ` ${p.name} never sees it.`)} Resets after ${o.christmas && !o.birthday ? "Christmas" : "the big day"}.`)}</h3>
     <form id="budgetForm" autocomplete="off">
       <div class="err" hidden></div>
       <p class="sheet-note">${esc(budgetNote(p, o))}</p>
+      ${canSplit ? swRow("splitSw", "Split per person", "Give each person their own amount", false) : ""}
       ${o.budget_by ? `<p class="set-by">${esc(o.budget_by)} set this${o.budget_at ? ` · ${esc(new Date(o.budget_at).toLocaleDateString([], { month: "short", day: "numeric" }))}` : ""}</p>` : ""}
       <label class="field"><span>How much for ${esc(forWhat)}?</span>
         <div class="input money-in"><span>$</span><input name="amount" inputmode="decimal" value="${esc(priceIn(o.budget_cents))}" placeholder="100" aria-label="Budget amount"></div></label>
@@ -7945,21 +8077,20 @@ function editBudget(p, o) {
       </div>
     </form>`, (el) => {
       el.querySelectorAll("[data-amt]").forEach((b) => (b.onclick = () => { const i = $("[name=amount]", el); i.value = b.dataset.amt; i.focus(); }));
+      // Splitting divides the current total evenly; then the sheet shows each person.
+      $("#splitSw", el)?.addEventListener("click", async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await api("budget/split", { subjectId: p.id, occasion: o.code, on: true });
+          const t = await load("tracker");
+          state.tracker = t;
+          const rows = members.map((m) => { const q = t.people.find((x) => x.id === m.p.id); return { p: q, o: q.occasions.find((x) => x.code === o.code) }; });
+          editSplitBudget(rows[0].p, rows[0].o, rows);
+          render();
+        } catch (err) { oops(err.message); e.currentTarget.disabled = false; }
+      });
       // was: what this sheet showed. If someone else in your household changed it meanwhile, ask before replacing it.
-      const save = async (amount, was = o.budget_cents ?? null) => {
-        try { await api("budget", { subjectId: p.id, amount, occasion: o.code, was }); }
-        catch (e) {
-          const c = e.status === 409 && e.detail?.conflict;
-          if (!c) throw e;
-          const theirs = c.amount_cents == null ? "no budget" : money(c.amount_cents);
-          const mineNow = amount === "" ? "no budget" : money(Math.round(parseFloat(String(amount).replace(/[$,\s]/g, "")) * 100) || 0);
-          closeSheet();
-          if (await ask(`${c.by} just changed this to ${theirs}. Use ${mineNow} instead?`, { yes: amount === "" ? "Clear it" : `Use ${mineNow}`, no: `Keep ${theirs}` })) {
-            await api("budget", { subjectId: p.id, amount, occasion: o.code, was: c.amount_cents });
-          } else { render(); return false; }
-        }
-        return true;
-      };
+      const save = async (amount) => { const ok = await saveBudget(p.id, amount, o.code, o.budget_cents ?? null); if (!ok) render(); return ok; };
       wireForm($("#budgetForm", el), async ({ amount }) => { if (await save(amount)) { closeSheet(); toast("Budget saved"); render(); } });
       $("#clearBudget", el)?.addEventListener("click", async () => {
         try { if (await save("")) { closeSheet(); toast("Budget cleared"); render(); } } catch (e) { oops(e.message); }
@@ -8034,6 +8165,7 @@ function editIdea(idea, subjectId, opts = {}) {
       ${isNew ? linkField(idea.url, true) : ""}
       <label class="field"><span>${purchase ? "What did you get?" : "Idea"}</span><input class="input" name="title" maxlength="200" value="${esc(idea.title)}" placeholder="${purchase ? "A candle" : isNew ? "Or type the idea" : "Something they mentioned"}" required></label>
       <div class="nope-warn" id="nopeWarn" role="status" hidden></div>
+      <div id="alsoFor"></div>
       ${isNew ? "" : linkField(idea.url)}
       ${photoField()}
       <label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(idea.price_cents))}" placeholder="Fills in from the link"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>
@@ -8093,9 +8225,34 @@ function editIdea(idea, subjectId, opts = {}) {
         if (hits.length && !was) buzz();
         return { hits, was };
       };
+      // Also for others in their household (a board game for the whole family): its price counts evenly against each.
+      let alsoSubject = null;
+      const also = new Set((idea.for_ids || []).slice(1));
+      const syncAlso = () => {
+        const box = $("#alsoFor", el);
+        const who = form.subjectId?.value || idea.subject_id;
+        if (who === alsoSubject) return;
+        alsoSubject = who;
+        const them = everyone().find((m) => m.id === who);
+        const mates = them?.householdId && them.householdId !== state.me.household?.id
+          ? everyone().filter((m) => m.householdId === them.householdId && m.id !== who && m.id !== state.me.id) : [];
+        if (who !== idea.subject_id) also.clear();
+        if (!mates.length) { box.innerHTML = ""; return; }
+        box.innerHTML = `<div class="field"><span>Also for</span><div class="chips also-chips">${mates.map((m) =>
+          `<button class="chip" type="button" data-also="${esc(m.id)}" aria-pressed="${also.has(m.id)}">${avatar(m.name, m.id, "xs")}${esc(m.name)}</button>`).join("")}</div>
+          <small class="hint" id="alsoHint"></small></div>`;
+        const hint = () => { $("#alsoHint", box).textContent = also.size ? `For ${also.size + 1} people. It counts evenly against each of them.` : "For the whole family? Tap the others it's for."; };
+        box.querySelectorAll("[data-also]").forEach((b) => (b.onclick = () => {
+          also.has(b.dataset.also) ? also.delete(b.dataset.also) : also.add(b.dataset.also);
+          b.setAttribute("aria-pressed", String(also.has(b.dataset.also)));
+          buzz(); hint();
+        }));
+        hint();
+      };
       const sync = () => {
         checkNopes();
         syncOcc();
+        syncAlso();
         const shared = form.shared.checked;
         $("#shareHint", el).textContent = shared
           ? `Everyone except ${personName(form.subjectId?.value || idea.subject_id)} can see it and get it.`
@@ -8112,6 +8269,7 @@ function editIdea(idea, subjectId, opts = {}) {
         const { hits, was } = checkNopes();
         if (hits.length && !was) return $("#nopeWarn", el).scrollIntoView({ block: "center", behavior: "smooth" });
         const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), note: d.note, shared: d.shared, image: imageFor(form), unfilled: form.dataset.unfilled === "1" };
+        if ($("#alsoFor [data-also]", el) || idea.for_ids) payload.alsoFor = [...also];
         if (payload.unfilled) setTimeout(refreshDetails, 30000);
         if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; if (d.bought) payload.occasion = occasion(); }
         if (!payload.subjectId) throw new Error("Choose who it's for.");
@@ -8480,6 +8638,9 @@ const colorDots = (keys, no) => `<span class="cdots">${keys.filter((k) => COLOR_
 // ---------- loves and nopes ----------
 // A little emoji for a love or nope, guessed from its words. No match shows a plain dot.
 const TAG_EMOJI = [
+  // Pet favorites first, so "tennis balls" gets 🎾 rather than a sports medal.
+  [/tennis ball|\bfetch\b/, "🎾"], [/\bbones?\b|\bchews?\b|chew toy/, "🦴"], [/belly rub|scritch|head scratch/, "🫶"], [/catnip/, "🌿"], [/peanut butter/, "🥜"],
+  [/squeak/, "🧸"], [/zoomies|walkies/, "🐾"], [/\bnaps?\b|sunbeam|sun spot/, "😴"], [/\btreats?\b|\bkibble\b/, "🍖"], [/cardboard box|\bboxes\b/, "📦"], [/laser|feather/, "🪶"],
   [/\bcats?\b|kitt(y|ies|en)/, "🐱"], [/\bdogs?\b|pupp(y|ies)|doggo/, "🐶"], [/pok[eé]mon|pikachu/, "⚡"], [/bunn(y|ies)|rabbit/, "🐰"], [/\bbirds?\b/, "🐦"],
   [/\bfrogs?\b/, "🐸"], [/\bfox(es)?\b/, "🦊"], [/\bbears?\b/, "🐻"], [/\bduck/, "🦆"], [/horse/, "🐴"], [/dino/, "🦖"], [/\bwool|sheep/, "🐑"],
   [/coffee|latte|espresso|cold brew|cappuccino/, "☕"], [/\bteas?\b|matcha|chai/, "🍵"], [/chocolate/, "🍫"], [/candy|gumm(y|ies)|sweets|licorice/, "🍬"],
