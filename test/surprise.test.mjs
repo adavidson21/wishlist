@@ -188,6 +188,7 @@ async function aliceView(x) {
   await post("give myself a gift card", "POST giftcard/give", "giftcard/give", { memberId: A.id, brand: "starbucks", on: true });
   await post("move a gift card along as Mike", "POST purchase/progress", "purchase/progress", { kind: "giftcard", id: "starbucks", subjectId: A.id, occasion: xmas, buyerId: M.id });
   await post("budget for myself", "POST budget", "budget", { subjectId: A.id, amount: 5 });
+  await post("split my own household's Christmas budget", "POST budget/split", "budget/split", { subjectId: A.id, occasion: xmas, on: true });
   await post("nickname myself", "POST nickname", "nickname", { subjectId: A.id, nickname: "me" });
   await post("leave myself off my gift list", "POST budget/skip", "budget/skip", { target: `m:${A.id}`, skip: true });
   await post("did I get held wishes", "POST item/got", "item/got", { all: true, got: true });
@@ -294,6 +295,7 @@ const ROUTES = {
   "POST purchase/progress": "probe",
   "POST budget/skip": "probe",
   "POST budget": "probe",
+  "POST budget/split": "probe",
   "POST refresh": "Your own wishes and ideas. Counts only, never reads claims.",
   "POST estimate": "probe",
   "POST image": "probe",
