@@ -5,6 +5,7 @@
 // Cron Trigger, background notifications (ctx.waitUntil), restarts with new bindings, and encrypted pushes.
 // No network: the pretend store (SHOP) answers with product pages, every other outbound request gets a 404.
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { buildSync } from "esbuild";
 import { readdirSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -45,9 +46,18 @@ function splitSql(sql) {
 const MIGRATIONS = readdirSync(join(ROOT, "migrations")).filter((f) => f.endsWith(".sql")).sort()
   .map((f) => splitSql(readFileSync(join(ROOT, "migrations", f), "utf8")));
 
-// The Worker's modules, entry point first: everything in src/ plus the gift card list it imports from public/.
-const MODULES = ["src/worker.js", ...readdirSync(join(ROOT, "src")).filter((f) => f.endsWith(".js") && f !== "worker.js").map((f) => `src/${f}`), "public/giftcards.js"]
-  .map((p) => ({ type: "ESModule", path: join(ROOT, p) }));
+// The Worker, bundled the way wrangler bundles it for a deploy (esbuild), so npm packages it imports
+// (@simplewebauthn/server for passkeys) resolve, and node: built-ins are left to workerd.
+const BUNDLE_DIR = mkdtempSync(join(tmpdir(), "hints-bundle-"));
+buildSync({
+  entryPoints: [join(ROOT, "src/worker.js")], outfile: join(BUNDLE_DIR, "worker.js"),
+  bundle: true, format: "esm", platform: "browser", conditions: ["workerd", "worker", "browser"],
+  external: ["node:*"], logLevel: "error",
+});
+process.on("exit", () => rmSync(BUNDLE_DIR, { recursive: true, force: true }));
+const MODULES = [{ type: "ESModule", path: join(BUNDLE_DIR, "worker.js") }];
+// Same compatibility flags as wrangler.jsonc (nodejs_als: the per-request scope in src/limits.js).
+const FLAGS = JSON.parse(readFileSync(join(ROOT, "wrangler.jsonc"), "utf8").match(/"compatibility_flags":\s*(\[[^\]]*\])/)?.[1] || "[]");
 
 // ---------- push decryption (the browser's side of RFC 8291) ----------
 const b64u = (buf) => Buffer.from(buf).toString("base64url");
@@ -112,8 +122,9 @@ export async function world(vars = {}) {
   const options = () => convertV4MiniflareOptions({
     resourcePersistencePath: join(dir, "data"),
     modules: MODULES,
-    modulesRoot: ROOT,
+    modulesRoot: BUNDLE_DIR,
     compatibilityDate: "2025-09-01",
+    compatibilityFlags: FLAGS,
     d1Databases: { DB: "wishlist" },
     bindings: current,
     outboundService: async (req) => {

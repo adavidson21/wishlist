@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "check": "node scripts/check-routes.mjs && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "check": "node scripts/check-routes.mjs && node scripts/check-delete.mjs && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "deploy": "wrangler deploy",
     "migrate": "wrangler d1 migrations apply wishlist --remote",
     "backup": "node scripts/backup.mjs",
@@ -12,7 +12,11 @@
     "compare-budgets": "node --no-warnings scripts/compare-budgets.mjs"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "miniflare": "5.20261104.0-beta",
     "wrangler": "^4"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.3.3"
   }
 }

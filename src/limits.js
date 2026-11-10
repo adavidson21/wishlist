@@ -7,6 +7,8 @@
 //   2. D1 counters (rate_limits table, migration 0024): exact counts for the things that matter: sign-ups,
 //      PIN guesses, invite code lookups and anything that calls Gemini. Old rows are swept now and then.
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 export const LIMITS = {
   // Burst, per IP, every /api/ call and /join/ page (the binding's own limit lives in wrangler.jsonc).
   // Unauthenticated, per IP (IPv6 counts per /64, since one person usually has a whole /64).
@@ -53,8 +55,34 @@ export const LIMITS = {
   reportsPerIp: [[30, 3600], [100, 86400]],
   reportsPerDay: 1000,
   notesPerMember: [[10, 3600], [30, 86400]],
-  // Whole app: Gemini calls per day (UTC). GEMINI_DAILY_CAP in wrangler.jsonc vars overrides it.
+  // Whole app: Gemini requests per day (UTC), retries included. GEMINI_DAILY_CAP in wrangler.jsonc vars overrides it.
   geminiPerDay: 1500,
+  // Of those, requests that use Google Search grounding (billed per search after 5,000 free a month). 150 a day
+  // stays inside the free allowance. Past it, calls run without search. GEMINI_GROUNDED_CAP overrides it.
+  geminiGroundedPerDay: 150,
+  // Per person, per day, across every feature: [established, account under 7 days old].
+  // "user" is what someone taps (Fill, ✨ name, photo search, the Share button); "auto" is what the app does on
+  // its own while they use it (price guesses, missing photos and prices, details refresh).
+  geminiUserPerMember: [60, 25],
+  geminiAutoPerMember: [100, 40],
+  // Share of the daily cap only established accounts and the hourly schedule can use, so a wave of new
+  // sign-ups can't use up the day for everyone else.
+  geminiReserve: 0.2,
+  newAccountDays: 7,
+  // Of the daily Google Search calls, how many are kept for things people tap: background price checks and
+  // lookups stop using search once only this many are left.
+  geminiGroundedForTaps: 50,
+  // PIN guessing across the whole app: wrong PINs per hour before Hints tightens up for everyone (fewer tries,
+  // Turnstile if it's set up) and tells whoever runs Hints.
+  pinMissesPerHour: 60,
+  // Tries per person while that's on (normally pinTriesPerMember).
+  pinTriesLockdown: [[3, 3600]],
+  // Wrong PINs for one person (15 minutes) before they get "Someone tried to sign in as you" and, with
+  // Turnstile set up, before a check is asked for.
+  pinMissesWarn: 3,
+  // Passkey sign-in starts (unauthenticated, per IP).
+  passkeyPerIp: [30, 3600],
+  passkeysPerMember: 10,
   // Request bodies.
   maxBody: 400_000,
   maxPhotoBody: 6_000_000,
@@ -105,13 +133,54 @@ export async function burstOk(env, request) {
   }
 }
 
-// Gemini calls today across the whole app. Counts this call and returns false once over the daily cap.
-export async function geminiAllowed(env) {
-  if (!env.DB) return true;
+// Who an API request is for, so Gemini calls deep inside link lookups can be counted against the right person
+// without passing them through every function. src/wishlist.js handle() opens a scope per request ({ route });
+// auth() and the Share button add { member: { id, createdAt, trusted } }. The hourly schedule has no scope.
+// Needs the "nodejs_als" compatibility flag (wrangler.jsonc).
+export const scope = new AsyncLocalStorage();
+// Routes where Gemini runs because someone tapped something (the rest are the app working on its own).
+const GEMINI_USER_ROUTES = new Set(["POST preview", "POST name", "POST identify", "POST quickadd"]);
+
+export const isNewAccount = (createdAt) =>
+  !createdAt || Date.now() - Date.parse(createdAt) < LIMITS.newAccountDays * 86_400_000;
+
+// Whether a Gemini request may go ahead, before it's made. Checks, in order: the person's daily allowance, the
+// reserve (new accounts stop at 80% of the day), and the whole-app cap. Trusted accounts (members.ai_trusted:
+// everyone who was on Hints before public sign-ups, plus anyone the owner raises) skip the first two: only the
+// whole-app cap applies to them. grounded: whether Google Search may be used. It stops at the grounded cap, and
+// for background work (anything not tapped, including the hourly schedule) it stops geminiGroundedForTaps
+// earlier, so taps always have some left. Fails closed: Gemini is optional, so a counting error means no.
+// { ok, grounded, why: "person" | "busy" | "app" | "error" }
+export async function geminiAllowed(env, { grounded = false } = {}) {
+  if (!env.DB) return { ok: true, grounded };
   const cap = Number(env.GEMINI_DAILY_CAP) || LIMITS.geminiPerDay;
+  const groundedCap = Number(env.GEMINI_GROUNDED_CAP) || LIMITS.geminiGroundedPerDay;
   try {
-    return (await hit(env, "gemini:all", 86400)) <= cap;
-  } catch {
-    return true; // never block on a counting hiccup
+    const s = scope.getStore();
+    const user = GEMINI_USER_ROUTES.has(s?.route);
+    const used = await peek(env, "gemini:all", 86400);
+    if (s?.member && !s.member.trusted) {
+      const fresh = isNewAccount(s.member.createdAt);
+      const [norm, newb] = user ? LIMITS.geminiUserPerMember : LIMITS.geminiAutoPerMember;
+      if ((await peek(env, `gemini:${user ? "u" : "a"}:${s.member.id}`, 86400)) >= (fresh ? newb : norm)) return { ok: false, why: "person" };
+      if (fresh && used >= cap * (1 - LIMITS.geminiReserve)) return { ok: false, why: "busy" };
+    }
+    if (used >= cap) return { ok: false, why: "app" };
+    if (!grounded) return { ok: true, grounded: false };
+    const searchLimit = user ? groundedCap : Math.max(0, groundedCap - LIMITS.geminiGroundedForTaps);
+    return { ok: true, grounded: (await peek(env, "gemini:grounded", 86400)) < searchLimit };
+  } catch (err) {
+    console.error("gemini allowance", err);
+    return { ok: false, why: "error" };
   }
+}
+
+// Counts one Gemini request (call it for every request sent, retries included).
+export async function geminiCount(env, grounded) {
+  if (!env.DB) return;
+  const s = scope.getStore();
+  const keys = ["gemini:all"];
+  if (grounded) keys.push("gemini:grounded");
+  if (s?.member) keys.push(`gemini:${GEMINI_USER_ROUTES.has(s.route) ? "u" : "a"}:${s.member.id}`);
+  await Promise.all(keys.map((k) => hit(env, k, 86400))).catch((err) => console.error("gemini count", err));
 }

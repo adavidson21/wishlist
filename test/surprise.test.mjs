@@ -357,6 +357,14 @@ const ROUTES = {
   "POST join/cancel": "Answers ok.",
   "POST signout/others": "Answers with a count of your own devices.",
   "POST account/delete": "Answers ok.",
+  "POST passkey/new": "Passkey options for yourself: your own name and passkey ids, a challenge.",
+  "POST passkey/save": "Answers with your own passkeys (device label and dates).",
+  "POST passkey/remove": "Answers with your own passkeys (device label and dates).",
+  "POST passkey/start": "Signed out. Answers with a challenge only.",
+  "POST passkey/signin": "Signs in. Answers with a token and your own name.",
+  "POST owner/find": "Owner only. Names, join dates, wish counts and circle names; nothing marked, suggested, chatted or budgeted.",
+  "POST owner/trust": "Owner only. Answers ok.",
+  "POST owner/delete": "Owner only. Answers ok.",
   "POST signout": "Answers ok.",
 };
 

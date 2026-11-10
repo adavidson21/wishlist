@@ -81,10 +81,15 @@ test("a list handed over by personal link keeps its surprises", async () => {
   }
 });
 
-test("a list handed over by tapping your name on the circle link keeps its surprises", async () => {
+test("a list handed over by tapping your name on the circle link (circles from before 0049) keeps its surprises", async () => {
   const w = await world();
   try {
     const { group, code, gran } = await setUp(w);
+    // Circles started after public sign-ups opened don't hand a set-up list over from the circle link (migration
+    // 0049): the admin sends a personal link instead. Circles from before that still do, which is what this covers.
+    const refused = await w.request("/api/join", { body: { code, memberId: gran, pin: "5555" } });
+    assert.equal(refused.status, 403, "a new circle refuses");
+    await (await w.db()).prepare("UPDATE groups SET link_claims = 1 WHERE id = ?").bind(group).run();
     const names = await w.request("/api/lookup", { body: { code } });
     const row = names.data.members.find((m) => m.id === gran);
     assert.ok(row.waiting, "shows as Ready for you");
