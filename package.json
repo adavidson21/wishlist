@@ -12,6 +12,7 @@
     "compare-budgets": "node --no-warnings scripts/compare-budgets.mjs"
   },
   "devDependencies": {
+    "miniflare": "5.20261104.0-beta",
     "wrangler": "^4"
   }
 }
