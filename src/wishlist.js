@@ -4332,7 +4332,9 @@ const handlers = {
       const visible = new Set(people.results.map((p) => p.id));
       const all = new Set(hhAll.get(hh) || []);
       const rows = everyBuy.filter((x) => x.occasion === code && all.has(x.subject_id) && !visible.has(x.subject_id));
-      return { count: rows.length, cents: rows.reduce((n, x) => n + x.spent_cents, 0) };
+      const byBuyer = {};
+      for (const x of rows) byBuyer[x.buyerId] = (byBuyer[x.buyerId] || 0) + x.spent_cents;
+      return { count: rows.length, cents: rows.reduce((n, x) => n + x.spent_cents, 0), byBuyer };
     };
     // Everything your household bought anyone in household `hh` for this occasion.
     const hhSpent = (hh, code) => {
@@ -4393,16 +4395,16 @@ const handlers = {
               // same number for everyone in your household.
               const target = `h:${p.household_id}`;
               const unseen = unseenBuys(p.household_id, o.code);
-              return { ...o, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), spent_cents: hhSpent(p.household_id, o.code), own_spent_cents: ownSpent, household: p.household_id, purchases: bought, ...(unseen.count ? { unseen } : {}) };
+              return { ...o, shared: true, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), spent_cents: hhSpent(p.household_id, o.code), own_spent_cents: ownSpent, household: p.household_id, purchases: bought, ...(unseen.count ? { unseen } : {}) };
             }
             if (!sharesOwn) {
               // Personal. Someone only you can see who still has an older shared budget keeps showing it until you set one.
               const own = mine(budgets.results).find((b) => b.season === o.code)?.amount_cents ?? null;
               const legacy = sharesBudget(myHh, p) ? sharedBudget(budgetTarget(p, o.code), o.code) : null;
-              return { ...o, budget_cents: own ?? legacy, spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
+              return { ...o, shared: false, budget_cents: own ?? legacy, spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
             }
             const target = budgetTarget(p, o.code);
-            return { ...o, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
+            return { ...o, shared: true, budget_cents: sharedBudget(target, o.code), ...setBy(target, o.code), spent_cents: ownSpent, own_spent_cents: ownSpent, purchases: bought };
           }),
           ideas: ideas.results.filter((r) => r.subject_id === p.id).map((r) => ideaOut(renameRow(r, nicks), me.id)),
         };
