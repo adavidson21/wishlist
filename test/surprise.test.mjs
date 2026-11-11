@@ -303,6 +303,8 @@ const ROUTES = {
   "POST preview": "Reads a store link. Nothing from the database.",
   "POST name": "Tidies a wish name with Gemini. Nothing from the database.",
   "POST identify": "Photo search. Nothing from the database.",
+  "POST recommend": "Ideas for your own list. Reads only your own wishes (owner_id = you); nothing about anyone else.",
+  "POST ideas/pref": "Your own on/off switch for Ideas. Returns nothing about anyone else.",
   "GET history": "probe",
   "GET tracker": "probe",
   "POST nickname": "probe",

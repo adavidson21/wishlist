@@ -2633,6 +2633,35 @@ async function bestLink(x, grounded) {
   return { url: STORES[key].search(x.search || x.title), store: STORES[key].name, link: "search", price: null };
 }
 
+// ---------- "Ideas for you": new wishes based on your list ----------
+// Only product names, brands and categories from the person's own list are sent. Never who it's for, their name,
+// notes, or anything from their profile (the privacy page promises that).
+const RECOMMEND_PROMPT = `You help someone add to their own gift wish list. The input is JSON: wishes (what is already on
+their list: name, brand, category) and avoid (ideas they've already been shown).
+Suggest 4 specific products they would probably love that are NOT already on the list and not in avoid.
+Mix the kinds of ideas: something that goes with a wish (an accessory, refill or matching piece), something from a
+brand or product line they clearly like, and something new in a style or hobby the list points to.
+Keep prices near the range of their list. Prefer well reviewed, widely sold, currently available products with an
+exact brand and model. Nothing used, nothing adult, no gift cards. Different from each other.
+Use Google Search to find where each one is sold new by a legitimate seller.
+For each suggestion give:
+- title: a short shopping name, under 70 characters, brand first when known
+- detail: why it fits, under 60 characters, naming the wish it relates to when there is one (for example
+  "Goes with your Stanley tumbler" or "More from Lego Botanicals")
+- search: the words to type into a store's search box to find it
+- price_low and price_high: a typical new retail price range in US dollars, or null if you have no idea
+- brand_domain: the domain of the brand's own official online store (for example "nike.com"), or "" if unknown or none
+- links: up to 3 product page URLs for this item that appeared in your search results, best first. Only use
+  1) the brand's official site, 2) these retailers: ${PROMPT_STORE_LIST}, 3) amazon.com.
+  Never use marketplaces, resellers, or used sellers (eBay, Etsy, Poshmark, Mercari, Temu, AliExpress, Shein, StockX).
+  Copy each URL exactly as found. Never guess or build a URL. Product pages only, not search or category pages.
+  Use an empty list if you found none.
+- store: of the retailers above (or amazon), the one most likely to carry it, used to search if no link works
+If the list is too vague to suggest anything, return an empty list.`;
+const RECOMMEND_SCHEMA = IDENTIFY_SCHEMA;
+// Words that tell two product names apart ("Stanley Quencher 40oz" vs "stanley quencher 40 oz").
+const nameKey = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
 // ---------- details refresh: bring older wishes and ideas up to date ----------
 // Bump DETAILS_V when a new field is filled from links, and every saved wish and idea gets re-read once more.
 // Runs for the signed-in person's own wishes and ideas, a few per call (the app keeps calling while
@@ -3329,7 +3358,7 @@ const handlers = {
     const openReports = isOwner
       ? (await env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE done_at IS NULL").first())?.n || 0
       : 0;
-    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, created_at, claim_hash IS NOT NULL AS has_link, add_key_hash IS NOT NULL AS has_add_key FROM members WHERE id = ?").bind(me.id).first();
+    const prefsRow = await env.DB.prepare("SELECT notify, stale_ok_year, share_token, created_at, ideas_off, claim_hash IS NOT NULL AS has_link, add_key_hash IS NOT NULL AS has_add_key FROM members WHERE id = ?").bind(me.id).first();
     const { results: seenRows } = await env.DB.prepare("SELECT owner_id, seen_count FROM list_seen WHERE viewer_id = ?").bind(me.id).all();
     // Circles you asked to join and are waiting on, and (for circles you run) who's waiting on you.
     const { results: pendingRows } = await env.DB.prepare(
@@ -3391,6 +3420,8 @@ const handlers = {
         notify: notifyPrefs(prefsRow?.notify),
         // Year "Looks good" was tapped on the "hasn't changed since last year" card.
         staleOk: prefsRow?.stale_ok_year || null,
+        // "Ideas for you" on My list is on unless turned off in Settings.
+        ideasOff: !!prefsRow?.ideas_off,
         // Your read-only share link (/s/TOKEN), or null when it's off.
         shareToken: prefsRow?.share_token || null,
         // You have a personal sign-in link (it can't be shown again, only replaced or turned off).
@@ -4479,6 +4510,60 @@ const handlers = {
       };
     }));
     return { suggestions };
+  },
+
+  // "Ideas for you" on My list: Gemini suggests new wishes from what's already on your list (product names,
+  // brands and categories only), each with a store link like photo search. Nothing is saved; tapping one in the
+  // app saves it to Maybe. avoid: names already shown, so "More ideas" brings new ones. Off in Settings = 403.
+  async "POST recommend"(req, env) {
+    const me = await auth(req, env);
+    const pref = await env.DB.prepare("SELECT ideas_off FROM members WHERE id = ?").bind(me.id).first();
+    if (pref?.ideas_off) fail(403, "Ideas for you is turned off. Turn it on in Settings.");
+    if (!env.GEMINI_API_KEY) fail(500, "Ideas aren't set up (missing GEMINI_API_KEY).");
+    const b = await body(req);
+    const str = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
+    const { results } = await env.DB.prepare(
+      "SELECT title, brand, category FROM items WHERE owner_id = ? AND removed_at IS NULL ORDER BY created_at DESC LIMIT 40",
+    ).bind(me.id).all();
+    if (results.length < 2) fail(400, "Add a couple of wishes first, then we can suggest more.");
+    const wishes = results.map((r) => ({ name: str(r.title, 120), brand: str(r.brand, LIMITS.brand), category: str(r.category, 30) }))
+      .map((w) => Object.fromEntries(Object.entries(w).filter(([, v]) => v)));
+    const avoid = (Array.isArray(b.avoid) ? b.avoid : []).map((x) => str(x, 120)).filter(Boolean).slice(-24);
+    await rateLimit(env, `recommend:${me.id}`, ABUSE.recommendPerMember, "That's a lot of ideas for now. Try again in a bit.");
+    const input = [{ text: JSON.stringify({ wishes, avoid }) }];
+    // Same fallback as photo search: no Google Search (quota or model) still gives ideas with a store search link.
+    let result = await callGemini(env, RECOMMEND_PROMPT, input, RECOMMEND_SCHEMA, 40000, undefined, [{ google_search: {} }]);
+    const q = result.quota;
+    const perMinute = result.status === 429 && q && !q.daily && !q.notInPlan && !q.search;
+    if (result.error && !perMinute) result = await callGemini(env, RECOMMEND_PROMPT, input, RECOMMEND_SCHEMA, 25000);
+    if (result.error) return result.error;
+    const grounded = await groundedUrls(result.grounding);
+    const clean = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+    const dollars = (v) => (typeof v === "number" && v > 0 && v < 100_000 ? Math.round(v) : null);
+    // Never suggest what's already on the list or was already shown.
+    const taken = new Set([...results.map((r) => nameKey(r.title)), ...avoid.map(nameKey)]);
+    const picked = (result.data?.suggestions || []).filter((x) => clean(x?.title, 1) && !taken.has(nameKey(x.title))).slice(0, 4);
+    const suggestions = await Promise.all(picked.map(async (x) => {
+      const search = clean(x.search, 150) || clean(x.title, 150);
+      const where = await bestLink({ ...x, search }, grounded);
+      return {
+        title: clean(x.title, LIMITS.title),
+        detail: clean(x.detail, 90),
+        search,
+        price_low: dollars(x.price_low),
+        price_high: dollars(x.price_high),
+        ...where,
+      };
+    }));
+    return { suggestions };
+  },
+
+  // Turns "Ideas for you" on My list on or off (Settings). { on }
+  async "POST ideas/pref"(req, env) {
+    const me = await auth(req, env);
+    const { on } = await body(req);
+    await env.DB.prepare("UPDATE members SET ideas_off = ? WHERE id = ?").bind(on === false ? 1 : 0, me.id).run();
+    return { ok: true, ideasOff: on === false };
   },
 
   // Your planner: per person, their upcoming occasions (Christmas, and their birthday if they added one), each

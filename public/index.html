@@ -1248,6 +1248,30 @@
   .pick em { font-style: normal; font-size: 14px; font-weight: 700; color: var(--ok); }
   .pick .where { font-size: 13px; color: var(--muted); }
   .pick .where.found { color: var(--brand); font-weight: 600; }
+  /* "Ideas for you" on My list: a flat card with the gold accent, rows that link to the store. */
+  .ideas { margin: 18px 0 0; padding: 14px; border-radius: 16px; background: var(--gold-soft); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gold) 45%, transparent); }
+  .ideas-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .ideas-ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--gold); color: #3B2A06; }
+  .ideas-t { flex: 1; min-width: 0; display: grid; line-height: 1.2; }
+  .ideas-t strong { font-family: var(--display, inherit); font-size: 17px; }
+  .ideas-t small { color: var(--gold-ink); font-size: 13px; font-weight: 600; }
+  .ideas .btn.wide { gap: 6px; }
+  .ideas-msg { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+  .ideas-list { display: grid; gap: 8px; }
+  .idea-row { display: flex; align-items: center; gap: 8px; padding: 10px 6px 10px 12px; border-radius: 12px; background: var(--card); }
+  .idea-row.got { opacity: .75; }
+  .idea-txt { flex: 1; min-width: 0; display: grid; gap: 1px; color: inherit; text-decoration: none; }
+  .idea-txt strong { font-size: 15px; line-height: 1.25; }
+  .idea-txt small { font-size: 13px; color: var(--muted); }
+  .idea-txt .where { font-size: 12.5px; font-weight: 700; color: var(--gold-ink); }
+  .idea-row .btn.small { flex: none; white-space: nowrap; }
+  .idea-x { flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+  .idea-got { flex: none; display: inline-flex; align-items: center; gap: 4px; padding-right: 8px; font-size: 13px; font-weight: 700; color: var(--ok); }
+  .ideas-wait { display: grid; gap: 8px; }
+  .ideas-wait i { display: block; height: 52px; border-radius: 12px; background: var(--card); animation: ideasPulse 1.2s ease-in-out infinite alternate; }
+  .ideas-wait i:nth-child(2) { animation-delay: .2s; } .ideas-wait i:nth-child(3) { animation-delay: .4s; }
+  .ideas-wait span { font-size: 13px; color: var(--gold-ink); font-weight: 600; text-align: center; }
+  @keyframes ideasPulse { from { opacity: .45; } to { opacity: 1; } }
   .pick.on { border-color: var(--brand); background: var(--soft); }
   .pick.none { color: var(--muted); font-weight: 600; text-align: center; display: block; }
   .fillmsg { display: block; color: var(--muted); font-size: 14px; margin-top: 7px; }
@@ -4091,6 +4115,7 @@ async function renderMine() {
     ${mineSummary(live)}
     ${mineToolbar(live, "list")}
     ${itemsBlock}
+    ${ideasCard(data.items)}
     ${showBdayNudge() ? `<div class="starter slide" id="bdayNudge" style="margin:18px 0 0"><strong>When's your birthday?</strong>
       <p>Add it so everyone can plan for it too, not just Christmas.</p>
       <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="bdayLater">Not now</button><button class="btn primary" type="button" id="bdayAdd">Add birthday</button></div></div>` : ""}
@@ -4159,10 +4184,124 @@ async function renderMine() {
   wireGiftBox(v, () => addThing());
   wireMineItems(v, data.items);
   wireMineTools(v, sideItems, data.items);
+  wireIdeas(v, data.items);
   wireReceived(v);
   $("#shareOut", v)?.addEventListener("click", () => shareOutside(state.me.shareToken || null));
   $("#soloCircle", v)?.addEventListener("click", () => startCircleSheet());
   wirePasskeyNudge(v);
+}
+// ---------- "Ideas for you" on My list ----------
+// Gemini suggests new wishes from the names and brands already on your list (POST recommend). Loads when tapped,
+// to keep AI use low, and the last batch is kept on this device for a few days. Tapping + Maybe saves one to
+// Maybe. Off in Settings (members.ideas_off) hides the card everywhere.
+const IDEAS_KEY = "wishlist-ideas";
+const IDEAS_KEEP_MS = 3 * 86_400_000;
+const IDEAS_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
+const ideaKey = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function ideasState() {
+  if (!state.ideas || state.ideas.who !== state.me.id) {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(IDEAS_KEY) || "null"); } catch {}
+    const fresh = saved && saved.who === state.me.id && Date.now() - saved.at < IDEAS_KEEP_MS;
+    state.ideas = fresh ? { ...saved, status: saved.list.length ? "shown" : "idle" } : { who: state.me.id, at: 0, list: [], seen: [], status: "idle" };
+  }
+  return state.ideas;
+}
+function saveIdeas() {
+  const s = state.ideas;
+  try { localStorage.setItem(IDEAS_KEY, JSON.stringify({ who: s.who, at: s.at, list: s.list, seen: s.seen.slice(-24) })); } catch {}
+}
+const ideasOn = (items) => !state.me.ideasOff && items.length >= 2;
+function ideasCard(items) {
+  if (!ideasOn(items)) return "";
+  return `<section class="ideas slide" id="ideasCard" aria-labelledby="ideasH">${ideasInner(items)}</section>`;
+}
+function ideasInner(items) {
+  const s = ideasState();
+  const have = new Set(items.map((i) => ideaKey(i.title)));
+  const head = `<div class="ideas-h"><span class="ideas-ic">${IDEAS_I}</span>
+    <span class="ideas-t"><strong id="ideasH">Ideas for you</strong><small>Based on your list</small></span>
+    ${s.status === "shown" ? `<button class="btn small quiet" type="button" data-ideas-more>More ideas</button>` : ""}</div>`;
+  if (s.status === "loading") return head + `<div class="ideas-wait" role="status"><i></i><i></i><i></i><span>Looking at your list and checking stores...</span></div>`;
+  if (s.status === "error") return head + `<p class="ideas-msg">${esc(s.error)}</p><button class="btn wide" type="button" data-ideas-go>Try again</button>`;
+  if (s.status === "shown" && s.list.length) {
+    return head + `<div class="ideas-list">${s.list.map((x, i) => {
+      const got = have.has(ideaKey(x.title));
+      const price = x.price ? money(Math.round(x.price * 100)) : range(x.price_low, x.price_high).replace("Usually ", "");
+      const meta = [price, x.link === "product" ? x.store : `Search ${x.store}`].filter(Boolean).join(" · ");
+      return `<div class="idea-row${got ? " got" : ""}">
+        <a class="idea-txt" href="${esc(x.url)}" target="_blank" rel="noopener"><strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}<span class="where">${esc(meta)}</span></a>
+        ${got ? `<span class="idea-got">${CHECK_SM} Added</span>`
+          : `<button class="btn small" type="button" data-idea-add="${i}">${PLUS} Maybe</button>
+             <button class="idea-x" type="button" data-idea-x="${i}" aria-label="Not for me: ${esc(x.title)}">×</button>`}
+      </div>`;
+    }).join("")}</div>`;
+  }
+  const none = s.status === "shown" ? `<p class="ideas-msg">No new ideas right now. Add a few more wishes, then try again.</p>` : "";
+  return head + none + `<button class="btn wide" type="button" data-ideas-go>${IDEAS_I} Show ideas</button>`;
+}
+const CHECK_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+function wireIdeas(v, items) {
+  const card = $("#ideasCard", v);
+  if (!card) return;
+  const paint = () => { card.innerHTML = ideasInner(items); wire(); };
+  async function fetchIdeas(more) {
+    const s = ideasState();
+    s.status = "loading";
+    paint();
+    try {
+      const avoid = more ? s.seen : [];
+      const { suggestions } = await api("recommend", { avoid });
+      s.list = suggestions;
+      s.seen = [...new Set([...(more ? s.seen : []), ...suggestions.map((x) => x.title)])];
+      s.at = Date.now();
+      s.status = "shown";
+      saveIdeas();
+    } catch (e) {
+      if (e.detail) console.warn("Ideas:", e.detail);
+      if (e.status === 403) { state.me.ideasOff = true; card.remove(); return; }
+      s.status = "error";
+      s.error = e.message;
+    }
+    if (card.isConnected) paint();
+  }
+  function wire() {
+    card.querySelectorAll("[data-ideas-go]").forEach((b) => (b.onclick = () => fetchIdeas(false)));
+    card.querySelector("[data-ideas-more]")?.addEventListener("click", () => fetchIdeas(true));
+    card.querySelectorAll("[data-idea-x]").forEach((b) => (b.onclick = () => {
+      const s = ideasState();
+      s.list.splice(+b.dataset.ideaX, 1);
+      saveIdeas();
+      paint();
+    }));
+    card.querySelectorAll("[data-idea-add]").forEach((b) => (b.onclick = async () => {
+      const x = ideasState().list[+b.dataset.ideaAdd];
+      if (!x) return;
+      b.disabled = true;
+      try {
+        const product = x.link === "product";
+        // Saved to Maybe (a new wish of your own starts there). A store link fills its photo in the background.
+        const { id } = await api("item/save", { title: x.title, url: x.url || "", price: product && x.price ? String(x.price) : "",
+          priceAuto: product && x.price ? true : undefined, unfilled: product || undefined });
+        items.push({ id, title: x.title, draft: 1 });
+        state.myItems = items;
+        const chip = $("#msMaybe .chip-n", v);
+        if (chip) chip.textContent = String(items.filter((i) => i.draft).length);
+        buzz();
+        paint();
+        toast("Saved to Maybe", () => api("item/remove", { id }).then(() => {
+          const k = items.findIndex((i) => i.id === id);
+          if (k >= 0) items.splice(k, 1);
+          if (chip) chip.textContent = String(items.filter((i) => i.draft).length);
+          if (card.isConnected) paint();
+        }, (e) => oops(e.message)));
+      } catch (e) {
+        b.disabled = false;
+        oops(e.message);
+      }
+    }));
+  }
+  wire();
 }
 // The small "share outside your circles" link at the end of My list.
 // Solo, signed in on just this device for a week, no passkey: one card to save one, until it's done or dismissed.
@@ -9415,6 +9554,11 @@ async function renderSettings() {
       ${swRow("motionSw", "Animations", "", root.dataset.motion !== "off")}
     </div>
 
+    <div class="label">Ideas for you</div>
+    <div class="set-card">
+      ${swRow("ideasSw", "Show ideas on My list", "Suggestions based on the wishes on your list", !state.me.ideasOff)}
+    </div>
+
     <div class="label">Sign-in PIN${tip("Stops anyone else signing in as you and seeing your notes.")}</div>
     <div class="set-card">
       <p class="sub">You'll need it to sign in on a new phone or computer.</p>
@@ -9550,6 +9694,18 @@ async function renderSettings() {
       const on = e.currentTarget.getAttribute("aria-checked") !== "true";
       setMotion(on);
       e.currentTarget.setAttribute("aria-checked", String(on));
+    };
+    $("#ideasSw", v).onclick = async (e) => {
+      const b = e.currentTarget, on = b.getAttribute("aria-checked") !== "true";
+      b.setAttribute("aria-checked", String(on));
+      try {
+        await api("ideas/pref", { on });
+        state.me.ideasOff = !on;
+        toast(on ? "Ideas are back on My list" : "Ideas turned off");
+      } catch (err) {
+        b.setAttribute("aria-checked", String(!on));
+        oops(err.message);
+      }
     };
 
     $("#replayTour", v).onclick = () => { state.welcome = null; openTour(); };
