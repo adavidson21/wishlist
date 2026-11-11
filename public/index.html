@@ -4810,7 +4810,7 @@ function editItem(item, opts = {}) {
         ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
       ${isNew ? "" : goesSection}
       ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>
-      <label class="check keep-private"><span>Keep it private for now<small>Saves to Maybe, where only you can see it</small></span><input type="checkbox" name="keepPrivate"></label>` : ""}
+      <label class="check keep-private"><span>${LOCK} Add to Maybe<small>Only you can see it</small></span><input type="checkbox" name="keepPrivate"></label>` : ""}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
       ${canMaybe ? `<button class="btn quiet wide" type="button" id="toMaybe">${LOCK} Move to Maybe</button>` : ""}
       <div class="actions sticky">
