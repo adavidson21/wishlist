@@ -2638,16 +2638,23 @@ async function bestLink(x, grounded) {
 // notes, or anything from their profile (the privacy page promises that).
 const RECOMMEND_PROMPT = `You help someone add to their own gift wish list. The input is JSON: wishes (what is already on
 their list: name, brand, category) and avoid (ideas they've already been shown).
-Suggest 4 specific products they would probably love that are NOT already on the list and not in avoid.
-Mix the kinds of ideas: something that goes with a wish (an accessory, refill or matching piece), something from a
-brand or product line they clearly like, and something new in a style or hobby the list points to.
+First work out what the list says about them: their hobbies, interests, style and the kinds of things they enjoy.
+Then suggest 6 products they would probably love that fit those interests but are a different kind of thing.
+Variety rules:
+- Never another version of something on the list: no other color, size, model, edition, flavor, scent, set,
+  bundle or brand of the same type of product. If they want a tumbler, don't suggest another tumbler or water bottle.
+- Each of the 6 must be a different type of product from the others, and ideally speak to a different interest.
+- At most one may be an accessory for a wish already on the list.
+- Nothing in avoid, and nothing too close to it.
+For example, a list with a Lego Botanicals orchid and a plant mister could get a self-watering planter, a botanical
+print, a gardening book, a terrarium kit, a grow light and a plant journal, not another Lego flower set.
 Keep prices near the range of their list. Prefer well reviewed, widely sold, currently available products with an
-exact brand and model. Nothing used, nothing adult, no gift cards. Different from each other.
+exact brand and model. Nothing used, nothing adult, no gift cards.
 Use Google Search to find where each one is sold new by a legitimate seller.
 For each suggestion give:
 - title: a short shopping name, under 70 characters, brand first when known
-- detail: why it fits, under 60 characters, naming the wish it relates to when there is one (for example
-  "Goes with your Stanley tumbler" or "More from Lego Botanicals")
+- detail: why it fits, under 60 characters, naming the interest or wish it connects to (for example
+  "For your plant collection" or "Pairs with your espresso machine")
 - search: the words to type into a store's search box to find it
 - price_low and price_high: a typical new retail price range in US dollars, or null if you have no idea
 - brand_domain: the domain of the brand's own official online store (for example "nike.com"), or "" if unknown or none
@@ -2661,6 +2668,18 @@ If the list is too vague to suggest anything, return an empty list.`;
 const RECOMMEND_SCHEMA = IDENTIFY_SCHEMA;
 // Words that tell two product names apart ("Stanley Quencher 40oz" vs "stanley quencher 40 oz").
 const nameKey = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// The words that say what a product is, without sizes, colors and filler ("Stanley Quencher 40oz tumbler, rose"
+// -> stanley quencher tumbler). Two names sharing most of these are the same kind of thing.
+const FILLER = new Set(("a an and the of for with in on to by set pack piece pcs inch oz ml lb new edition version " +
+  "black white grey gray red blue green pink purple yellow orange brown beige navy rose gold silver small medium large xl").split(" "));
+const coreWords = (t) => new Set(nameKey(t).split(" ").filter((w) => w.length > 2 && !FILLER.has(w) && !/^\d/.test(w)));
+function tooClose(a, b) {
+  const x = coreWords(a), y = coreWords(b);
+  if (!x.size || !y.size) return false;
+  let same = 0;
+  for (const w of x) if (y.has(w)) same++;
+  return same / Math.min(x.size, y.size) >= 0.6;
+}
 
 // ---------- details refresh: bring older wishes and ideas up to date ----------
 // Bump DETAILS_V when a new field is filled from links, and every saved wish and idea gets re-read once more.
@@ -4546,7 +4565,15 @@ const handlers = {
     const dollars = (v) => (typeof v === "number" && v > 0 && v < 100_000 ? Math.round(v) : null);
     // Never suggest what's already on the list or was already shown.
     const taken = new Set([...results.map((r) => nameKey(r.title)), ...avoid.map(nameKey)]);
-    const picked = (result.data?.suggestions || []).filter((x) => clean(x?.title, 1) && !taken.has(nameKey(x.title))).slice(0, 4);
+    const seen = [...results.map((r) => r.title), ...avoid];
+    const picked = [];
+    for (const x of result.data?.suggestions || []) {
+      if (!clean(x?.title, 1) || taken.has(nameKey(x.title))) continue;
+      // Another version of a wish, something already shown, or one of the other ideas again: skip it.
+      if ([...seen, ...picked.map((p) => p.title)].some((t) => tooClose(t, x.title))) continue;
+      picked.push(x);
+      if (picked.length === 4) break;
+    }
     const suggestions = await Promise.all(picked.map(async (x) => {
       const search = clean(x.search, 150) || clean(x.title, 150);
       const where = await bestLink({ ...x, search }, grounded);

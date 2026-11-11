@@ -46,7 +46,7 @@ households, nicknames, per-circle hiding and drafts.
 ### Share it with the family (so nobody has to build it)
 
 1. In the Shortcut's **(i)** > **Setup** (Import Questions): add a question for the `x-hints-key` header value,
-   prompt "Paste your Hints add key (Settings > Add from the Share button)". **This keeps your own key out of the shared copy.**
+   prompt "Paste your Hints add key (Settings > Your list > Add from the Share button)". **This keeps your own key out of the shared copy.**
 2. Share > **Copy iCloud Link**.
 3. Put the link in `SHORTCUT_URL` in `public/index.html`. The Settings card then shows **Get the Shortcut** instead of
    the build steps, and setup becomes: Set it up > Copy key > Get the Shortcut > paste the key.

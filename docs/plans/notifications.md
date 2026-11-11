@@ -8,7 +8,7 @@ Nothing tells people when something changes. They only see new wishes if they op
 
 ## What it does
 
-Free Web Push (no paid service, no email). Turned on per device in **Settings > App > Notifications**.
+Free Web Push (no paid service, no email). Turned on per device in **Settings > Notifications > Notifications**.
 
 What you can get, each with its own switch:
 
@@ -43,7 +43,7 @@ Migration `0026_push.sql`: `push_subs` (endpoint, member, keys), `app_keys`, `pu
 ## App
 
 - `public/sw.js` shows the notification and opens the app on tap.
-- Settings > App > Notifications: turn on for this device, the three switches, Send a test, turn off.
+- Settings > Notifications > Notifications: turn on for this device, the three switches, Send a test, turn off.
 
 ## Follow-ups (Nov 8, 2026, migration 0027)
 
