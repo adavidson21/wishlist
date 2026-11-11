@@ -1275,27 +1275,54 @@
   .ideas-t small { color: var(--gold-ink); font-size: 13px; font-weight: 600; }
   .ideas .btn.wide { gap: 6px; }
   .ideas-msg { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
-  .ideas-list { display: grid; gap: 8px; }
-  /* The whole row opens the store link (the link stretches over it); + and × sit above it. */
-  .idea-row { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 6px 10px 12px; border-radius: 12px; background: var(--card); }
-  .idea-txt::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
-  .idea-row:has(.idea-txt:focus-visible) { outline: 3px solid var(--gold); outline-offset: 2px; }
-  .idea-txt:focus-visible { outline: none; }
-  .idea-add { position: relative; z-index: 1; flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: #3B2A06; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  /* Ideas: a photo grid (2 across on phones, 4 on wide screens). The whole card opens the store; + and × sit on the photo. */
+  .ideas-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  @media (min-width: 720px) { .ideas-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .idea-card { display: flex; flex-direction: column; border-radius: 14px; background: var(--card); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .idea-top { position: relative; }
+  .idea-pic { position: relative; display: grid; place-items: center; aspect-ratio: 1; background: color-mix(in srgb, var(--gold) 16%, var(--card)); overflow: hidden; text-decoration: none; }
+  .idea-pic.has-img { background: #fff; }
+  .idea-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 10px; box-sizing: border-box; }
+  .idea-emo { font-size: 46px; line-height: 1; }
+  .idea-pic.has-img .idea-emo { visibility: hidden; }
+  .idea-link { flex: 1; display: grid; align-content: start; gap: 2px; padding: 9px 10px 11px; color: inherit; text-decoration: none; }
+  .idea-link:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; border-radius: 0 0 14px 14px; }
+  .idea-link strong { font-size: 14.5px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .idea-link small { font-size: 12.5px; line-height: 1.3; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .idea-link .where { margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--gold-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .idea-card.got .idea-pic { opacity: .55; }
+  .idea-add { position: absolute; right: 8px; bottom: 8px; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: #3B2A06; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
   .idea-add:disabled { opacity: .5; }
-  .idea-add:active { transform: scale(.94); }
-  .idea-row.got { opacity: .75; }
-  .idea-txt { flex: 1; min-width: 0; display: grid; gap: 1px; color: inherit; text-decoration: none; }
-  .idea-txt strong { font-size: 15px; line-height: 1.25; }
-  .idea-txt small { font-size: 13px; color: var(--muted); }
-  .idea-txt .where { font-size: 12.5px; font-weight: 700; color: var(--gold-ink); }
-  .idea-x { position: relative; z-index: 1; flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
-  .idea-got { flex: none; display: inline-flex; align-items: center; gap: 4px; padding-right: 8px; font-size: 13px; font-weight: 700; color: var(--ok); }
-  .ideas-wait { display: grid; gap: 8px; }
-  .ideas-wait i { display: block; height: 52px; border-radius: 12px; background: var(--card); animation: ideasPulse 1.2s ease-in-out infinite alternate; }
-  .ideas-wait i:nth-child(2) { animation-delay: .2s; } .ideas-wait i:nth-child(3) { animation-delay: .4s; }
-  .ideas-wait span { font-size: 13px; color: var(--gold-ink); font-weight: 600; text-align: center; }
+  .idea-add:active { transform: scale(.92); }
+  .idea-x { position: absolute; right: 6px; top: 6px; width: 28px; height: 28px; border: 0; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--card) 90%, transparent); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
+  .idea-got { position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 999px; background: var(--card); font-size: 12.5px; font-weight: 800; color: var(--ok); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .idea-card.ghost .idea-pic { background: color-mix(in srgb, var(--gold) 10%, var(--card)); }
+  .idea-card.ghost .idea-link { min-height: 58px; }
+  .idea-card.ghost b { display: block; height: 11px; border-radius: 6px; background: var(--panel); }
+  .idea-card.ghost b + b { width: 60%; margin-top: 6px; }
+  .idea-card.ghost { animation: ideasPulse 1.1s ease-in-out infinite alternate; }
+  .idea-card.ghost:nth-child(2) { animation-delay: .15s; } .idea-card.ghost:nth-child(3) { animation-delay: .3s; } .idea-card.ghost:nth-child(4) { animation-delay: .45s; }
   @keyframes ideasPulse { from { opacity: .45; } to { opacity: 1; } }
+  /* The loading show: the box hops, its lid pops, ideas float out of it. */
+  .ideas-load { display: grid; justify-items: center; gap: 6px; margin: 2px 0 14px; }
+  .ideas-stage { position: relative; width: 120px; height: 104px; }
+  .ideas-box { position: absolute; left: 24px; bottom: 0; width: 72px; animation: ideaHop 1.3s cubic-bezier(.3,.7,.4,1) infinite; transform-origin: 50% 100%; }
+  .ideas-box svg { display: block; width: 72px; height: auto; }
+  .ideas-box .box { fill: var(--soft); stroke: var(--brand); } .ideas-box .lidfill { fill: color-mix(in srgb, var(--soft) 60%, var(--card)); stroke: var(--brand); }
+  .ideas-box .ribbon { fill: var(--brand); } .ideas-box .bow { fill: var(--gold); stroke: var(--brand); }
+  .ideas-box .lid { transform-origin: 20px 46px; animation: ideaLid 1.3s cubic-bezier(.3,.7,.4,1) infinite; }
+  .ideas-stage .pop { position: absolute; left: 50%; bottom: 46px; font-style: normal; font-size: 22px; opacity: 0;
+    animation: ideaPop 2.6s ease-out infinite; animation-delay: calc(var(--k) * .325s); --dx: calc((var(--k) - 3.5) * 9px); }
+  .ideas-say { margin: 0; min-height: 1.4em; font-size: 14.5px; font-weight: 700; color: var(--gold-ink); text-align: center; }
+  .ideas-say.in { animation: ideaSay .35s ease-out both; }
+  .ideas-bar { width: min(220px, 70%); height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--gold) 22%, transparent); overflow: hidden; }
+  .ideas-bar i { display: block; height: 100%; width: 92%; border-radius: inherit; background: var(--gold); transform-origin: left; animation: ideaBar 28s cubic-bezier(.15,.7,.3,1) both; }
+  @keyframes ideaHop { 0%, 55%, 100% { transform: translateY(0) scale(1, 1); } 15% { transform: translateY(0) scale(1.08, .9); } 32% { transform: translateY(-10px) scale(.96, 1.05); } }
+  @keyframes ideaLid { 0%, 20%, 70%, 100% { transform: none; } 35%, 50% { transform: translateY(-14px) rotate(-16deg); } }
+  @keyframes ideaPop { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.4); } 18% { opacity: 1; } 70% { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx) * 4), -58px) scale(1) rotate(calc(var(--dx) * 1.5deg)); } }
+  @keyframes ideaSay { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes ideaBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
   .pick.on { border-color: var(--brand); background: var(--soft); }
   .pick.none { color: var(--muted); font-weight: 600; text-align: center; display: block; }
   .fillmsg { display: block; color: var(--muted); font-size: 14px; margin-top: 7px; }
@@ -4254,24 +4281,39 @@ function ideasInner(items) {
   const head = `<div class="ideas-h"><span class="ideas-ic">${IDEAS_I}</span>
     <span class="ideas-t"><strong id="ideasH">Ideas for you</strong><small>Based on your list</small></span>
     ${s.status === "shown" ? `<button class="btn small quiet" type="button" data-ideas-more>More ideas</button>` : ""}</div>`;
-  if (s.status === "loading") return head + `<div class="ideas-wait" role="status"><i></i><i></i><i></i><span>Looking at your list and checking stores...</span></div>`;
+  if (s.status === "loading") return head + `<div class="ideas-load">
+      <div class="ideas-stage" aria-hidden="true"><span class="ideas-box">${GIFTBOX}</span>
+        ${IDEAS_POPS.map((e, k) => `<i class="pop" style="--k:${k}">${e}</i>`).join("")}</div>
+      <p class="ideas-say" role="status" aria-live="polite">${IDEAS_SAYS[0]}</p>
+      <div class="ideas-bar" aria-hidden="true"><i></i></div>
+    </div>
+    <div class="ideas-grid" aria-hidden="true">${"<div class=\"idea-card ghost\"><div class=\"idea-top\"><span class=\"idea-pic\"></span></div><span class=\"idea-link\"><b></b><b></b></span></div>".repeat(4)}</div>`;
   if (s.status === "error") return head + `<p class="ideas-msg">${esc(s.error)}</p><button class="btn wide" type="button" data-ideas-go>Try again</button>`;
   if (s.status === "shown" && s.list.length) {
-    return head + `<div class="ideas-list">${s.list.map((x, i) => {
+    return head + `<div class="ideas-grid">${s.list.map((x, i) => {
       const got = have.has(ideaKey(x.title));
       const price = x.price ? money(Math.round(x.price * 100)) : range(x.price_low, x.price_high).replace("Usually ", "");
       const meta = [price, x.link === "product" ? x.store : `Search ${x.store}`].filter(Boolean).join(" · ");
-      return `<div class="idea-row${got ? " got" : ""}">
-        <a class="idea-txt" href="${esc(x.url)}" target="_blank" rel="noopener"><strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}<span class="where">${esc(meta)}</span></a>
-        ${got ? `<span class="idea-got">${CHECK_SM} Added</span>`
-          : `<button class="idea-add" type="button" data-idea-add="${i}" aria-label="Add to Maybe: ${esc(x.title)}" title="Add to Maybe">${PLUS}</button>
-             <button class="idea-x" type="button" data-idea-x="${i}" aria-label="Not for me: ${esc(x.title)}">×</button>`}
+      // Photo and text both open the store (the photo link is skipped by screen readers and Tab, so it's one stop).
+      return `<div class="idea-card${got ? " got" : ""}">
+        <div class="idea-top">
+          <a class="idea-pic${x.image ? " has-img" : ""}" href="${esc(x.url)}" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true"><span class="idea-emo">${esc(x.emoji || "🎁")}</span>${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}</a>
+          ${got ? `<span class="idea-got">${CHECK_SM} Added</span>`
+            : `<button class="idea-add" type="button" data-idea-add="${i}" aria-label="Add to Maybe: ${esc(x.title)}" title="Add to Maybe">${PLUS}</button>
+               <button class="idea-x" type="button" data-idea-x="${i}" aria-label="Not for me: ${esc(x.title)}" title="Not for me">×</button>`}
+        </div>
+        <a class="idea-link" href="${esc(x.url)}" target="_blank" rel="noopener"><strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}<span class="where">${esc(meta)}</span></a>
       </div>`;
     }).join("")}</div>`;
   }
   const none = s.status === "shown" ? `<p class="ideas-msg">No new ideas right now. Add a few more wishes, then try again.</p>` : "";
   return head + none + `<button class="btn wide" type="button" data-ideas-go>${IDEAS_I} Show ideas</button>`;
 }
+// The wait can be 10 to 30 seconds (Gemini plus checking stores), so it gets a little show: the gift box hops and
+// ideas pop out, a line of chatter changes every couple of seconds, and a bar creeps along.
+const IDEAS_POPS = ["🧸", "🪴", "🎧", "📚", "🧦", "🕯️", "🎨", "☕"];
+const IDEAS_SAYS = ["Peeking at your list...", "Figuring out your vibe...", "Asking the elves for ideas...", "Skipping anything you already have...",
+  "Checking store shelves...", "Comparing prices...", "Finding the photos...", "Wrapping them up...", "Almost there, tying the bows..."];
 const CHECK_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function wireIdeas(v, items) {
   const card = $("#ideasCard", v);
@@ -4281,6 +4323,16 @@ function wireIdeas(v, items) {
     const s = ideasState();
     s.status = "loading";
     paint();
+    let say = 0;
+    const talk = setInterval(() => {
+      const el = $(".ideas-say", card);
+      if (!el) return clearInterval(talk);
+      say = Math.min(say + 1, IDEAS_SAYS.length - 1);
+      el.classList.remove("in");
+      void el.offsetWidth;
+      el.textContent = IDEAS_SAYS[say];
+      el.classList.add("in");
+    }, 2600);
     try {
       const avoid = more ? s.seen : [];
       const { suggestions } = await api("recommend", { avoid });
@@ -4291,13 +4343,15 @@ function wireIdeas(v, items) {
       saveIdeas();
     } catch (e) {
       if (e.detail) console.warn("Ideas:", e.detail);
-      if (e.status === 403) { state.me.ideasOff = true; card.remove(); return; }
+      if (e.status === 403) { clearInterval(talk); state.me.ideasOff = true; card.remove(); return; }
       s.status = "error";
       s.error = e.message;
     }
+    clearInterval(talk);
     if (card.isConnected) paint();
   }
   function wire() {
+    card.querySelectorAll(".idea-pic img").forEach((img) => img.addEventListener("error", () => { img.parentElement.classList.remove("has-img"); img.remove(); }, { once: true }));
     card.querySelectorAll("[data-ideas-go]").forEach((b) => (b.onclick = () => fetchIdeas(false)));
     card.querySelector("[data-ideas-more]")?.addEventListener("click", () => fetchIdeas(true));
     card.querySelectorAll("[data-idea-x]").forEach((b) => (b.onclick = () => {
@@ -4313,7 +4367,7 @@ function wireIdeas(v, items) {
       try {
         const product = x.link === "product";
         // Saved to Maybe (a new wish of your own starts there). A store link fills its photo in the background.
-        const { id } = await api("item/save", { title: x.title, url: x.url || "", price: product && x.price ? String(x.price) : "",
+        const { id } = await api("item/save", { title: x.title, url: x.url || "", image: product ? x.image || undefined : undefined, price: product && x.price ? String(x.price) : "",
           priceAuto: product && x.price ? true : undefined, unfilled: product || undefined });
         items.push({ id, title: x.title, draft: 1 });
         state.myItems = items;
