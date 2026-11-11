@@ -36,6 +36,7 @@ export const LIMITS = {
   previewPerMember: [[80, 3600], [300, 86400]],
   identifyPerMember: [[15, 3600], [40, 86400]],
   namePerMember: [[30, 3600], [100, 86400]], // the ✨ clean-up-the-name button
+  recommendPerMember: [[10, 3600], [30, 86400]], // "Ideas for you" on My list
   pricesPerMember: [[120, 3600]],
   refreshPerMember: [[120, 3600]],
   imagePerMember: [[400, 3600]],
@@ -139,7 +140,7 @@ export async function burstOk(env, request) {
 // Needs the "nodejs_als" compatibility flag (wrangler.jsonc).
 export const scope = new AsyncLocalStorage();
 // Routes where Gemini runs because someone tapped something (the rest are the app working on its own).
-const GEMINI_USER_ROUTES = new Set(["POST preview", "POST name", "POST identify", "POST quickadd"]);
+const GEMINI_USER_ROUTES = new Set(["POST preview", "POST name", "POST identify", "POST quickadd", "POST recommend"]);
 
 export const isNewAccount = (createdAt) =>
   !createdAt || Date.now() - Date.parse(createdAt) < LIMITS.newAccountDays * 86_400_000;
