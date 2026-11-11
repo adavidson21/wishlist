@@ -648,6 +648,16 @@
   .fsec-h { margin: 0 0 12px; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
   .two.pc { grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); align-items: start; }
   .two.pc label.field { margin-bottom: 16px; }
+  /* Price and how many share a line. */
+  .two.pq { align-items: start; }
+  .two.pq label.field { margin-bottom: 16px; }
+  /* Top pick: a star beside the wish's name in Edit wish. */
+  .name-row { display: flex; align-items: flex-end; gap: 10px; }
+  .name-row > label.field { flex: 1; min-width: 0; }
+  .star-btn.name-star { flex: none; width: 54px; height: 54px; min-height: 54px; padding: 0; justify-content: center; margin-bottom: 16px; border-radius: 14px;
+    background: var(--card); box-shadow: inset 0 0 0 1.5px var(--line); }
+  .star-btn.name-star svg { width: 24px; height: 24px; }
+  .star-btn.name-star[aria-pressed="true"] { background: var(--gold-soft); box-shadow: inset 0 0 0 1.5px var(--gold); }
   @media (max-width: 359px) { .two.pc, .sc-row { grid-template-columns: 1fr; } }
   details.more { margin-bottom: 16px; }
   details.more summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 48px; font-weight: 700; color: var(--brand); }
@@ -5036,19 +5046,19 @@ function editItem(item, opts = {}) {
     <form id="itemForm" autocomplete="off"${isNew ? "" : ' data-editing="1"'}${item.own_photo ? ' data-had-photo="1"' : ""}${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}${item.price_auto && item.price_guess ? ' data-price-guess="1"' : ""}>
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
-      <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "What is it?"))}" required></label>
-      ${isNew ? "" : brandField}
+      <div class="name-row"><label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "What is it?"))}" required></label>
+        ${draft ? "" : `<button class="star-btn name-star" type="button" data-must aria-pressed="${item.priority === "must"}" aria-label="Top pick" title="Top pick">${STAR}</button>
+        <input type="hidden" name="must" value="${item.priority === "must" ? "1" : ""}">`}</div>
       ${isNew ? "" : linkField(item.url)}
+      ${isNew ? "" : brandField}
       ${sizeColorRow()}
       ${photoField(true, item.own_photo ? item.image_url : "")}
       ${isNew ? `<details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes${sibs.length ? ", goes with" : ""})</span></summary>
-        <div>${brandField}${priceField}${catField}${qtyField}${notesField}${goesSection}</div>
+        <div>${brandField}<div class="two pq">${priceField}${qtyField}</div>${catField}${notesField}${goesSection}</div>
       </details>` : `<section class="fsec"><h4 class="fsec-h">Details</h4>
-        <div class="two pc">${priceField}${catField}</div>${qtyField}${notesField}</section>`}
-      ${draft ? "" : `<section class="fsec"><h4 class="fsec-h">${asId ? `On ${esc(asName)}'s list` : "On your list"}</h4>
-        <label class="check"><span>Top pick<small>Gold star on ${asId ? "their" : "your"} list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
-        ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
+        <div class="two pq">${priceField}${qtyField}</div>${catField}${notesField}</section>`}
+      ${draft || asId || !multi() ? "" : `<section class="fsec"><h4 class="fsec-h">On your list</h4>${familySwitches(item.hiddenFrom)}</section>`}
       ${isNew ? "" : goesSection}
       ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>
       <label class="check keep-private"><span>${LOCK} Add to Maybe<small>Only you can see it</small></span><input type="checkbox" name="keepPrivate"></label>` : ""}
@@ -5069,6 +5079,13 @@ function editItem(item, opts = {}) {
       const sc = wireSizeColor(form, item);
       wireWhoChips(el);
       restoreImage(form, c);
+      // Top pick: the star beside the name.
+      $("[data-must]", form)?.addEventListener("click", (e) => {
+        const b = e.currentTarget, on = b.getAttribute("aria-pressed") !== "true";
+        b.setAttribute("aria-pressed", on);
+        form.elements.must.value = on ? "1" : "";
+        b.classList.toggle("pop", on);
+      });
       form.elements.keepPrivate?.addEventListener("change", (e) => {
         $("#addBtn", form).innerHTML = e.target.checked ? `${LOCK} Add to Maybe` : "Add to wish list";
       });
@@ -5182,8 +5199,8 @@ function editItem(item, opts = {}) {
 // ---------- autofill from a link ----------
 // first: the new-wish layout, where the link box leads and fills in everything else.
 function linkField(value, first) {
-  return `<label class="field"><span${first ? ' class="vh"' : ""}>Link</span>
-    <div class="linkrow"><div class="inwrap"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Paste a store link" : "Paste a link to fill in the rest"}">
+  return `<label class="field"><span${first ? ' class="vh"' : ""}>Link <em>(optional)</em></span>
+    <div class="linkrow"><div class="inwrap"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Store link (optional)" : "Paste a link to fill in the rest"}">
     <button class="clearx" type="button" data-clear aria-label="Clear link"${value ? "" : " hidden"}>${CLEAR_I}</button></div>
     <button class="btn small${first ? " primary" : ""}" type="button" data-paste${value ? " hidden" : ""}>${PASTE_I} Paste</button>
     <a class="btn small open-link" data-open target="_blank" rel="noopener" href="${/^https?:\/\//i.test(value || "") ? esc(value) : "#"}"${/^https?:\/\//i.test(value || "") ? "" : " hidden"}>Open ${OPEN_I}</a></div>
