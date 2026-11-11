@@ -1275,33 +1275,31 @@
   .ideas-t small { color: var(--gold-ink); font-size: 13px; font-weight: 600; }
   .ideas .btn.wide { gap: 6px; }
   .ideas-msg { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
-  /* Ideas: a photo grid (2 across on phones, 4 on wide screens). The whole card opens the store; + and × sit on the photo. */
-  .ideas-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  @media (min-width: 720px) { .ideas-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .idea-card { display: flex; flex-direction: column; border-radius: 14px; background: var(--card); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .idea-top { position: relative; }
-  .idea-pic { position: relative; display: grid; place-items: center; aspect-ratio: 1; background: color-mix(in srgb, var(--gold) 16%, var(--card)); overflow: hidden; text-decoration: none; }
-  .idea-pic.has-img { background: #fff; }
-  .idea-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 10px; box-sizing: border-box; }
-  .idea-emo { font-size: 46px; line-height: 1; }
-  .idea-pic.has-img .idea-emo { visibility: hidden; }
-  .idea-link { flex: 1; display: grid; align-content: start; gap: 2px; padding: 9px 10px 11px; color: inherit; text-decoration: none; }
-  .idea-link:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; border-radius: 0 0 14px 14px; }
-  .idea-link strong { font-size: 14.5px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .idea-link small { font-size: 12.5px; line-height: 1.3; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .idea-link .where { margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--gold-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .idea-card.got .idea-pic { opacity: .55; }
-  .idea-add { position: absolute; right: 8px; bottom: 8px; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: #3B2A06; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+  /* Ideas: compact rows with a small picture. The whole row opens the store (the link stretches over it); + and × sit above. */
+  .ideas-list { display: grid; gap: 8px; }
+  .idea-row { position: relative; display: flex; align-items: center; gap: 11px; padding: 9px 6px 9px 9px; border-radius: 14px; background: var(--card); }
+  .idea-row .tile { width: 52px; height: 52px; border-radius: 12px; }
+  .idea-row .tile svg { width: 26px; height: 26px; }
+  .idea-row .tile.photo { background: #fff; }
+  .idea-row .tile.photo img { object-fit: contain; }
+  .idea-txt { flex: 1; min-width: 0; display: grid; gap: 1px; color: inherit; text-decoration: none; }
+  .idea-txt::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+  .idea-row:has(.idea-txt:focus-visible) { outline: 3px solid var(--gold); outline-offset: 2px; }
+  .idea-txt:focus-visible { outline: none; }
+  .idea-txt strong { font-size: 15px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .idea-txt small { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .idea-txt .where { font-size: 12.5px; font-weight: 700; color: var(--gold-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .idea-row.got .tile { opacity: .55; }
+  .idea-add { position: relative; z-index: 1; flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: #3B2A06; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
   .idea-add:disabled { opacity: .5; }
   .idea-add:active { transform: scale(.92); }
-  .idea-x { position: absolute; right: 6px; top: 6px; width: 28px; height: 28px; border: 0; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--card) 90%, transparent); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
-  .idea-got { position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 999px; background: var(--card); font-size: 12.5px; font-weight: 800; color: var(--ok); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
-  .idea-card.ghost .idea-pic { background: color-mix(in srgb, var(--gold) 10%, var(--card)); }
-  .idea-card.ghost .idea-link { min-height: 58px; }
-  .idea-card.ghost b { display: block; height: 11px; border-radius: 6px; background: var(--panel); }
-  .idea-card.ghost b + b { width: 60%; margin-top: 6px; }
-  .idea-card.ghost { animation: ideasPulse 1.1s ease-in-out infinite alternate; }
-  .idea-card.ghost:nth-child(2) { animation-delay: .15s; } .idea-card.ghost:nth-child(3) { animation-delay: .3s; } .idea-card.ghost:nth-child(4) { animation-delay: .45s; }
+  .idea-x { position: relative; z-index: 1; flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+  .idea-got { position: relative; z-index: 1; flex: none; display: inline-flex; align-items: center; gap: 4px; padding-right: 8px; font-size: 13px; font-weight: 700; color: var(--ok); }
+  .idea-row.ghost { animation: ideasPulse 1.1s ease-in-out infinite alternate; }
+  .idea-row.ghost:nth-child(2) { animation-delay: .15s; } .idea-row.ghost:nth-child(3) { animation-delay: .3s; }
+  .idea-row.ghost .tile { background: color-mix(in srgb, var(--gold) 14%, var(--card)); }
+  .idea-row.ghost b { display: block; height: 11px; border-radius: 6px; background: var(--panel); }
+  .idea-row.ghost b + b { width: 55%; margin-top: 7px; }
   @keyframes ideasPulse { from { opacity: .45; } to { opacity: 1; } }
   /* The loading show: the box hops, its lid pops, ideas float out of it. */
   .ideas-load { display: grid; justify-items: center; gap: 6px; margin: 2px 0 14px; }
@@ -1311,8 +1309,11 @@
   .ideas-box .box { fill: var(--soft); stroke: var(--brand); } .ideas-box .lidfill { fill: color-mix(in srgb, var(--soft) 60%, var(--card)); stroke: var(--brand); }
   .ideas-box .ribbon { fill: var(--brand); } .ideas-box .bow { fill: var(--gold); stroke: var(--brand); }
   .ideas-box .lid { transform-origin: 20px 46px; animation: ideaLid 1.3s cubic-bezier(.3,.7,.4,1) infinite; }
-  .ideas-stage .pop { position: absolute; left: 50%; bottom: 46px; font-style: normal; font-size: 22px; opacity: 0;
+  .ideas-stage .pop { position: absolute; left: 50%; bottom: 46px; width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; opacity: 0;
     animation: ideaPop 2.6s ease-out infinite; animation-delay: calc(var(--k) * .325s); --dx: calc((var(--k) - 3.5) * 9px); }
+  .ideas-stage .pop svg { width: 17px; height: 17px; }
+  .ideas-stage .pop.t0 { background: var(--t0); color: var(--t0-ink); }
+  .ideas-stage .pop.t1 { background: var(--t1); color: var(--t1-ink); } .ideas-stage .pop.t2 { background: var(--t2); color: var(--t2-ink); } .ideas-stage .pop.t3 { background: var(--t3); color: var(--t3-ink); }
   .ideas-say { margin: 0; min-height: 1.4em; font-size: 14.5px; font-weight: 700; color: var(--gold-ink); text-align: center; }
   .ideas-say.in { animation: ideaSay .35s ease-out both; }
   .ideas-bar { width: min(220px, 70%); height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--gold) 22%, transparent); overflow: hidden; }
@@ -4283,26 +4284,23 @@ function ideasInner(items) {
     ${s.status === "shown" ? `<button class="btn small quiet" type="button" data-ideas-more>More ideas</button>` : ""}</div>`;
   if (s.status === "loading") return head + `<div class="ideas-load">
       <div class="ideas-stage" aria-hidden="true"><span class="ideas-box">${GIFTBOX}</span>
-        ${IDEAS_POPS.map((e, k) => `<i class="pop" style="--k:${k}">${e}</i>`).join("")}</div>
+        ${IDEAS_POPS.map((ic, k) => `<i class="pop t${k % 4}" style="--k:${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${ICON_PATHS[ic]}"/></svg></i>`).join("")}</div>
       <p class="ideas-say" role="status" aria-live="polite">${IDEAS_SAYS[0]}</p>
       <div class="ideas-bar" aria-hidden="true"><i></i></div>
     </div>
-    <div class="ideas-grid" aria-hidden="true">${"<div class=\"idea-card ghost\"><div class=\"idea-top\"><span class=\"idea-pic\"></span></div><span class=\"idea-link\"><b></b><b></b></span></div>".repeat(4)}</div>`;
+    <div class="ideas-list" aria-hidden="true">${"<div class=\"idea-row ghost\"><span class=\"tile\"></span><span class=\"idea-txt\"><b></b><b></b></span></div>".repeat(3)}</div>`;
   if (s.status === "error") return head + `<p class="ideas-msg">${esc(s.error)}</p><button class="btn wide" type="button" data-ideas-go>Try again</button>`;
   if (s.status === "shown" && s.list.length) {
-    return head + `<div class="ideas-grid">${s.list.map((x, i) => {
+    return head + `<div class="ideas-list">${s.list.map((x, i) => {
       const got = have.has(ideaKey(x.title));
       const price = x.price ? money(Math.round(x.price * 100)) : range(x.price_low, x.price_high).replace("Usually ", "");
       const meta = [price, x.link === "product" ? x.store : `Search ${x.store}`].filter(Boolean).join(" · ");
-      // Photo and text both open the store (the photo link is skipped by screen readers and Tab, so it's one stop).
-      return `<div class="idea-card${got ? " got" : ""}">
-        <div class="idea-top">
-          <a class="idea-pic${x.image ? " has-img" : ""}" href="${esc(x.url)}" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true"><span class="idea-emo">${esc(x.emoji || "🎁")}</span>${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}</a>
-          ${got ? `<span class="idea-got">${CHECK_SM} Added</span>`
-            : `<button class="idea-add" type="button" data-idea-add="${i}" aria-label="Add to Maybe: ${esc(x.title)}" title="Add to Maybe">${PLUS}</button>
-               <button class="idea-x" type="button" data-idea-x="${i}" aria-label="Not for me: ${esc(x.title)}" title="Not for me">×</button>`}
-        </div>
-        <a class="idea-link" href="${esc(x.url)}" target="_blank" rel="noopener"><strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}<span class="where">${esc(meta)}</span></a>
+      return `<div class="idea-row${got ? " got" : ""}">
+        ${ideaTile(x)}
+        <a class="idea-txt" href="${esc(x.url)}" target="_blank" rel="noopener"><strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}<span class="where">${esc(meta)}</span></a>
+        ${got ? `<span class="idea-got">${CHECK_SM} Added</span>`
+          : `<button class="idea-add" type="button" data-idea-add="${i}" aria-label="Add to Maybe: ${esc(x.title)}" title="Add to Maybe">${PLUS}</button>
+             <button class="idea-x" type="button" data-idea-x="${i}" aria-label="Not for me: ${esc(x.title)}" title="Not for me">×</button>`}
       </div>`;
     }).join("")}</div>`;
   }
@@ -4311,7 +4309,15 @@ function ideasInner(items) {
 }
 // The wait can be 10 to 30 seconds (Gemini plus checking stores), so it gets a little show: the gift box hops and
 // ideas pop out, a line of chatter changes every couple of seconds, and a bar creeps along.
-const IDEAS_POPS = ["🧸", "🪴", "🎧", "📚", "🧦", "🕯️", "🎨", "☕"];
+// The small picture on an idea: its photo (falls back to the drawing if it won't load, like wishes), or the drawing
+// for its name, or for the category Gemini picked when the name doesn't say.
+function ideaTile(x) {
+  if (x.image) return photoTile(x.image, x.title, x.title);
+  const byName = iconFor(x.title);
+  const icon = byName !== "gift" ? byName : CAT[x.category]?.icon || "gift";
+  return `<span class="tile t${hash(x.title) % 4}" data-tile-title="${esc(x.title)}" data-tile-id="${esc(x.title)}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${ICON_PATHS[icon]}"/></svg></span>`;
+}
+const IDEAS_POPS = ["toy", "book", "headphones", "shirt", "candle", "mug", "gem", "treat"]; // drawings from ICON_PATHS
 const IDEAS_SAYS = ["Peeking at your list...", "Figuring out your vibe...", "Asking the elves for ideas...", "Skipping anything you already have...",
   "Checking store shelves...", "Comparing prices...", "Finding the photos...", "Wrapping them up...", "Almost there, tying the bows..."];
 const CHECK_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
@@ -4351,7 +4357,6 @@ function wireIdeas(v, items) {
     if (card.isConnected) paint();
   }
   function wire() {
-    card.querySelectorAll(".idea-pic img").forEach((img) => img.addEventListener("error", () => { img.parentElement.classList.remove("has-img"); img.remove(); }, { once: true }));
     card.querySelectorAll("[data-ideas-go]").forEach((b) => (b.onclick = () => fetchIdeas(false)));
     card.querySelector("[data-ideas-more]")?.addEventListener("click", () => fetchIdeas(true));
     card.querySelectorAll("[data-idea-x]").forEach((b) => (b.onclick = () => {

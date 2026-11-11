@@ -2677,15 +2677,16 @@ For each suggestion give:
   Copy each URL exactly as found. Never guess or build a URL. Product pages only, not search or category pages.
   Use an empty list if you found none.
 - store: of the retailers above (or amazon), the one most likely to carry it, used to search if no link works
-- emoji: one emoji that pictures the product (for example 🪴 for a planter)
+- category: the one that fits best: beauty, tech, clothing, shoes, accessories (bags and jewelry), home, kitchen,
+  books, toys (toys and games), outdoors (outdoors and fitness), treats (food and drink), experiences, or other
 If the list is too vague to suggest anything, return an empty list.`;
-// Same as photo search, plus an emoji the app shows when there's no product photo.
+// Same as photo search, plus a category: the app draws that category's icon when there's no product photo.
 const RECOMMEND_SCHEMA = {
   ...IDENTIFY_SCHEMA,
   properties: { suggestions: { ...IDENTIFY_SCHEMA.properties.suggestions, items: {
     ...IDENTIFY_SCHEMA.properties.suggestions.items,
-    properties: { ...IDENTIFY_SCHEMA.properties.suggestions.items.properties, emoji: { type: "string" } },
-    required: [...IDENTIFY_SCHEMA.properties.suggestions.items.required, "emoji"],
+    properties: { ...IDENTIFY_SCHEMA.properties.suggestions.items.properties, category: { type: "string", enum: [...CATEGORIES] } },
+    required: [...IDENTIFY_SCHEMA.properties.suggestions.items.required, "category"],
   } } },
 };
 // Words that tell two product names apart ("Stanley Quencher 40oz" vs "stanley quencher 40 oz").
@@ -4602,7 +4603,7 @@ const handlers = {
       return {
         title: clean(x.title, LIMITS.title),
         detail: clean(x.detail, 90),
-        emoji: [...clean(x.emoji, 16)].slice(0, 2).join("") || "🎁",
+        category: CATEGORIES.has(x.category) ? x.category : "other",
         search,
         price_low: dollars(x.price_low),
         price_high: dollars(x.price_high),
