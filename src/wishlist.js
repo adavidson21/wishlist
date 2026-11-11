@@ -2610,7 +2610,7 @@ async function checkLink(raw, brandDomain, grounded) {
     const raw = ld.price ?? toPrice(meta(page, "product:price:amount", "og:price:amount"))
       ?? toPrice(page.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]);
     const { price } = await inUsd(raw, pageCurrency(page, ld));
-    return { url: finalUrl.toString(), host: finalUrl.hostname, tier, price, verified: true };
+    return { url: finalUrl.toString(), host: finalUrl.hostname, tier, price, verified: true, image: pageImage(page, ld, finalUrl) };
   }
   // Store blocked the check. Only trust the link if it came straight from Google Search.
   if (grounded.has(urlKey(url.toString()))) return { url: url.toString(), host: url.hostname, tier, price: null, verified: false };
@@ -2620,6 +2620,14 @@ async function checkLink(raw, brandDomain, grounded) {
 const storeName = (host, brandDomain) =>
   isBrandHost(host, brandDomain) ? host.replace(/^www\./, "") : STORES[storeFor(host)]?.name || host.replace(/^www\./, "");
 
+// The main product photo on a page we read (JSON-LD, then Open Graph, then Amazon's own), as an https link.
+function pageImage(html, ld, base) {
+  const raw = ld.image || meta(html, "og:image:secure_url", "og:image", "twitter:image", "twitter:image:src")
+    || decode(html.match(/id=["']landingImage["'][^>]*data-old-hires=["']([^"']+)["']/i)?.[1]);
+  if (!raw) return null;
+  try { return imageLink(new URL(raw, base).toString()); } catch { return null; }
+}
+
 // Picks the best confirmed link for a suggestion, or falls back to a search on the likeliest store.
 async function bestLink(x, grounded) {
   const brandDomain = cleanBrandDomain(x.brand_domain);
@@ -2628,7 +2636,12 @@ async function bestLink(x, grounded) {
   // Best tier first; within a tier, a page we could read beats one we couldn't.
   found.sort((a, b) => a.tier - b.tier || b.verified - a.verified);
   const best = found[0];
-  if (best) return { url: best.url, store: storeName(best.host, brandDomain), link: "product", price: best.price };
+  if (best) {
+    // No photo from the page (stores that block us, Amazon above all): Amazon's own photo by ASIN still works.
+    let image = best.image || null;
+    if (!image) { try { const asin = amazonAsin(new URL(best.url)); if (asin) image = await amazonImage(asin); } catch {} }
+    return { url: best.url, store: storeName(best.host, brandDomain), link: "product", price: best.price, image };
+  }
   const key = STORES[x.store] ? x.store : "target";
   return { url: STORES[key].search(x.search || x.title), store: STORES[key].name, link: "search", price: null };
 }
@@ -2664,8 +2677,17 @@ For each suggestion give:
   Copy each URL exactly as found. Never guess or build a URL. Product pages only, not search or category pages.
   Use an empty list if you found none.
 - store: of the retailers above (or amazon), the one most likely to carry it, used to search if no link works
+- emoji: one emoji that pictures the product (for example 🪴 for a planter)
 If the list is too vague to suggest anything, return an empty list.`;
-const RECOMMEND_SCHEMA = IDENTIFY_SCHEMA;
+// Same as photo search, plus an emoji the app shows when there's no product photo.
+const RECOMMEND_SCHEMA = {
+  ...IDENTIFY_SCHEMA,
+  properties: { suggestions: { ...IDENTIFY_SCHEMA.properties.suggestions, items: {
+    ...IDENTIFY_SCHEMA.properties.suggestions.items,
+    properties: { ...IDENTIFY_SCHEMA.properties.suggestions.items.properties, emoji: { type: "string" } },
+    required: [...IDENTIFY_SCHEMA.properties.suggestions.items.required, "emoji"],
+  } } },
+};
 // Words that tell two product names apart ("Stanley Quencher 40oz" vs "stanley quencher 40 oz").
 const nameKey = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // The words that say what a product is, without sizes, colors and filler ("Stanley Quencher 40oz tumbler, rose"
@@ -4580,6 +4602,7 @@ const handlers = {
       return {
         title: clean(x.title, LIMITS.title),
         detail: clean(x.detail, 90),
+        emoji: [...clean(x.emoji, 16)].slice(0, 2).join("") || "🎁",
         search,
         price_low: dollars(x.price_low),
         price_high: dollars(x.price_high),
