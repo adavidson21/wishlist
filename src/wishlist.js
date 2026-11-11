@@ -2640,10 +2640,12 @@ async function bestLink(x, grounded) {
 // only when empty, and the price is set from the store and synced from then on (price_auto), replacing a
 // typed price. A link that gives nothing is still stamped, so it's tried only once.
 const DETAILS_V = 1;
-// The app couldn't read the link when it was saved (store slow, offline, over the limit): try it again in the
-// background so the photo and price still show up without anyone typing them.
+// The app couldn't read the link when it was saved (store slow, offline, over the limit, or Add tapped before the
+// lookup finished): try it again in the background so the photo and price still show up without anyone typing
+// them. nameGuess: the name was made up from the link's words, so the store's name replaces it (details_v -1).
+// Any later save from the wish form sets details_v back to DETAILS_V, so a name someone typed is never replaced.
 async function markUnfilled(env, table, id, b, url) {
-  if (b.unfilled === true && url) await env.DB.prepare(`UPDATE ${table} SET details_v = 0 WHERE id = ?`).bind(id).run();
+  if (b.unfilled === true && url) await env.DB.prepare(`UPDATE ${table} SET details_v = ? WHERE id = ?`).bind(b.nameGuess === true ? -1 : 0, id).run();
 }
 const REFRESH_BATCH = 3;
 async function refreshRow(env, table, row) {
@@ -2657,11 +2659,13 @@ async function refreshRow(env, table, row) {
     : "";
   const stmt = env.DB.prepare(
     `UPDATE ${table} SET details_v = ?1, image_url = COALESCE(image_url, ?2), image_checked_at = ?3, price_checked_at = ?3,
-       price_cents = COALESCE(?4, price_cents), price_auto = CASE WHEN ?4 IS NOT NULL THEN ?10 ELSE price_auto END${extra}
+       price_cents = COALESCE(?4, price_cents), price_auto = CASE WHEN ?4 IS NOT NULL THEN ?10 ELSE price_auto END${extra},
+       title = CASE WHEN details_v = -1 AND ?11 IS NOT NULL THEN ?11 ELSE title END
       WHERE id = ?5 AND url IS ?6`,
   );
   const args = [DETAILS_V, image, t, price, row.id, row.url];
   args.push(...(table === "items" ? [ok ? p.brand || null : null, ok ? p.size || null : null, ok ? p.color || null : null] : [null, null, null]), p?.priceGuess ? 2 : 1);
+  args.push(ok && p.title ? String(p.title).trim().slice(0, LIMITS.title) || null : null);
   await stmt.bind(...args).run();
   return !!ok;
 }
