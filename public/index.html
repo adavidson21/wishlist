@@ -2548,18 +2548,20 @@ function showToastEl(el, on) {
   if (!el.showPopover) return;
   try { if (el.matches(":popover-open")) el.hidePopover(); if (on) el.showPopover(); } catch {}
 }
-function toast(msg, undo, label = "Undo", err = false) {
+// more: an optional second button, { label, fn } (Add another, after adding a wish or idea).
+function toast(msg, undo, label = "Undo", err = false, more = null) {
   const el = $("#toast");
   msg = String(msg || (err ? "That didn't work. Try again." : ""));
   showToastEl(el, false);
   el.classList.toggle("is-err", err);
-  el.innerHTML = (err ? ALERT : CHECK.replace('width="15" height="15"', 'width="20" height="20"')) + `<span>${esc(msg)}</span>` + (undo ? `<button type="button">${esc(label)}</button>` : "");
+  el.innerHTML = (err ? ALERT : CHECK.replace('width="15" height="15"', 'width="20" height="20"')) + `<span>${esc(msg)}</span>` + (undo ? `<button type="button" data-t="undo">${esc(label)}</button>` : "") + (more ? `<button type="button" data-t="more">${esc(more.label)}</button>` : "");
   void el.offsetWidth;
   showToastEl(el, true);
-  if (undo) el.querySelector("button").onclick = () => { showToastEl(el, false); undo(); };
+  if (undo) el.querySelector('[data-t="undo"]').onclick = () => { showToastEl(el, false); undo(); };
+  if (more) el.querySelector('[data-t="more"]').onclick = () => { showToastEl(el, false); more.fn(); };
   clearTimeout(toastTimer);
   // Longer messages stay up longer so there's time to read them.
-  const ms = Math.min(7000, Math.max(undo ? 5000 : 2600, msg.length * 65));
+  const ms = Math.min(7000, Math.max(undo || more ? 5000 : 2600, msg.length * 65));
   toastTimer = setTimeout(() => showToastEl(el, false), ms);
 }
 const oops = (msg) => toast(msg, null, "Undo", true);
@@ -2634,7 +2636,7 @@ function wireForm(form, submit) {
     errEl.hidden = true;
     btns.forEach((b) => (b.disabled = true));
     try { await form.beforeSubmit?.(); } catch {}
-    // Forms with more than one submit button (Add to Maybe / Add to wish list) read which one in data.submitter.
+    // Forms with more than one submit button can read which one in data.submitter.
     const data = { submitter: e.submitter?.value || "" };
     for (const el of form.elements) {
       if (!el.name || el.type === "submit" || (el.type === "radio" && !el.checked)) continue;
@@ -2830,6 +2832,8 @@ async function refreshMe() {
 // Older wishes and ideas get their link details (photo, price, brand, size, color) refreshed once on the server,
 // a few at a time, after sign-in. Quiet: nothing shows while it runs; the screen redraws if anything changed.
 let detailsRefreshing = false;
+// After saving a wish the lookup hadn't finished: fill in its photo, price and name shortly, then once more later.
+function refreshSoon() { setTimeout(refreshDetails, 5000); setTimeout(refreshDetails, 30000); }
 async function refreshDetails() {
   if (detailsRefreshing || !getToken()) return;
   detailsRefreshing = true;
@@ -4805,15 +4809,15 @@ function editItem(item, opts = {}) {
         <label class="check"><span>Top pick<small>Gold star on ${asId ? "their" : "your"} list</small></span><input type="checkbox" name="must" ${item.priority === "must" ? "checked" : ""}></label>
         ${asId ? "" : familySwitches(item.hiddenFrom)}</section>`}
       ${isNew ? "" : goesSection}
-      ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>` : ""}
+      ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>
+      <label class="check keep-private"><span>Keep it private for now<small>Saves to Maybe, where only you can see it</small></span><input type="checkbox" name="keepPrivate"></label>` : ""}
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
       ${canMaybe ? `<button class="btn quiet wide" type="button" id="toMaybe">${LOCK} Move to Maybe</button>` : ""}
       <div class="actions sticky">
         ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
         ${isNew && asId ? `<button class="btn primary" type="submit" value="list">Add to ${esc(asName)}'s list</button>`
           : isNew
-          ? `<button class="btn" type="submit" value="maybe">${LOCK} Add to Maybe</button>
-        <button class="btn primary" type="submit" value="list">Add to wish list</button>`
+          ? `<button class="btn primary wide" type="submit" id="addBtn">Add to wish list</button>`
           : `<button class="btn primary" type="submit" id="itemSave">Save</button>`}
       </div>
     </form>`, (el) => {
@@ -4824,7 +4828,12 @@ function editItem(item, opts = {}) {
       const sc = wireSizeColor(form, item);
       wireWhoChips(el);
       restoreImage(form, c);
+      form.elements.keepPrivate?.addEventListener("change", (e) => {
+        $("#addBtn", form).innerHTML = e.target.checked ? `${LOCK} Add to Maybe` : "Add to wish list";
+      });
       if (isNew) setTimeout(() => {
+        // On a phone the keyboard would cover Paste and Add, so only a starter idea (something to type) opens it.
+        if (!matchMedia("(pointer: fine)").matches && !opts.title && !opts.placeholder) return;
         // Link first, unless a starter idea or carried-over text already gave it a name.
         const t = opts.title || form.elements.title.value || form.elements.url.value ? form.elements.title : form.elements.url;
         t.focus(); t.setSelectionRange?.(t.value.length, t.value.length);
@@ -4876,15 +4885,16 @@ function editItem(item, opts = {}) {
       };
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), quantity: Number(d.quantity ?? 1), ...sc.values(), unfilled: form.dataset.unfilled === "1" };
-        if (payload.unfilled) setTimeout(refreshDetails, 30000);
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), quantity: Number(d.quantity ?? 1), ...sc.values(), unfilled: form.dataset.unfilled === "1", nameGuess: form.dataset.nameGuess === "1" };
+        if (payload.unfilled) refreshSoon();
         if (multi() && !draft && !asId) payload.hiddenFrom = hiddenFromForm(form);
         if (asId) {
           payload.as = asId;
           const { id } = await api("item/save", payload);
           await saveLink(d, id);
           closeSheet();
-          if (isNew) toast(`Added to ${asName}'s list`, () => api("item/remove", { id, as: asId }).then(() => render(), (e) => oops(e.message)));
+          if (isNew) toast(`Added to ${asName}'s list`, () => api("item/remove", { id, as: asId }).then(() => render(), (e) => oops(e.message)), "Undo", false,
+            { label: "Add another", fn: () => editItem(null, { as: asId, list: opts.list }) });
           else toast("Saved");
           state.flash = isNew ? id : null;
           if (state.person !== asId) return setTab("family", asId);
@@ -4892,10 +4902,11 @@ function editItem(item, opts = {}) {
         }
         const { id } = await api("item/save", payload);
         await saveLink(d, id);
-        const published = isNew && d.submitter === "list";
+        const published = isNew && !d.keepPrivate;
         if (published) await api("item/publish", { id });
         closeSheet();
-        if (isNew) toast(published ? "Hint dropped! It's on your wish list" : "Saved to Maybe", () => api("item/remove", { id }).then(() => { state.stale = true; render(); }, (e) => oops(e.message)));
+        if (isNew) toast(published ? "Hint dropped!" : "Saved to Maybe", () => api("item/remove", { id }).then(() => { state.stale = true; render(); }, (e) => oops(e.message)), "Undo", false,
+          { label: "Add another", fn: () => addThing() });
         else toast("Saved");
         if (published) state.burst = "pub:" + id;
         state.stale = true;
@@ -5222,6 +5233,8 @@ function wirePriceSync(form) {
 // What a link filled in follows the link: a new link replaces it and clearing the link removes it.
 // Anything you typed yourself is never overwritten.
 const looksLikeLink = (v) => /^(https?:\/\/)?[\w-]+(\.[\w-]+)+\/\S+/i.test(v) || /^https?:\/\/[\w-]+(\.[\w-]+)+\/?$/i.test(v);
+// How long Add waits for a link lookup that's still going before saving without it.
+const LOOKUP_GRACE_MS = 1500;
 function wireAutofill(form) {
   wirePhoto(form);
   wirePriceSync(form);
@@ -5238,21 +5251,25 @@ function wireAutofill(form) {
   };
   // seq: each lookup gets a number, and only the newest one may write to the form (a new link mid-lookup wins).
   // auto: what the current link put in each box, so the next link (or clearing) knows what's safe to replace.
-  let seq = 0, hint = "", last = "", slow, typing, running = null;
-  // Saving while the lookup is still going waits for it, then names the wish from the link if nothing else did,
-  // so Add never fails with "give it a name" right after a paste.
+  // guess: a name made up from the link's words (no real name from the store yet). Saved with nameGuess, so the
+  // background refresh swaps in the store's name, unless it gets edited first.
+  let seq = 0, hint = "", last = "", slow, typing, running = null, guess = "";
+  // Saving while the lookup is still going doesn't make anyone wait for a slow store: it gets a moment to finish,
+  // then the wish saves anyway (named from the link if nothing else did, so Add never fails with "give it a name")
+  // and the background refresh fills in the photo, price and name a few seconds later.
   form.beforeSubmit = async () => {
     clearTimeout(typing);
     const v = url.value.trim();
     if (v && v !== last && looksLikeLink(v)) fill(false);
     if (running) {
-      say("Finishing the lookup...");
-      await Promise.race([running, new Promise((r) => setTimeout(r, 12000))]);
+      await Promise.race([running, new Promise((r) => setTimeout(r, LOOKUP_GRACE_MS))]);
+      if (running) form.dataset.unfilled = "1";
     }
     if (!title.value.trim() && url.value.trim()) {
       const g = hint || nameFromLink(url.value.trim());
-      if (g) { name.set(g); auto.title = g; form.dataset.unfilled = "1"; }
+      if (g) { name.set(g); auto.title = g; form.dataset.unfilled = "1"; guess = hint ? "" : g; }
     }
+    form.dataset.nameGuess = guess && title.value === guess && form.dataset.unfilled === "1" ? "1" : "";
   };
   const mineNow = (el, k) => !!el && !!el.value.trim() && el.value !== auto[k];
   // Keep just the link in the box; remember the shared words as a backup name.
@@ -5307,7 +5324,7 @@ function wireAutofill(form) {
       // Sizes and colors the store offers (only the wish form listens).
       if (r.sizes?.length || r.colors?.length || r.size || r.color) form.dispatchEvent(Object.assign(new CustomEvent("linkoptions", { detail: r }), { force }));
       const filled = [], kept = [];
-      if (r.title) { if (force || !mineNow(title, "title")) { name.set(r.title); auto.title = r.title; filled.push("name"); } else kept.push("name"); }
+      if (r.title) { if (force || !mineNow(title, "title")) { name.set(r.title); auto.title = r.title; guess = r.guessed ? r.title : ""; filled.push("name"); } else kept.push("name"); }
       const brandEl = form.elements.brand;
       if (brandEl && r.brand) { if (force || !mineNow(brandEl, "brand")) { brandEl.value = auto.brand = r.brand; filled.push("brand"); } else kept.push("brand"); }
       // A price still showing what the link gave last time counts as empty, so it follows the new link.
@@ -5333,7 +5350,7 @@ function wireAutofill(form) {
   // Clear the link and everything it filled in. What you typed yourself stays.
   clear.addEventListener("click", () => {
     seq++; clearTimeout(slow); clearTimeout(typing);
-    url.value = ""; hint = ""; last = "";
+    url.value = ""; hint = ""; last = ""; guess = "";
     if (title.value && title.value === auto.title) name.set("");
     const brandEl = form.elements.brand;
     if (brandEl && brandEl.value && brandEl.value === auto.brand) brandEl.value = "";
@@ -8190,7 +8207,8 @@ function editIdea(idea, subjectId, opts = {}) {
         editItem(null, { as: subjectId, carry: { title: f.title.value, url: f.url.value, price: f.price.value, priceAuto: autoPrice(form), notes: f.note.value, image: form.dataset.image, imageFor: form.dataset.imageFor } });
       });
       // Not while the people picker is open: the keyboard would cover it.
-      if (isNew && (subjectId || !chips) && !form.elements.title.value && !form.elements.url.value) setTimeout(() => form.elements.url.focus(), 300);
+      // On a phone the keyboard would cover Paste and Save, so the link box gets focus only with a mouse.
+      if (isNew && (subjectId || !chips) && !form.elements.title.value && !form.elements.url.value && matchMedia("(pointer: fine)").matches) setTimeout(() => form.elements.url.focus(), 300);
       if (opts.fill) form.fillFromLink?.();
       // Which occasion it's for: shown when you're getting it and the person has a birthday too.
       let occSubject = null, occasion = () => undefined;
@@ -8268,16 +8286,17 @@ function editIdea(idea, subjectId, opts = {}) {
         // Filled in by a link without typing: show the heads up first, save on the next tap.
         const { hits, was } = checkNopes();
         if (hits.length && !was) return $("#nopeWarn", el).scrollIntoView({ block: "center", behavior: "smooth" });
-        const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), note: d.note, shared: d.shared, image: imageFor(form), unfilled: form.dataset.unfilled === "1" };
+        const payload = { id: idea.id, subjectId: d.subjectId || idea.subject_id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), note: d.note, shared: d.shared, image: imageFor(form), unfilled: form.dataset.unfilled === "1", nameGuess: form.dataset.nameGuess === "1" };
         if ($("#alsoFor [data-also]", el) || idea.for_ids) payload.alsoFor = [...also];
-        if (payload.unfilled) setTimeout(refreshDetails, 30000);
+        if (payload.unfilled) refreshSoon();
         if (!boughtByOther) { payload.bought = d.bought; payload.paid = d.paid; if (d.bought) payload.occasion = occasion(); }
         if (!payload.subjectId) throw new Error("Choose who it's for.");
         await api("idea/save", payload);
         closeSheet();
         // Saved for someone whose page you're not on: offer a shortcut there.
-        if (isNew && !purchase && state.person !== payload.subjectId && state.tab !== "notes") toast(`Idea saved for ${personName(payload.subjectId)}`, () => setTab("family", payload.subjectId), "View");
-        else toast(purchase ? "Purchase added" : "Saved");
+        const more = isNew && !purchase ? { label: "Add another", fn: () => addThing(payload.subjectId) } : null;
+        if (isNew && !purchase && state.person !== payload.subjectId && state.tab !== "notes") toast(`Saved for ${personName(payload.subjectId)}`, () => setTab("family", payload.subjectId), "View", false, more);
+        else toast(purchase ? "Purchase added" : "Saved", null, "Undo", false, more);
         if (purchase && payload.subjectId) state.openPeople.add(payload.subjectId);
         render();
       });
