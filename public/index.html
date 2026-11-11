@@ -1258,14 +1258,20 @@
   .ideas .btn.wide { gap: 6px; }
   .ideas-msg { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
   .ideas-list { display: grid; gap: 8px; }
-  .idea-row { display: flex; align-items: center; gap: 8px; padding: 10px 6px 10px 12px; border-radius: 12px; background: var(--card); }
+  /* The whole row opens the store link (the link stretches over it); + and × sit above it. */
+  .idea-row { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 6px 10px 12px; border-radius: 12px; background: var(--card); }
+  .idea-txt::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+  .idea-row:has(.idea-txt:focus-visible) { outline: 3px solid var(--gold); outline-offset: 2px; }
+  .idea-txt:focus-visible { outline: none; }
+  .idea-add { position: relative; z-index: 1; flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: #3B2A06; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  .idea-add:disabled { opacity: .5; }
+  .idea-add:active { transform: scale(.94); }
   .idea-row.got { opacity: .75; }
   .idea-txt { flex: 1; min-width: 0; display: grid; gap: 1px; color: inherit; text-decoration: none; }
   .idea-txt strong { font-size: 15px; line-height: 1.25; }
   .idea-txt small { font-size: 13px; color: var(--muted); }
   .idea-txt .where { font-size: 12.5px; font-weight: 700; color: var(--gold-ink); }
-  .idea-row .btn.small { flex: none; white-space: nowrap; }
-  .idea-x { flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+  .idea-x { position: relative; z-index: 1; flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
   .idea-got { flex: none; display: inline-flex; align-items: center; gap: 4px; padding-right: 8px; font-size: 13px; font-weight: 700; color: var(--ok); }
   .ideas-wait { display: grid; gap: 8px; }
   .ideas-wait i { display: block; height: 52px; border-radius: 12px; background: var(--card); animation: ideasPulse 1.2s ease-in-out infinite alternate; }
@@ -4192,8 +4198,8 @@ async function renderMine() {
 }
 // ---------- "Ideas for you" on My list ----------
 // Gemini suggests new wishes from the names and brands already on your list (POST recommend). Loads when tapped,
-// to keep AI use low, and the last batch is kept on this device for a few days. Tapping + Maybe saves one to
-// Maybe. Off in Settings (members.ideas_off) hides the card everywhere.
+// to keep AI use low, and the last batch is kept on this device for a few days. Tapping a row opens the store;
+// the + saves it to Maybe. Off in Settings (members.ideas_off) hides the card everywhere.
 const IDEAS_KEY = "wishlist-ideas";
 const IDEAS_KEEP_MS = 3 * 86_400_000;
 const IDEAS_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
@@ -4232,7 +4238,7 @@ function ideasInner(items) {
       return `<div class="idea-row${got ? " got" : ""}">
         <a class="idea-txt" href="${esc(x.url)}" target="_blank" rel="noopener"><strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}<span class="where">${esc(meta)}</span></a>
         ${got ? `<span class="idea-got">${CHECK_SM} Added</span>`
-          : `<button class="btn small" type="button" data-idea-add="${i}">${PLUS} Maybe</button>
+          : `<button class="idea-add" type="button" data-idea-add="${i}" aria-label="Add to Maybe: ${esc(x.title)}" title="Add to Maybe">${PLUS}</button>
              <button class="idea-x" type="button" data-idea-x="${i}" aria-label="Not for me: ${esc(x.title)}">×</button>`}
       </div>`;
     }).join("")}</div>`;
