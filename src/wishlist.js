@@ -41,6 +41,40 @@ function photoValue(v) {
   if (photo && (photo.length > MAX_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
   return photo;
 }
+// Your own photo for a wish (up to 800px on its long side), or null to remove it.
+const MAX_WISH_PHOTO = 300_000;
+function wishPhotoValue(v) {
+  const photo = v ? String(v) : null;
+  if (photo && (photo.length > MAX_WISH_PHOTO || !PHOTO_RE.test(photo))) fail(400, "That photo didn't work. Try another one.");
+  return photo;
+}
+// A wish's own photo goes with it, unless a buyer's gift history still shows it.
+const dropWishPhoto = (env, id) => env.DB.prepare(
+  "DELETE FROM item_photos WHERE item_id = ?1 AND NOT EXISTS (SELECT 1 FROM gift_history WHERE kind = 'item' AND ref_id = ?1)",
+).bind(id);
+// What image_url says while a wish uses its own photo (GET photo?i=). Starts with this, so the app can tell.
+const WISH_PHOTO_URL = "/api/photo?i=";
+// Statements for item/save: photo is undefined (leave it), null (remove: back to the store's photo, looked up again),
+// or a data URL. Then, while a wish has its own photo, image_url always points at it, so a new link never replaces it.
+function wishPhotoRows(env, id, photo, storeImage, t) {
+  const rows = [];
+  if (photo === null) {
+    rows.push(
+      env.DB.prepare("DELETE FROM item_photos WHERE item_id = ?").bind(id),
+      env.DB.prepare(`UPDATE items SET image_url = ?1, image_checked_at = CASE WHEN ?1 IS NOT NULL THEN ?2 ELSE NULL END WHERE id = ?3 AND image_url LIKE '${WISH_PHOTO_URL}%'`)
+        .bind(storeImage, t, id),
+    );
+  } else if (photo) {
+    rows.push(env.DB.prepare(
+      "INSERT INTO item_photos (item_id, photo, v, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(item_id) DO UPDATE SET photo = ?2, v = ?3, updated_at = ?4",
+    ).bind(id, photo, Date.now().toString(36), t));
+  }
+  rows.push(env.DB.prepare(
+    `UPDATE items SET image_url = (SELECT '${WISH_PHOTO_URL}' || p.item_id || '&v=' || p.v FROM item_photos p WHERE p.item_id = items.id),
+       image_checked_at = COALESCE(image_checked_at, ?2) WHERE id = ?1 AND EXISTS (SELECT 1 FROM item_photos p WHERE p.item_id = items.id)`,
+  ).bind(id, t));
+  return rows;
+}
 // A profile cover (wider, so a bit bigger than a photo), or null to remove it.
 const MAX_COVER = 250_000;
 function coverValue(v) {
@@ -1499,6 +1533,7 @@ async function deleteMember(env, id) {
   q("DELETE FROM private_ideas WHERE author_id = ?1 OR subject_id = ?1");
   q("DELETE FROM claims WHERE buyer_id = ?1 OR item_id IN (SELECT id FROM items WHERE owner_id = ?1)");
   q("DELETE FROM item_hidden WHERE item_id IN (SELECT id FROM items WHERE owner_id = ?1)");
+  q("DELETE FROM item_photos WHERE item_id IN (SELECT id FROM items WHERE owner_id = ?1)");
   q("DELETE FROM items WHERE owner_id = ?1");
   q("DELETE FROM budgets WHERE author_id = ?1 OR subject_id = ?1");
   q("DELETE FROM nicknames WHERE author_id = ?1 OR subject_id = ?1");
@@ -1658,6 +1693,7 @@ const itemOut = (r) => ({
   created_at: r.created_at,
   updated_at: r.updated_at,
   image_url: r.image_url || null,
+  own_photo: String(r.image_url || "").startsWith(WISH_PHOTO_URL), // your own photo (Add a photo), not the store's
   image_checked: !!r.image_checked_at,
   price_checked: !!r.price_checked_at,
   price_auto: !!r.price_auto,
@@ -3815,6 +3851,8 @@ const handlers = {
     ];
     const t = now();
     const image = fields[1] ? imageLink(b.image) : null;
+    // photo: your own picture for it (absent = leave as is, null or "" = remove).
+    const photo = b.photo === undefined ? undefined : wishPhotoValue(b.photo);
     // hiddenFrom: family ids to hide this item from (absent = leave as is). Only your own families count.
     const hideRows = (id) => async () => {
       if (!Array.isArray(b.hiddenFrom) || forOther) return [];
@@ -3840,7 +3878,8 @@ const handlers = {
       if (b.category !== undefined) rows.push(env.DB.prepare("UPDATE items SET category = ?, details_v = ? WHERE id = ?").bind(category(b.category), DETAILS_V, b.id));
       rows.push(env.DB.prepare("UPDATE items SET price_auto = ? WHERE id = ?").bind(priceAuto(b, fields), b.id));
       if (b.quantity !== undefined) rows.push(env.DB.prepare("UPDATE items SET quantity = ? WHERE id = ?").bind(quantityValue(b.quantity), b.id));
-      if (rows.length) await env.DB.batch(rows);
+      rows.push(...wishPhotoRows(env, b.id, photo, image, t));
+      await env.DB.batch(rows);
       await markUnfilled(env, "items", b.id, b, fields[1]);
       return { id: b.id };
     }
@@ -3855,6 +3894,7 @@ const handlers = {
       env.DB.prepare("UPDATE items SET quantity = ? WHERE id = ?").bind(b.quantity === undefined ? 1 : quantityValue(b.quantity), id),
       ...(await hideRows(id)()),
       ...sizeColorRows(env, id, b),
+      ...(photo ? wishPhotoRows(env, id, photo, image, t) : []),
     ]);
     await markUnfilled(env, "items", id, b, fields[1]);
     if (!isDraft) await feedWish(env, owner, id);
@@ -3985,6 +4025,7 @@ const handlers = {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM claims WHERE item_id = ?").bind(id),
         env.DB.prepare("DELETE FROM item_hidden WHERE item_id = ?").bind(id),
+        dropWishPhoto(env, id),
         env.DB.prepare("DELETE FROM items WHERE id = ?").bind(id),
       ]);
     }
@@ -4053,6 +4094,7 @@ const handlers = {
         await env.DB.batch([
           env.DB.prepare("DELETE FROM claims WHERE item_id = ?").bind(itemId),
           env.DB.prepare("DELETE FROM item_hidden WHERE item_id = ?").bind(itemId),
+          dropWishPhoto(env, itemId),
           env.DB.prepare("DELETE FROM items WHERE id = ?").bind(itemId),
         ]);
       }
@@ -5837,6 +5879,14 @@ const handlers = {
   // ?m= a person, ?g= a circle, ?h= a household, ?p= a pet, ?c= a person's profile cover.
   async "GET photo"(req, env, url) {
     const q = url.searchParams;
+    if (q.has("i")) {
+      // A wish's own photo (item ids are random, like the others here).
+      const row = await env.DB.prepare("SELECT photo FROM item_photos WHERE item_id = ?").bind(q.get("i") || "").first();
+      const m = row?.photo && PHOTO_RE.exec(row.photo);
+      if (!m) return new Response("Not found", { status: 404 });
+      return new Response(Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0)),
+        { headers: { "content-type": `image/${m[1]}`, "cache-control": "public, max-age=31536000, immutable" } });
+    }
     const [table, id, col] = q.has("g") ? ["groups", q.get("g"), "photo"] : q.has("h") ? ["households", q.get("h"), "photo"] : q.has("p") ? ["pets", q.get("p"), "photo"]
       : q.has("c") ? ["members", q.get("c"), "cover"] : ["members", q.get("m"), "photo"];
     const row = await env.DB.prepare(`SELECT ${col} AS photo FROM ${table} WHERE id = ?`).bind(id || "").first();

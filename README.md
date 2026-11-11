@@ -34,7 +34,7 @@ A few more things you can do:
 - 💬 **Chat about someone's gifts** ("Is she still a size M?"). Everyone in the circle can read it except that person.
 - 🎂 **Get a heads up** before birthdays and Christmas, and when someone adds new wishes.
 - 💰 **Track a budget** for each person, so you know what you've spent.
-- 📸 **Snap a photo** of something in a store and Hints finds where to buy it.
+- 📸 **Add a photo** to any wish, for stores Hints can't read or things with no link. With no name yet, Hints also works out what it is and where to buy it.
 
 ## 📱 Get it on your phone
 
@@ -78,7 +78,7 @@ Some helper features use Google Gemini, and a few of them run on their own in th
 | **✨ Clean up a name** | The wish's name, link and brand | Who the wish is for, or anything about you |
 | **📸 Photo search** | The photo you took of a product | Your profile photo, your name, who it's for |
 
-Hints pays Google for this, and under Google's paid terms, **what we send isn't used to train their AI or improve their products.** Google only keeps it for a short time to catch abuse. Photo search photos aren't saved by Hints either.
+Hints pays Google for this, and under Google's paid terms, **what we send isn't used to train their AI or improve their products.** Google only keeps it for a short time to catch abuse. A photo you add to a wish is shrunk and kept in Hints' own database as that wish's picture. It only goes to Gemini when the wish has no name yet, to work out what it is.
 
 > 💡 **Tip:** photo search is for products, so only snap the product, not people. And keep personal stuff out of a wish's name (put it in the notes instead, which are never sent).
 

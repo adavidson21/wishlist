@@ -204,6 +204,9 @@
   .tile.photo { background: #FFFFFF; padding: 5px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
   .tile.photo img { width: 100%; height: 100%; object-fit: contain; border-radius: 9px; display: block; }
   .tile.fresh img { animation: fade .45s ease both; }
+  /* Your own photo fills the tile (store photos sit on white, uncropped). */
+  .tile.photo.own, .gimg .tile.photo.own { padding: 0; }
+  .tile.photo.own img { object-fit: cover; border-radius: 0; }
   .fillmsg img { width: 40px; height: 40px; object-fit: contain; border-radius: 8px; background: #FFFFFF; box-shadow: inset 0 0 0 1px var(--line); flex: none; }
   .fillmsg.has-img { display: flex; align-items: center; gap: 10px; }
   .tile.t1 { background: var(--t1); color: var(--t1-ink); } .tile.t2 { background: var(--t2); color: var(--t2-ink); } .tile.t3 { background: var(--t3); color: var(--t3-ink); }
@@ -442,7 +445,13 @@
   .gtitle { font-weight: 700; font-size: 15px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .gsub { font-size: 13px; color: var(--muted); }
   .gbody .publish-btn { margin-top: auto; align-self: flex-start; }
-  .gbody .gsub + .publish-btn, .gbody .gtitle + .publish-btn { margin-top: 8px; }
+  .gbody .gsub + .publish-btn, .gbody .gtitle + .publish-btn, .gbody .gshop + .publish-btn { margin-top: 8px; }
+  /* The store link on a gallery card: opens the wish's page without opening Edit. */
+  .gshop { margin-top: auto; align-self: flex-start; max-width: 100%; display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 11px;
+    border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; }
+  .gbody .gtitle + .gshop, .gbody .gsub + .gshop { margin-top: 8px; }
+  .gshop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gshop svg { flex: none; }
   .shelf + .shelf { margin-top: 18px; }
   .shelf-h { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-family: var(--display); font-size: 17px; font-weight: 600; }
   .shelf-h svg { color: var(--brand); }
@@ -1255,6 +1264,11 @@
   @keyframes spin { to { rotate: 360deg; } }
   .gc-hint { text-align: center; margin: 4px 0 8px; }
   .photo-box { margin-bottom: 16px; }
+  /* A wish's own photo (Add a photo): thumbnail, Change, Remove. */
+  .own-photo { display: flex; align-items: center; gap: 10px; }
+  .own-thumb { width: 64px; height: 64px; border-radius: 14px; overflow: hidden; flex: none; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+  .own-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .own-photo .btn { flex: 0 1 auto; }
   .photo-btn { background: var(--soft); border-color: transparent; color: var(--soft-ink); min-height: 50px; }
   .photo-status { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 15px; color: var(--muted); }
   .photo-status img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; flex: none; }
@@ -2242,12 +2256,12 @@ function addedOn(iso) {
   return `Added ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(d.getFullYear() !== new Date().getFullYear() && { year: "numeric" }) })}`;
 }
 const iconTile = (title, id) => `<span class="tile t${hash(id || title) % 4}" data-tile-title="${esc(title)}" data-tile-id="${esc(id)}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${ICON_PATHS[iconFor(title)]}"/></svg></span>`;
-const photoTile = (src, title, id, fresh) => `<span class="tile photo${fresh ? " fresh" : ""}" data-tile-title="${esc(title)}" data-tile-id="${esc(id)}" aria-hidden="true"><img class="thumb" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
+const photoTile = (src, title, id, fresh, own) => `<span class="tile photo${fresh ? " fresh" : ""}${own ? " own" : ""}" data-tile-title="${esc(title)}" data-tile-id="${esc(id)}" aria-hidden="true"><img class="thumb" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
 // kind: "item" or "idea". A link we haven't looked at yet gets its photo fetched after the page draws.
 // Also looks up a missing price from the link, once (price_checked).
 function tile(i, kind) {
   const src = i.image_url || (kind && imageFound.get(`${kind}:${i.id}`));
-  const html = src ? photoTile(src, i.title, i.id) : iconTile(i.title, i.id);
+  const html = src ? photoTile(src, i.title, i.id, false, i.own_photo) : iconTile(i.title, i.id);
   const need = i.url && kind && (!i.image_checked || (i.price_cents == null && !i.price_checked));
   return need ? html.replace('<span class="tile', `<span data-fetch="${kind}:${esc(i.id)}" class="tile`) : html;
 }
@@ -4638,6 +4652,7 @@ function galleryCard(i, n = 0) {
       ${brand ? `<span class="brand-line">${esc(brand)}</span>` : ""}
       <span class="gtitle">${esc(title)}</span>
       ${sub ? `<span class="gsub">${sub}</span>` : ""}
+      ${i.url ? `<a class="gshop" href="${esc(i.url)}" target="_blank" rel="noopener" aria-label="Open at ${esc(host(i.url))}"><span>${esc(host(i.url))}</span>${EXT_I}</a>` : ""}
       ${i.draft ? `<button class="publish-btn sm" type="button" data-publish="${esc(i.id)}">${PUBLISH_ICON}<span>Publish</span></button>` : ""}
     </div>
   </div>`;
@@ -5018,14 +5033,14 @@ function editItem(item, opts = {}) {
     <h3>${asId ? (isNew ? `Add a wish for ${esc(asName)}` : `Edit ${esc(asName)}'s wish`) : isNew ? "What would you like?" : "Edit wish"}</h3>
     ${isNew && opts.chooser && !asId ? whoChips(state.me.id) : ""}
     ${draft && !isNew ? MAYBE_NOTE : ""}
-    <form id="itemForm" autocomplete="off"${isNew ? "" : ' data-editing="1"'}${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}${item.price_auto && item.price_guess ? ' data-price-guess="1"' : ""}>
+    <form id="itemForm" autocomplete="off"${isNew ? "" : ' data-editing="1"'}${item.own_photo ? ' data-had-photo="1"' : ""}${item.price_auto ? ` data-price-auto="${esc(priceIn(item.price_cents))}"` : ""}${item.price_auto && item.price_guess ? ' data-price-guess="1"' : ""}>
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
       <label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "What is it?"))}" required></label>
       ${isNew ? "" : brandField}
       ${isNew ? "" : linkField(item.url)}
       ${sizeColorRow()}
-      ${photoField()}
+      ${photoField(true, item.own_photo ? item.image_url : "")}
       ${isNew ? `<details class="more"${hasDetails ? " open" : ""}>
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes${sibs.length ? ", goes with" : ""})</span></summary>
         <div>${brandField}${priceField}${catField}${qtyField}${notesField}${goesSection}</div>
@@ -5111,7 +5126,7 @@ function editItem(item, opts = {}) {
       };
       wireForm(form, async (d) => {
         if (!d.title.trim()) throw new Error("Give your wish a name.");
-        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), quantity: Number(d.quantity ?? 1), ...sc.values(), unfilled: form.dataset.unfilled === "1", nameGuess: form.dataset.nameGuess === "1" };
+        const payload = { id: item.id, title: d.title, url: d.url, price: d.price, priceAuto: autoPrice(form), notes: d.notes, brand: (d.brand || "").trim(), category: d.category || null, priority: !draft && d.must ? "must" : null, image: imageFor(form), photo: form.dataset.photo === undefined ? undefined : form.dataset.photo || null, quantity: Number(d.quantity ?? 1), ...sc.values(), unfilled: form.dataset.unfilled === "1", nameGuess: form.dataset.nameGuess === "1" };
         if (payload.unfilled) refreshSoon();
         if (multi() && !draft && !asId) payload.hiddenFrom = hiddenFromForm(form);
         if (asId) {
@@ -5168,16 +5183,24 @@ function editItem(item, opts = {}) {
 // first: the new-wish layout, where the link box leads and fills in everything else.
 function linkField(value, first) {
   return `<label class="field"><span${first ? ' class="vh"' : ""}>Link</span>
-    <div class="linkrow"><div class="inwrap"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Paste a link from any store or app" : "Paste a link to fill in the rest"}">
+    <div class="linkrow"><div class="inwrap"><input class="input" name="url" type="url" inputmode="url" value="${esc(value)}" placeholder="${first ? "Paste a store link" : "Paste a link to fill in the rest"}">
     <button class="clearx" type="button" data-clear aria-label="Clear link"${value ? "" : " hidden"}>${CLEAR_I}</button></div>
     <button class="btn small${first ? " primary" : ""}" type="button" data-paste${value ? " hidden" : ""}>${PASTE_I} Paste</button>
     <a class="btn small open-link" data-open target="_blank" rel="noopener" href="${/^https?:\/\//i.test(value || "") ? esc(value) : "#"}"${/^https?:\/\//i.test(value || "") ? "" : " hidden"}>Open ${OPEN_I}</a></div>
     <small class="fillmsg" hidden></small></label>`;
 }
-function photoField() {
-  return `<div class="photo-box">
+// The photo button. Ideas: "Or snap a photo of it" (we guess what it is and find it in stores; the photo isn't kept).
+// Wishes (own): "Add a photo". It becomes the wish's picture, over the store's, and when the wish has no name yet we
+// guess what it is too. ownSrc: the wish's own photo, already saved.
+function photoField(own, ownSrc) {
+  return `<div class="photo-box"${own ? " data-own" : ""}>
       <input type="file" accept="image/*" data-photo hidden>
-      <button class="btn wide photo-btn" type="button" data-photo-btn>${CAMERA} Or snap a photo of it</button>
+      ${own ? `<div class="own-photo" data-own-row${ownSrc ? "" : " hidden"}>
+        <span class="own-thumb">${ownSrc ? `<img src="${esc(ownSrc)}" alt="Your photo">` : ""}</span>
+        <button class="btn small" type="button" data-photo-change>Change photo</button>
+        <button class="btn small quiet" type="button" data-photo-drop>Remove photo</button>
+      </div>` : ""}
+      <button class="btn wide photo-btn" type="button" data-photo-btn${ownSrc ? " hidden" : ""}>${CAMERA} ${own ? "Add a photo" : "Or snap a photo of it"}</button>
       <div class="photo-status" hidden></div>
       <div class="picks" hidden></div>
     </div>`;
@@ -5317,9 +5340,23 @@ const where = (x) => (x.link === "product" ? `At ${x.store}${x.price ? ` for ${m
 
 // Photo: Gemini suggests what it might be; tapping a suggestion fills the name, a store link, and the price when known.
 function wirePhoto(form) {
-  const input = form.querySelector("[data-photo]"), btn = form.querySelector("[data-photo-btn]");
-  const status = form.querySelector(".photo-status"), picks = form.querySelector(".picks");
+  const box = form.querySelector(".photo-box"), own = box.hasAttribute("data-own");
+  const input = box.querySelector("[data-photo]"), btn = box.querySelector("[data-photo-btn]");
+  const status = box.querySelector(".photo-status"), picks = box.querySelector(".picks"), row = box.querySelector("[data-own-row]");
+  // Wishes: form.dataset.photo is the new photo to save, "" to remove the saved one; unset leaves it.
+  const showOwn = (src) => {
+    row.hidden = !src;
+    btn.hidden = !!src;
+    if (src) row.querySelector(".own-thumb").innerHTML = `<img src="${esc(src)}" alt="Your photo">`;
+  };
   btn.addEventListener("click", () => input.click());
+  box.querySelector("[data-photo-change]")?.addEventListener("click", () => input.click());
+  box.querySelector("[data-photo-drop]")?.addEventListener("click", () => {
+    if (form.dataset.hadPhoto) form.dataset.photo = "";
+    else delete form.dataset.photo;
+    showOwn("");
+    status.hidden = picks.hidden = true;
+  });
   input.addEventListener("change", async () => {
     const file = input.files[0];
     input.value = "";
@@ -5327,15 +5364,26 @@ function wirePhoto(form) {
     picks.hidden = true;
     btn.disabled = true;
     try {
-      const photo = await shrinkPhoto(file);
-      status.innerHTML = `<img src="${photo.preview}" alt=""><span>Looking at your photo and checking stores...</span>`;
+      let photo;
+      if (own) {
+        photo = await shrinkPhoto(file, 800, 0.8);
+        if (photo.data.length > 290_000) photo = await shrinkPhoto(file, 640, 0.7);
+        form.dataset.photo = photo.data;
+        showOwn(photo.preview);
+        status.hidden = true;
+        // It already has a name, so the photo is all they wanted. No name yet: guess what it is too.
+        if (form.elements.title.value.trim()) return;
+      } else photo = await shrinkPhoto(file);
+      // The wish's own thumbnail is already showing, so the messages don't repeat it.
+      const img = own ? "" : `<img src="${photo.preview}" alt="">`;
+      status.innerHTML = `${img}<span>Looking at your photo and checking stores...</span>`;
       status.hidden = false;
       const { suggestions } = await api("identify", { image: photo.data });
       if (!suggestions.length) {
-        status.innerHTML = `<img src="${photo.preview}" alt=""><span>Couldn't tell what this is. Try a closer photo, or type it in above.</span>`;
+        status.innerHTML = `${img}<span>${own ? "Couldn't tell what this is. Type what it is above." : "Couldn't tell what this is. Try a closer photo, or type it in above."}</span>`;
         return;
       }
-      status.innerHTML = `<img src="${photo.preview}" alt=""><span><strong>Is it one of these?</strong> Tap the closest match.</span>`;
+      status.innerHTML = `${img}<span><strong>Is it one of these?</strong> Tap the closest match.</span>`;
       picks.innerHTML = suggestions.map((x, i) => `<button class="pick" type="button" data-i="${i}">
           <strong>${esc(x.title)}</strong>${x.detail ? `<small>${esc(x.detail)}</small>` : ""}${!x.price && range(x.price_low, x.price_high) ? `<em>${esc(range(x.price_low, x.price_high))}</em>` : ""}<span class="where${x.link === "product" ? " found" : ""}">${esc(where(x))}</span>
         </button>`).join("") + '<button class="pick none" type="button" data-none>None of these</button>';
@@ -5353,12 +5401,12 @@ function wirePhoto(form) {
         const note = x.link === "product"
           ? `<strong>Added it.</strong> The link goes to ${esc(x.store)}${x.price ? ", and the price is filled in" : ""}. Paste a different store link to change it.`
           : `<strong>Added the name.</strong> We couldn't confirm a product page, so the link searches ${esc(x.store)}. Paste a store link instead and tap Fill to get the exact price.`;
-        status.innerHTML = `<img src="${photo.preview}" alt=""><span>${note}</span>`;
+        status.innerHTML = `${img}<span>${note}</span>`;
         form.elements.title.scrollIntoView({ behavior: "smooth", block: "center" });
       }));
       picks.querySelector("[data-none]").onclick = () => {
         picks.hidden = true;
-        status.innerHTML = `<img src="${photo.preview}" alt=""><span>No problem. Type the name above, or try another photo.</span>`;
+        status.innerHTML = `${img}<span>${own ? "No problem. Type the name above." : "No problem. Type the name above, or try another photo."}</span>`;
         form.elements.title.focus();
       };
     } catch (e) {
