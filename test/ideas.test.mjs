@@ -81,3 +81,24 @@ test("Ideas: only your own wish names and brands reach Gemini, never who you are
     assert.ok(r.suggestions.every((x) => x.url.startsWith("https://")));
   } finally { g.restore(); }
 });
+
+test("Ideas: no other versions of a wish, and no two ideas that are the same kind of thing", async () => {
+  const w = world();
+  w.env.GEMINI_API_KEY = "test";
+  const alexis = w.person("Alexis", { circle: w.circle() });
+  w.item(alexis, "Stanley Quencher 40oz tumbler");
+  w.item(alexis, "Lego Botanicals Orchid");
+  const g = fakeGemini([
+    idea("Stanley Quencher 30oz tumbler, rose"), // another size and color of a wish
+    idea("LEGO Botanicals Bonsai Tree"), // same product line, same kind of thing
+    idea("Self-watering ceramic planter"),
+    idea("Self-watering planter, large"), // same as the idea before it
+    idea("Botanical wall print"),
+    idea("Stanley straw lids"),
+    idea("Gardening book"),
+  ]);
+  try {
+    const r = await w.api(alexis, "POST recommend", {});
+    assert.deepEqual(r.suggestions.map((x) => x.title), ["Self-watering ceramic planter", "Botanical wall print", "Stanley straw lids", "Gardening book"]);
+  } finally { g.restore(); }
+});

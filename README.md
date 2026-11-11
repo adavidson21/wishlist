@@ -49,7 +49,7 @@ Hints works in your web browser, but it's nicer as an app on your home screen. I
 
 > 💡 Hints walks you through this the first time you open it, so you don't have to remember any of it.
 
-**Add wishes straight from a store app.** On Android, once Hints is installed it shows up when you tap **Share**. On iPhone, go to **Settings > Add from the Share button** in Hints to set up a one-tap "Add to Hints" shortcut.
+**Add wishes straight from a store app.** On Android, once Hints is installed it shows up when you tap **Share**. On iPhone, go to **Settings > Your list > Add from the Share button** in Hints to set up a one-tap "Add to Hints" shortcut.
 
 ---
 
@@ -107,7 +107,7 @@ Hints pays Google for this, and under Google's paid terms, **what we send isn't 
 - 👩‍💻 **Who runs it.** Alexis built and runs Hints. Like the owner of any app, she can get to the database to fix things.
 - 🛠️ **When something breaks.** If Hints hits an error, it tells Alexis what went wrong (the error message, which screen, and what kind of phone or browser), so she can fix it. Never what you typed, your wishes or anything private.
 - 💾 **Backups.** Everything is backed up so a mistake can be undone. Weekly backups are encrypted before they're stored.
-- 🗑️ **Want your info deleted?** **Settings > Delete my Hints** removes you and everything you added, for good. The same details are on the in-app [Privacy page](https://hints.alexisdavidson.org/privacy).
+- 🗑️ **Want your info deleted?** **Settings > Account & data > Delete my Hints** removes you and everything you added, for good. The same details are on the in-app [Privacy page](https://hints.alexisdavidson.org/privacy).
 
 ---
 
@@ -129,7 +129,7 @@ Yes. Go to **[hints.alexisdavidson.org](https://hints.alexisdavidson.org)** in a
 Yes. In the Circles tab, tap "Add someone who doesn't use the app." You can keep their list for them.
 
 **Something isn't working, or I have an idea.**
-Tell Alexis! The easiest way is **Settings > Questions or problems** in Hints. It goes straight to her.
+Tell Alexis! The easiest way is **Settings > Help > Questions or problems** in Hints. It goes straight to her.
 
 ---
 

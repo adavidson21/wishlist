@@ -73,7 +73,7 @@
     --t0: #3A2129; --t0-ink: #F0B5C4; --t1: #1E3029; --t1-ink: #8FD0B4; --t2: #3A2F1C; --t2-ink: #F1D08A; --t3: #252A3D; --t3-ink: #B4BDF0;
     --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark; }
 
-  /* App color (Settings > Look and feel). Berry is the default; these swap the action color, tints and header band.
+  /* App color (Settings > Appearance). Berry is the default; these swap the action color, tints and header band.
      Gold, the logo and the paper stay the same so it still looks like Hints. Black & white also goes neutral gray. */
   :root[data-accent="navy"] { --pv-l: #27457A; --pv-d: #9DB6E6; --brand: #27457A; --soft: #E5EBF5; --soft-ink: #27457A; --hero: #172B4F; --hero-muted: #BFCBE3; --t0: #E5EBF5; --t0-ink: #27457A; --tint: 23, 43, 79; }
   @media (prefers-color-scheme: dark) { :root[data-accent="navy"]:not([data-theme="light"]) { --brand: #9DB6E6; --brand-ink: #0F1D36; --soft: #1F2A3D; --soft-ink: #B4C6EC; --hero: #101B30; --hero-muted: #A9B8D6; --t0: #1F2A3D; --t0-ink: #B4C6EC; } }
@@ -92,7 +92,7 @@
   :root[data-accent="mono"][data-theme="dark"] { --bg: #151515; --card: #1F1F1F; --panel: #292929; --line: #353535; }
 
 
-  /* Text size setting (Settings > Text size): Small, Normal, Large, Extra large. */
+  /* Text size setting (Settings > Appearance): Small, Normal, Large, Extra large. */
   /* Normal is a touch smaller than the raw CSS sizes (text and spacing together), so screens feel less oversized. */
   :root { --z: .92; }
   :root[data-text="sm"] { --z: .84; }
@@ -664,6 +664,24 @@
   .set-nav button[aria-current="page"] { background: var(--soft); color: var(--soft-ink); }
   .set-nav button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
   .set-nav .new-badge { margin-left: 0; vertical-align: 0; }
+  .set-nav .set-ic { display: none; }
+  /* Phone menu: grouped rows, each opens its section. */
+  .set-menu-h { margin: 22px 4px 8px; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .set-menu-h:first-child { margin-top: 0; }
+  .set-menu-card { background: var(--card); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .set-menu-out { margin-top: 22px; }
+  .set-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 14px; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+  .set-row + .set-row { border-top: 1px solid var(--line); }
+  .set-row:active { background: var(--panel); }
+  .set-row .txt { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .set-row .txt strong { font-size: 16px; display: inline-flex; align-items: center; gap: 8px; }
+  .set-row .txt small { color: var(--muted); font-size: 13.5px; }
+  .set-row .chev-r { flex: none; color: var(--faint); }
+  .set-row.danger { color: var(--danger, #B3261E); min-height: 54px; }
+  .set-ic { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--soft); color: var(--soft-ink); }
+  .set-row.danger .set-ic { background: color-mix(in srgb, currentColor 12%, transparent); color: inherit; }
+  .set-intro { margin: 0 2px 4px; }
+  .set-title { display: none; }
   /* Settings > Inbox (whoever runs Hints): notes and problems. */
   .report-head { display: flex; align-items: center; gap: 10px; }
   .report-head .who { display: flex; flex-direction: column; min-width: 0; }
@@ -1794,7 +1812,11 @@
     .set-nav { position: sticky; top: 24px; flex-direction: column; overflow: visible; margin: 0; padding: 0; gap: 2px; }
     .set-nav .set-nav-h { display: block; margin: 18px 12px 6px; }
     .set-nav .set-nav-h:first-child { margin-top: 0; }
-    .set-nav button { width: 100%; justify-content: flex-start; border-radius: 12px; padding: 0 14px; min-height: 46px; font-size: 16px; }
+    .set-nav button { width: 100%; justify-content: flex-start; border-radius: 12px; padding: 0 10px; min-height: 46px; font-size: 16px; gap: 10px; }
+    .set-nav .set-ic { display: grid; width: 30px; height: 30px; border-radius: 9px; background: var(--panel); color: var(--muted); }
+    .set-nav .set-ic svg { width: 17px; height: 17px; }
+    .set-nav button[aria-current] .set-ic { background: var(--card); color: var(--soft-ink); }
+    .set-title { display: block; margin: 0 0 6px; font-family: var(--display); font-size: 28px; }
     .set-nav button:not([aria-current]) { background: none; }
     .set-nav button:not([aria-current]):hover { background: var(--panel); color: var(--ink); }
     .set-body > .label:first-child { margin-top: 0; }
@@ -3542,7 +3564,7 @@ addEventListener("appinstalled", () => {
 // - "prompt": Chrome, Edge and Samsung Internet hand us their own install prompt (it never fires once installed).
 // - "ios": Safari on iPhone and iPad has no prompt, so we show the taps. "ios-other": Chrome, Edge, Firefox on iOS.
 // - "inapp": opened inside Facebook, Instagram, Gmail and so on, which can't install. We say how to open a real browser.
-// "Not now" snoozes it for 7 days, then 30, then stops. Settings > App always has it.
+// "Not now" snoozes it for 7 days, then 30, then stops. Settings > Help always has it.
 // iPhone home screen apps keep their own storage, so we can't see from Safari that it's installed:
 // the how-to sheet ends with "I've added it", which turns the card off for good.
 const INSTALL_KEY = "wishlist-install";
@@ -3624,7 +3646,7 @@ function installHowTo(way) {
   const ua = navigator.userAgent;
   const step = (html) => `<li><b></b><span>${html}</span></li>`;
   const signIn = !apple ? "" : code ? step(`Open Hints from your home screen and sign in once: invite code <strong class="code-inline">${esc(code)}</strong>, then tap your name.`)
-    : step("Open Hints from your home screen and paste your sign-in link under <strong>Already on Hints?</strong> No link? Make one in Settings &gt; Sign-in link first.");
+    : step("Open Hints from your home screen and paste your sign-in link under <strong>Already on Hints?</strong> No link? Make one in Settings &gt; Sign-in &amp; security first.");
   let title = "Add Hints to your home screen", intro = "", steps = [];
   if (way === "ios") {
     intro = "Safari doesn't have an install button, but it's just a few taps:";
@@ -9257,9 +9279,24 @@ async function renderProfileEdit() {
   });
 }
 
+// Settings section icons (menu rows and the side list).
+const svgI = (d) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const SET_I = {
+  look: svgI('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>'),
+  notify: svgI('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>'),
+  signin: svgI('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+  list: svgI('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z"/>'),
+  circles: svgI('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14a6.5 6.5 0 0 1 3.5 6"/>'),
+  household: svgI('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>'),
+  help: svgI('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.3-2.5 4"/><path d="M12 17.5h.01"/>'),
+  account: svgI('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+  inbox: svgI('<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/>'),
+  out: svgI('<path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4M6 12h10"/>'),
+};
+const CHEV_R = '<svg class="chev-r" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 // ---------- settings ----------
-// Opens from the gear on Profile. Sections: App (look and feel, PIN, install, sign out), then Groups: Circles, Household.
-// Deep links: #settings, #settings/circles, #settings/household.
+// Opens from the gear on Profile. Phones get a menu (#settings) and each section is its own page
+// (#settings/look, notify, signin, list, circles, household, help, account, inbox); wide screens show a side list.
 const MOTION_KEY = "wishlist-motion";
 const SUN_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 const MOON_I = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
@@ -9545,17 +9582,39 @@ async function renderSettings() {
   const iOS = isAppleMobile();
   const root = document.documentElement;
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
-  setHero(`<button class="back" type="button" id="backBtn">${BACK} Profile</button>${heroTitle(state.me.name, "Settings")}`);
   const v = $("#view");
   const owner = state.me.owner;
-  const secs = [["app", "App"], ["circles", multi() ? "Circles" : "Circle"], ["household", "Household"]];
-  if (owner?.you) secs.push(["inbox", "Inbox"]);
-  if (!secs.some(([k]) => k === state.setSec)) state.setSec = "app";
+  // Sections in groups: [heading, [[key, label, short description, icon], ...]]. Phones open on a menu of these
+  // (state.setSec "menu") and each one is its own short page; wide screens keep them in a side list.
+  const groups = [
+    ["You", [
+      ["look", "Appearance", "Light or dark, color, text size", SET_I.look],
+      ["notify", "Notifications", "New wishes, birthdays, group gifts", SET_I.notify],
+      ["signin", "Sign-in & security", "PIN, sign-in link, passkeys, devices", SET_I.signin],
+      ["list", "Your list", iOS ? "Ideas for you, the Share button" : "Ideas for you", SET_I.list],
+    ]],
+    ["Groups", [
+      ["circles", multi() ? "Circles" : "Circle", "Invite, join or leave", SET_I.circles],
+      ["household", "Household", "Who you live or gift with", SET_I.household],
+    ]],
+    ["More", [
+      ["help", "Help", owner && !owner.you ? "Install the app, the tour, send a note" : "Install the app, the tour", SET_I.help],
+      ["account", "Account & data", "Download your budget, privacy, delete", SET_I.account],
+    ]],
+    ...(owner?.you ? [["Running Hints", [["inbox", "Inbox", "Notes and problems", SET_I.inbox]]]] : []),
+  ];
+  const secs = groups.flatMap(([, list]) => list);
+  const wide = !onPhone();
+  // Old links (#settings, "app") land on the menu on phones and Appearance on wide screens.
+  if (state.setSec === "app" || (!secs.some(([k]) => k === state.setSec) && state.setSec !== "menu")) state.setSec = wide ? "look" : "menu";
+  if (wide && state.setSec === "menu") state.setSec = "look";
   const sec = state.setSec;
+  const cur = secs.find(([k]) => k === sec);
+  setHero(sec === "menu" || wide
+    ? `<button class="back" type="button" id="backBtn">${BACK} Profile</button>${heroTitle(state.me.name, "Settings")}`
+    : `<button class="back" type="button" id="backBtn">${BACK} Settings</button>${heroTitle("Settings", cur[1])}`);
   const html = {
-    app: `
-
-    <div class="label">Look and feel</div>
+    look: `
     <div class="set-card">
       <h4>Light or dark</h4>
       <div class="modes" role="radiogroup" aria-label="Light or dark" id="modes">
@@ -9579,11 +9638,13 @@ async function renderSettings() {
       ${swRow("motionSw", "Animations", "", root.dataset.motion !== "off")}
     </div>
 
-    <div class="label">Ideas for you</div>
-    <div class="set-card">
-      ${swRow("ideasSw", "Show ideas on My list", "Suggestions based on the wishes on your list", !state.me.ideasOff)}
-    </div>
+`,
+    notify: `
+    <p class="subtle set-intro">Turned on separately on each phone or computer.</p>
+    <div class="set-card" id="pushCard"><p class="sub">Checking this device...</p></div>
 
+`,
+    signin: `
     <div class="label">Sign-in PIN${tip("Stops anyone else signing in as you and seeing your notes.")}</div>
     <div class="set-card">
       <p class="sub">You'll need it to sign in on a new phone or computer.</p>
@@ -9602,12 +9663,24 @@ async function renderSettings() {
     ${passkeyOk() ? `<div class="label">Passkeys${tip("Sign in with Face ID or your fingerprint. Saved in iCloud Keychain or Google Password Manager, so a new phone has it too.")}</div>
     <div class="set-card" id="passkeyCard"></div>` : ""}
 
+    <div class="label">Signed-in devices</div>
+    <div class="set-card">
+      <button class="btn wide" type="button" id="signOutOthers">Sign out everywhere else</button>
+      <p class="sub" style="margin:6px 0 12px">Lost a phone, or signed in on someone else's? This signs out every other phone and computer.</p>
+      <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
+    </div>
+`,
+    list: `
+    <div class="label">Ideas for you</div>
+    <div class="set-card">
+      ${swRow("ideasSw", "Show ideas on My list", "Suggestions based on the wishes on your list", !state.me.ideasOff)}
+    </div>
+
     ${iOS ? `<div class="label">Add from the Share button${tip("Share a product from Safari, Amazon or any app straight to your Maybe list.")}</div>
     <div class="set-card" id="addKeyCard"></div>` : ""}
 
-    <div class="label">Notifications${tip("New wishes, birthday reminders and group gifts. Turned on per phone or computer.")}</div>
-    <div class="set-card" id="pushCard"><p class="sub">Checking this device...</p></div>
-
+`,
+    help: `
     <div class="label">The app</div>
     <div class="set-card">
       ${standalone ? "" : `<h4>Add to home screen</h4>
@@ -9625,6 +9698,8 @@ async function renderSettings() {
       </form>
     </div>` : ""}
 
+`,
+    account: `
     <div class="label">Download your budget${tip("An Excel file with your budgets, purchases and gift ideas. Only you can see these.")}</div>
     <div class="set-card">
       <div class="actions" style="margin-top:0">
@@ -9633,16 +9708,18 @@ async function renderSettings() {
       </div>
     </div>
 
-    <div class="label">Your account</div>
+    <div class="label">Privacy</div>
     <div class="set-card">
-      <button class="btn wide" type="button" id="signOutOthers">Sign out everywhere else</button>
-      <p class="sub" style="margin:6px 0 12px">Lost a phone, or signed in on someone else's? This signs out every other phone and computer.</p>
-      <button class="btn wide danger" type="button" id="signOut">Sign out on this device</button>
-      <hr class="set-div">
-      <a class="btn wide quiet" href="/privacy" target="_blank" rel="noopener">Privacy: what Hints keeps and who sees it</a>
-      <button class="btn wide quiet danger" type="button" id="deleteMe" style="margin-top:8px">Delete my Hints</button>
+      <a class="btn wide quiet" href="/privacy" target="_blank" rel="noopener">What Hints keeps and who sees it</a>
+    </div>
+
+    <div class="label">Delete my Hints</div>
+    <div class="set-card">
+      <p class="sub">Deletes your list, ideas, budgets, chat messages and photos for good.</p>
+      <button class="btn wide danger" type="button" id="deleteMe">Delete my Hints</button>
     </div>
 `,
+
     circles: `
     <div class="label">${multi() ? "Your circles" : state.groups.length ? "Your circle" : "Circles"}${tip(multi() ? "Every circle sees the same list. To hide a wish from one, open it and turn that circle off." : "Do gifts with another group too? Join their circle and keep one list for all of them.")}</div>
     <div class="set-card">
@@ -9674,30 +9751,46 @@ async function renderSettings() {
 
 `,
   };
-  v.innerHTML = `<div class="set-layout">
-    <nav class="set-nav" aria-label="Settings sections">
-      <span class="set-nav-h">You</span>
-      ${navBtn(secs[0])}
-      <span class="set-nav-h">Groups</span>
-      ${secs.slice(1, 3).map(navBtn).join("")}
-      ${owner?.you ? `<span class="set-nav-h">Running Hints</span>${navBtn(secs[3])}` : ""}
-    </nav>
-    <div class="set-body">${html[sec]}</div>
-  </div>`;
-  function navBtn([k, l]) {
-    const n = k === "inbox" ? owner?.open || 0 : 0;
-    return `<button type="button" data-sec="${k}"${k === sec ? ' aria-current="page"' : ""}>${l}${n ? `<span class="new-badge" id="inboxCount">${n}</span>` : ""}</button>`;
+  const badge = (k) => (k === "inbox" && owner?.open ? `<span class="new-badge" id="inboxCount">${owner.open}</span>` : "");
+  if (sec === "menu") {
+    state.setFromMenu = false;
+    // Phone: the menu. Each row opens its section as its own page (a real history step, so Back returns here).
+    v.innerHTML = `<nav class="set-menu" aria-label="Settings">
+      ${groups.map(([h, list]) => `<div class="set-menu-h">${esc(h)}</div><div class="set-menu-card">${list.map(([k, l, d, ic]) => `
+        <button class="set-row" type="button" data-sec="${k}"><span class="set-ic" aria-hidden="true">${ic}</span>
+          <span class="txt"><strong>${esc(l)}${badge(k)}</strong><small>${esc(d)}</small></span>${CHEV_R}</button>`).join("")}</div>`).join("")}
+      <div class="set-menu-card set-menu-out"><button class="set-row danger" type="button" id="menuSignOut"><span class="set-ic" aria-hidden="true">${SET_I.out}</span><span class="txt"><strong>Sign out</strong></span></button></div>
+    </nav>`;
+  } else {
+    v.innerHTML = `<div class="set-layout">
+      ${wide ? `<nav class="set-nav" aria-label="Settings sections">
+        ${groups.map(([h, list]) => `<span class="set-nav-h">${esc(h)}</span>${list.map(([k, l, , ic]) =>
+          `<button type="button" data-sec="${k}"${k === sec ? ' aria-current="page"' : ""}><span class="set-ic" aria-hidden="true">${ic}</span>${esc(l)}${badge(k)}</button>`).join("")}`).join("")}
+      </nav>` : ""}
+      <div class="set-body">${wide ? `<h2 class="set-title">${esc(cur[1])}</h2>` : ""}${html[sec]}</div>
+    </div>`;
   }
   v.querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => {
     if (b.dataset.sec === sec) return;
     state.setSec = b.dataset.sec;
-    history.replaceState(null, "", b.dataset.sec === "app" ? "#settings" : `#settings/${b.dataset.sec}`);
-    renderSettings();
+    if (wide) { history.replaceState(null, "", `#settings/${b.dataset.sec}`); renderSettings(); }
+    else { state.setFromMenu = true; location.hash = `#settings/${b.dataset.sec}`; }
   }));
-  $("#backBtn").onclick = () => setTab("profile");
+  $("#backBtn").onclick = () => {
+    if (sec === "menu" || wide) return setTab("profile");
+    // Came from the menu: step back to it (so the phone's Back doesn't bounce between them). Otherwise open it.
+    if (state.setFromMenu) { state.setFromMenu = false; history.back(); }
+    else location.hash = "#settings";
+  };
+  $("#menuSignOut", v)?.addEventListener("click", async () => {
+    if (!(await ask("Sign out on this device? You'll need your PIN to sign back in.", { yes: "Sign out" }))) return;
+    await dropBrowserPush();
+    try { await api("signout", {}); } catch {}
+    signOutHere();
+  });
   const reload = (msg) => { closeSheet(); toast(msg); state.stale = true; render(); };
 
-  if (sec === "app") {
+  if (sec === "look") {
     // Light or dark: the two tiles always show what you're seeing now. Picking one turns "Match my phone" off.
     const paintTheme = () => {
       const dark = isDark();
@@ -9720,6 +9813,9 @@ async function renderSettings() {
       setMotion(on);
       e.currentTarget.setAttribute("aria-checked", String(on));
     };
+  }
+  if (sec === "list") {
+    paintAddKey($("#addKeyCard", v));
     $("#ideasSw", v).onclick = async (e) => {
       const b = e.currentTarget, on = b.getAttribute("aria-checked") !== "true";
       b.setAttribute("aria-checked", String(on));
@@ -9732,19 +9828,10 @@ async function renderSettings() {
         oops(err.message);
       }
     };
-
+  }
+  if (sec === "help") {
     $("#replayTour", v).onclick = () => { state.welcome = null; openTour(); };
-    v.querySelectorAll("[data-export]").forEach((b) => (b.onclick = async () => {
-      b.disabled = true;
-      try { await exportExcel(await load("tracker"), b.dataset.export); }
-      catch (e) { oops(e.message); }
-      finally { b.disabled = false; }
-    }));
     $("#installSettings", v)?.addEventListener("click", () => startInstall());
-    paintPush($("#pushCard", v));
-    paintMyLink($("#linkCard", v));
-    paintPasskeys($("#passkeyCard", v));
-    paintAddKey($("#addKeyCard", v));
     const nf = $("#noteForm", v);
     if (nf) wireForm(nf, async ({ body }) => {
       const { to } = await api("note", { body, page: location.hash.split("/")[0], version: appVersion });
@@ -9752,6 +9839,19 @@ async function renderSettings() {
       buzz();
       toast(`Sent to ${to}. Thank you!`);
     });
+  }
+  if (sec === "account") {
+    v.querySelectorAll("[data-export]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await exportExcel(await load("tracker"), b.dataset.export); }
+      catch (e) { oops(e.message); }
+      finally { b.disabled = false; }
+    }));
+  }
+  if (sec === "notify") paintPush($("#pushCard", v));
+  if (sec === "signin") {
+    paintMyLink($("#linkCard", v));
+    paintPasskeys($("#passkeyCard", v));
     wireForm($("#pinForm", v), async ({ pin }) => { await api("profile", { pin }); reload("PIN saved"); });
     $("#signOut", v).onclick = async () => {
       // The server drops this device's notifications with the sign-in; the browser forgets its subscription too,
@@ -9767,6 +9867,8 @@ async function renderSettings() {
       catch (err) { oops(err.message); }
       e.currentTarget.disabled = false;
     };
+  }
+  if (sec === "account") {
     $("#deleteMe", v).onclick = () => openSheet(`<form id="delForm" autocomplete="off">
         <h3>Delete my Hints?</h3>
         <p>This deletes your profile, your wish list, your gift ideas, budgets and purchases, your chat messages and your photos, for good. Your circles won't see your list anymore, and it can't be undone.</p>
