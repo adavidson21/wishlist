@@ -1,0 +1,468 @@
+{
+  "$schema-note": "Brand component catalog. Snippets use the b- prefixed classes from brand.css; brand-compat.css uses the same names without b-.",
+  "states": {
+    "default": "Semantic tokens only.",
+    "hover": "One small step, --dur-fast. Never the only way to reveal something.",
+    "focus": "The global :focus-visible ring (3px, accent, 2px offset), instant, keyboard only.",
+    "active": "The sticker press, instant.",
+    "disabled": "[disabled] or aria-disabled=\"true\": muted, flat, no hover. aria-disabled stays focusable so the app can explain why on click.",
+    "loading": ".busy plus aria-busy=\"true\": spinner, repeat clicks blocked, width held."
+  },
+  "components": [
+    {
+      "name": "Page frame",
+      "id": "page",
+      "group": "Layout",
+      "classes": [
+        "b-page",
+        "b-page.wide",
+        "b-page.full",
+        "b-read"
+      ],
+      "use": "Every screen's main column. .b-page is Hints' 560px phone column; .wide is Workshop's list and form width; .full goes edge to edge. .b-read caps long text at 68ch.",
+      "snippet": "<main class=\"b-page wide\">\n  <header class=\"b-page-head\">\n    <div class=\"ph-main\"><p class=\"b-eyebrow\">Docket</p><h1>Today</h1></div>\n    <div class=\"ph-acts\"><button class=\"b-btn primary\">New task</button></div>\n    <nav class=\"b-tabs\"><a href=\"#\" aria-current=\"page\">Today</a><a href=\"#\">Week</a><a href=\"#\">Done</a></nav>\n  </header>\n</main>",
+      "aria": "Use one <main>. Tabs that switch views are links with aria-current=\"page\"; tabs that switch panels use role=\"tablist\" with aria-selected.",
+      "keyboard": "Tab moves through tabs; the ring sits inside the tab.",
+      "variants": [],
+      "states": [
+        "default"
+      ]
+    },
+    {
+      "name": "Hero band",
+      "id": "hero",
+      "group": "Layout",
+      "classes": [
+        "b-hero",
+        "b-hero-in",
+        "b-hero.wide"
+      ],
+      "use": "The deep garnet header band. Garnet in every app, whatever the accent. One per page, at the top.",
+      "snippet": "<header class=\"b-hero\">\n  <div class=\"b-hero-in\">\n    <p class=\"b-eyebrow\">Alexis Davidson</p>\n    <h1>Hints</h1>\n    <p class=\"b-kicker\">Gift ideas for the whole family.</p>\n  </div>\n</header>",
+      "aria": "A <header> landmark. Text inside uses --hero-ink and --hero-muted; focus rings turn topaz.",
+      "keyboard": "Add data-toggle-class=\"on-hero\" to the theme.js tag so the toggle reads on the band.",
+      "variants": [],
+      "states": [
+        "default"
+      ]
+    },
+    {
+      "name": "Button",
+      "id": "button",
+      "group": "Actions",
+      "classes": [
+        "b-btn"
+      ],
+      "variants": [
+        {
+          "class": "primary",
+          "use": "The one main action on a screen. Solid accent."
+        },
+        {
+          "class": "(none)",
+          "use": "Secondary actions. Outlined."
+        },
+        {
+          "class": "soft",
+          "use": "Tinted secondary, for a group of actions."
+        },
+        {
+          "class": "quiet",
+          "use": "Text-only actions in toolbars and lists."
+        },
+        {
+          "class": "dashed",
+          "use": "Add another item."
+        },
+        {
+          "class": "danger",
+          "use": "Destructive, needs a confirm."
+        },
+        {
+          "class": "danger solid",
+          "use": "Destructive confirm, inside a sheet."
+        },
+        {
+          "class": "cta",
+          "use": "The big full-width sticker call to action. One per screen."
+        },
+        {
+          "class": "small / pill / wide",
+          "use": "Size and shape."
+        }
+      ],
+      "states": [
+        "default",
+        "hover",
+        "focus",
+        "active",
+        "disabled",
+        "loading"
+      ],
+      "snippet": "<button class=\"b-btn primary\">Save</button>\n<button class=\"b-btn\">Cancel</button>\n<button class=\"b-btn busy primary\" aria-busy=\"true\">Saving</button>\n<button class=\"b-btn\" aria-disabled=\"true\">Publish</button>",
+      "aria": "Use <button> for actions and <a> for navigation. Loading: add .busy and aria-busy=\"true\". Disabled: prefer aria-disabled=\"true\" (stays focusable) and explain why on click; use the disabled attribute only when there is nothing to explain.",
+      "keyboard": "Enter and Space activate. Focus ring on Tab only.",
+      "use": ""
+    },
+    {
+      "name": "Icon button",
+      "id": "iconbtn",
+      "group": "Actions",
+      "classes": [
+        "b-iconbtn",
+        "b-ibtn"
+      ],
+      "use": ".b-iconbtn is round and outlined (Hints). .b-ibtn is the square, borderless toolbar button (Workshop).",
+      "states": [
+        "default",
+        "hover",
+        "focus",
+        "active"
+      ],
+      "snippet": "<button class=\"b-iconbtn\" aria-label=\"Add\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg></button>",
+      "aria": "Always an aria-label. The svg gets aria-hidden=\"true\".",
+      "keyboard": "Enter and Space.",
+      "variants": []
+    },
+    {
+      "name": "Link button",
+      "id": "linkbtn",
+      "group": "Actions",
+      "classes": [
+        "b-linkbtn"
+      ],
+      "use": "A small underlined text action (Undo, Show all). Text-sized, with a full 44px hit area.",
+      "snippet": "<button class=\"b-linkbtn\">Show all</button>",
+      "aria": "A <button>, or an <a> when it navigates.",
+      "keyboard": "Enter and Space.",
+      "variants": [],
+      "states": [
+        "default"
+      ]
+    },
+    {
+      "name": "Card",
+      "id": "card",
+      "group": "Containers",
+      "classes": [
+        "b-card"
+      ],
+      "variants": [
+        {
+          "class": "(none)",
+          "use": "Sticker: ink outline, accent offset."
+        },
+        {
+          "class": "pick",
+          "use": "Topaz offset for the one that matters most."
+        },
+        {
+          "class": "done",
+          "use": "Pine, for finished things."
+        },
+        {
+          "class": "draft",
+          "use": "Dashed and quiet until ready."
+        },
+        {
+          "class": "flat",
+          "use": "Hairline, no offset, for dense screens."
+        },
+        {
+          "class": "soft",
+          "use": "Panel fill, no outline."
+        },
+        {
+          "class": "hero-card",
+          "use": "Deep garnet with a topaz offset."
+        }
+      ],
+      "states": [
+        "default",
+        "hover",
+        "focus",
+        "active"
+      ],
+      "snippet": "<a class=\"b-card\" href=\"#\">\n  <h3>Noise-cancelling headphones</h3>\n  <p class=\"b-subtle\">Added by Sam</p>\n  <span class=\"b-tag price\">$120</span>\n</a>",
+      "aria": "A tappable card is one <a> or <button>; do not nest other controls inside it.",
+      "keyboard": "Tappable cards lift on hover and press flat.",
+      "use": ""
+    },
+    {
+      "name": "List",
+      "id": "list",
+      "group": "Containers",
+      "classes": [
+        "b-list",
+        "b-tile",
+        "b-avatar"
+      ],
+      "use": "Rows on hairlines inside one card. Lead each row with a .b-tile (category tint t0 to t3) or a .b-avatar.",
+      "snippet": "<div class=\"b-card\">\n  <ul class=\"b-list\">\n    <li><span class=\"b-tile sm t1\">✓</span><div class=\"grow\"><strong>Ship the brand library</strong><small>Today</small></div><button class=\"b-btn small\">Open</button></li>\n    <li><span class=\"b-avatar sm\">A</span><div class=\"grow\"><strong>Alexis</strong><small>Owner</small></div><span class=\"b-tag accent\">You</span></li>\n  </ul>\n</div>",
+      "aria": "A real <ul>. Emoji in tiles are decoration: give the row text that says the same thing.",
+      "keyboard": "Rows themselves are not focusable; their buttons are.",
+      "variants": [],
+      "states": [
+        "default"
+      ]
+    },
+    {
+      "name": "Stats and meter",
+      "id": "stats",
+      "group": "Containers",
+      "classes": [
+        "b-stats",
+        "b-stat",
+        "b-meter"
+      ],
+      "variants": [
+        {
+          "class": "stat ok",
+          "use": "Done count."
+        },
+        {
+          "class": "stat gold",
+          "use": "Highlight."
+        }
+      ],
+      "snippet": "<div class=\"b-stats\">\n  <div class=\"b-stat\"><b>24</b><span>Open</span></div>\n  <div class=\"b-stat ok\"><b>18</b><span>Done</span></div>\n</div>\n<div class=\"b-meter\"><i><b style=\"width:62%\"></b></i><span>62%</span></div>",
+      "aria": "For a meter that means something, add role=\"progressbar\" with aria-valuenow, aria-valuemin and aria-valuemax on the <i>.",
+      "keyboard": "Not interactive.",
+      "states": [
+        "default"
+      ],
+      "use": ""
+    },
+    {
+      "name": "Chips",
+      "id": "chips",
+      "group": "Labels",
+      "classes": [
+        "b-chips",
+        "b-chip",
+        "b-count"
+      ],
+      "use": "Filters. Soft tint pills; the selected one turns pale accent with a ring and a check.",
+      "states": [
+        "default",
+        "hover",
+        "focus",
+        "active",
+        "selected"
+      ],
+      "snippet": "<div class=\"b-chips\" role=\"group\" aria-label=\"Filter\">\n  <button class=\"b-chip\" aria-pressed=\"true\">All <span class=\"n\">12</span></button>\n  <button class=\"b-chip\" aria-pressed=\"false\">Wishes <span class=\"n\">8</span></button>\n</div>",
+      "aria": "Toggle chips use aria-pressed. Single-choice chips can use role=\"radiogroup\" with aria-checked instead.",
+      "keyboard": "Tab to each chip; Enter or Space toggles.",
+      "variants": []
+    },
+    {
+      "name": "Tags",
+      "id": "tags",
+      "group": "Labels",
+      "classes": [
+        "b-tags",
+        "b-tag"
+      ],
+      "variants": [
+        {
+          "class": "accent",
+          "use": "Neutral emphasis in the app's accent."
+        },
+        {
+          "class": "gold",
+          "use": "Top pick."
+        },
+        {
+          "class": "ok",
+          "use": "Done."
+        },
+        {
+          "class": "warn",
+          "use": "Due soon."
+        },
+        {
+          "class": "danger",
+          "use": "Late, failed."
+        },
+        {
+          "class": "t0 to t3",
+          "use": "Categories only: garnet, tourmaline, amethyst, sapphire. Never a status."
+        },
+        {
+          "class": "outline",
+          "use": "Quiet label."
+        },
+        {
+          "class": "price",
+          "use": "The tilted price tag."
+        },
+        {
+          "class": "mono",
+          "use": "Versions and IDs."
+        }
+      ],
+      "snippet": "<div class=\"b-tags\"><span class=\"b-tag ok\">Done</span><span class=\"b-tag warn\">Due soon</span><span class=\"b-tag t2\">Home</span><span class=\"b-tag mono\">v2.0.0</span></div>",
+      "aria": "Status tags carry a word, not just a color.",
+      "keyboard": "Not interactive.",
+      "states": [
+        "default"
+      ],
+      "use": ""
+    },
+    {
+      "name": "Field and input",
+      "id": "input",
+      "group": "Input",
+      "classes": [
+        "b-field",
+        "b-input"
+      ],
+      "use": "Soft filled inputs: panel fill with a 3:1 edge at rest, white with an accent ring while typing. Works on input, select and textarea.",
+      "states": [
+        "default",
+        "hover",
+        "focus",
+        "invalid",
+        "disabled"
+      ],
+      "snippet": "<label class=\"b-field\">\n  <span>Name <em>(optional)</em></span>\n  <input class=\"b-input\" placeholder=\"What should we call it?\">\n  <small>Only you can see this.</small>\n</label>\n<label class=\"b-field\">\n  <span>Email</span>\n  <input class=\"b-input\" type=\"email\" aria-invalid=\"true\" aria-describedby=\"email-err\">\n  <small class=\"err\" id=\"email-err\">Add an @ and a domain.</small>\n</label>",
+      "aria": "Every input has a visible label. Errors: aria-invalid=\"true\" plus a message linked with aria-describedby. Placeholders are hints, never the label.",
+      "keyboard": "Standard.",
+      "variants": []
+    },
+    {
+      "name": "Switch, checkbox, segmented",
+      "id": "switch",
+      "group": "Input",
+      "classes": [
+        "b-sw-row",
+        "b-switch",
+        "b-check",
+        "b-seg"
+      ],
+      "snippet": "<button class=\"b-sw-row\" role=\"switch\" aria-checked=\"true\">Notifications <span class=\"b-switch\"></span></button>\n<label class=\"b-check\"><input type=\"checkbox\" checked> Remember me</label>\n<div class=\"b-seg\" role=\"radiogroup\" aria-label=\"View\">\n  <button role=\"radio\" aria-checked=\"true\">Day</button><button role=\"radio\" aria-checked=\"false\">Week</button>\n</div>",
+      "aria": "Switch: role=\"switch\" with aria-checked. Segmented: role=\"radiogroup\" with role=\"radio\" buttons.",
+      "keyboard": "Switch: Space toggles. Segmented: arrow keys move the choice (the app wires this).",
+      "variants": [],
+      "states": [
+        "default"
+      ],
+      "use": ""
+    },
+    {
+      "name": "Notes and empty states",
+      "id": "note",
+      "group": "Feedback",
+      "classes": [
+        "b-note",
+        "b-empty",
+        "b-check-done"
+      ],
+      "variants": [
+        {
+          "class": "accent",
+          "use": "Heads up."
+        },
+        {
+          "class": "gold",
+          "use": "Good news."
+        },
+        {
+          "class": "ok",
+          "use": "Success."
+        },
+        {
+          "class": "warn",
+          "use": "Needs a look."
+        },
+        {
+          "class": "danger",
+          "use": "Something went wrong."
+        }
+      ],
+      "snippet": "<div class=\"b-note warn\" role=\"status\"><span><strong>Heads up:</strong> two items are due tomorrow.</span></div>\n<div class=\"b-empty\">\n  <strong>Nothing here yet</strong>\n  <p>Empty states say what goes here and offer the one next step.</p>\n  <button class=\"b-btn primary\">Add the first one</button>\n</div>",
+      "aria": "A note that appears after an action gets role=\"status\" (or role=\"alert\" for errors).",
+      "keyboard": "Not interactive.",
+      "states": [
+        "default"
+      ],
+      "use": ""
+    },
+    {
+      "name": "Menu and tooltip",
+      "id": "menu",
+      "group": "Feedback",
+      "classes": [
+        "b-menu",
+        "b-tip"
+      ],
+      "snippet": "<div class=\"b-menu\" role=\"menu\">\n  <button role=\"menuitem\">Rename</button>\n  <button role=\"menuitem\">Duplicate</button>\n  <div class=\"sep\" role=\"separator\"></div>\n  <button role=\"menuitem\" class=\"danger\">Delete</button>\n</div>",
+      "aria": "role=\"menu\" with role=\"menuitem\" buttons; the trigger has aria-haspopup=\"menu\" and aria-expanded. Tooltips repeat an aria-label and never hold the only copy of information (they hide on touch).",
+      "keyboard": "Arrow keys move, Escape closes and returns focus to the trigger (the app wires this).",
+      "variants": [],
+      "states": [
+        "default"
+      ],
+      "use": ""
+    },
+    {
+      "name": "Toast",
+      "id": "toast",
+      "group": "Feedback",
+      "classes": [
+        "b-toast"
+      ],
+      "variants": [
+        {
+          "class": "show",
+          "use": "Visible."
+        },
+        {
+          "class": "err",
+          "use": "Error offset and icon."
+        }
+      ],
+      "snippet": "<div class=\"b-toast show\" role=\"status\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m5 12 5 5 9-10\"/></svg><span>Saved to your list</span><button>Undo</button></div>",
+      "aria": "role=\"status\" (polite). Keep it up at least 4 seconds, longer with an Undo.",
+      "keyboard": "Undo is a real button and keeps a 44px hit area.",
+      "states": [
+        "default"
+      ],
+      "use": ""
+    },
+    {
+      "name": "Sheet",
+      "id": "sheet",
+      "group": "Feedback",
+      "classes": [
+        "b-sheet"
+      ],
+      "use": "A <dialog>: slides up on phones with a topaz stripe; a centered sticker card on wider screens.",
+      "snippet": "<dialog class=\"b-sheet\" aria-labelledby=\"sheet-title\">\n  <div class=\"sheet-in\">\n    <button class=\"b-iconbtn sheet-close\" aria-label=\"Close\">✕</button>\n    <h2 id=\"sheet-title\">New idea</h2>\n    <label class=\"b-field\"><span>Title</span><input class=\"b-input\"></label>\n    <button class=\"b-btn primary wide\">Done</button>\n  </div>\n</dialog>",
+      "aria": "Open with showModal() so focus is trapped and Escape closes it. Label it with aria-labelledby.",
+      "keyboard": "Escape closes; focus returns to the trigger.",
+      "variants": [],
+      "states": [
+        "default"
+      ]
+    },
+    {
+      "name": "Theme toggle",
+      "id": "theme-toggle",
+      "group": "App shell",
+      "classes": [
+        "b-theme-toggle",
+        "on-hero"
+      ],
+      "use": "theme.js adds it to the top right corner of every page. Never build your own.",
+      "snippet": "<script src=\"https://tools.alexisdavidson.org/brand/v2/theme.js\" data-toggle-class=\"on-hero\"></script>",
+      "aria": "theme.js sets aria-label to the action (\"Switch to dark mode\").",
+      "keyboard": "Enter and Space.",
+      "variants": [],
+      "states": [
+        "default"
+      ]
+    }
+  ],
+  "version": "2.0.0"
+}

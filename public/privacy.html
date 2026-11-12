@@ -6,10 +6,10 @@
 <title>Privacy · Hints</title>
 <meta name="description" content="What Hints keeps, who can see it, and how to delete it.">
 <link rel="icon" href="/icons/icon-192.png">
-<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/brand/tokens.css">
 <style>
-  :root { --brand: #7A1E3A; --ink: #2A1A1F; --muted: #6B5E62; --bg: #FBF7F2; --card: #fff; --line: #EFE6E1; --gold: #D9A94A; --gold-soft: #FBF1DC; }
-  @media (prefers-color-scheme: dark) { :root { --ink: #F3E9EC; --muted: #B9A9AE; --bg: #1B1416; --card: #261D20; --line: #3A2D31; --gold-soft: #3A2F1C; } }
+  /* Colors and fonts from the brand library (/brand/tokens.css); --brand here is the action color. */
+  :root { --brand: var(--accent); }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 Figtree, system-ui, sans-serif; }
   header { background: var(--brand); color: #fff; padding: 32px 20px 28px; }
