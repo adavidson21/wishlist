@@ -2067,6 +2067,15 @@
     .tab[data-tab][aria-current="page"]::after { content: ""; position: absolute; bottom: -5px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--gold); }
   }
   ::selection { background: color-mix(in srgb, var(--gold) 40%, transparent); }
+  /* Settings > Inbox > Autofill (owner): hit rates per store */
+  .fill-row { display: grid; grid-template-columns: minmax(0, 1.7fr) repeat(5, minmax(0, .75fr)); gap: 6px; align-items: center; font-size: 13px; padding: 7px 0; border-top: 1px solid var(--line, rgba(0,0,0,.08)); }
+  .fill-row.head { color: var(--muted); font-weight: 600; border-top: 0; padding-top: 0; }
+  .fill-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fill-row span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+  .fill-low { color: var(--warn); font-weight: 700; }
+  .fill-check { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 7px 0; border-top: 1px solid var(--line, rgba(0,0,0,.08)); }
+  .fill-check .bad { color: var(--warn); font-weight: 700; }
+  .fill-check .good { color: var(--ok); font-weight: 700; }
   .pk-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line, rgba(0,0,0,.08)); }
   .pk-row > span:first-child { min-width: 0; }
   .pk-row small { display: block; color: var(--muted); font-weight: 400; }
@@ -10030,8 +10039,8 @@ async function renderSettings() {
 // Settings > Inbox, for whoever runs Hints: notes from Settings > Questions or problems, and problems the app or
 // the API ran into (the same problem counts up on one card, and comes back if it happens again after Done).
 async function paintInbox(box) {
-  let reports;
-  try { ({ reports } = await api("reports")); }
+  let reports, fill = null;
+  try { [{ reports }, fill] = await Promise.all([api("reports"), api("fill/stats").catch(() => null)]); }
   catch (e) { box.innerHTML = `<div class="set-card"><p class="sub" style="margin:0">${esc(e.message)}</p></div>`; return; }
   const open = reports.filter((r) => !r.done), done = reports.filter((r) => r.done);
   if (state.me.owner) state.me.owner.open = open.length;
@@ -10057,6 +10066,7 @@ async function paintInbox(box) {
     ${open.length ? open.map(card).join("") : `<div class="set-card"><p class="sub" style="margin:0">All clear. Nothing new.</p></div>`}
     ${done.length ? `<div class="label">Done</div>${done.map(card).join("")}` : ""}
     <p class="subtle" style="margin-top:14px">Done cards, and problems that stop happening, clear themselves after 90 days.</p>
+    ${fill ? fillStatsHtml(fill) : ""}
     <div class="label">Find someone${tip("Raise AI: only the app's daily cap applies to them, no per-person limits. Delete: for deletion requests by email from people who can't sign in, same as Delete my Hints.")}</div>
     <div class="set-card"><form id="ownerFind" autocomplete="off"><div class="err" hidden></div>
       <label class="field"><span>Their name</span><span class="land-code-row"><input class="input" name="q" maxlength="60" required>
@@ -10095,6 +10105,32 @@ async function paintInbox(box) {
     }));
   };
   wireForm($("#ownerFind", box), async ({ q }) => showFound((await api("owner/find", { q })).people));
+}
+
+// Settings > Inbox > Autofill (owner): how well pasted links fill in, per store, from the fill log (GET fill/stats).
+// Name, photo and price are the share of lookups that got one. Under 80% is flagged so a store breaking stands out.
+function fillStatsHtml(f) {
+  const secs = (ms) => `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} s`;
+  const cell = (n) => `<span class="${n < 80 ? "fill-low" : ""}">${n}%</span>`;
+  const row = (label, r) => `<div class="fill-row"><span title="${esc(label)}">${esc(label)}</span><span>${r.fills}</span>${cell(r.name)}${cell(r.photo)}${cell(r.price)}<span>${secs(r.msHalf)}</span></div>`;
+  const day = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }); } catch { return ""; } };
+  const pageWord = { gone: "link gone", blocked: "blocked", timeout: "no answer", noname: "no name on page", error: "couldn't read" };
+  const check = (c) => {
+    if (!c.last) return `<div class="fill-check"><span>${esc(c.store)}</span><span class="subtle" style="margin:0">Not checked yet</span></div>`;
+    const what = c.last.ok ? `✓ ${day(c.last.at)}${c.last.price ? "" : " · no price"}${c.last.photo ? "" : " · no photo"}`
+      : `✗ ${day(c.last.at)} · ${pageWord[c.last.page] || "no name"}${c.failing > 1 ? ` · ${c.failing} in a row` : ""}`;
+    return `<div class="fill-check"><span>${esc(c.store)}</span><span class="${c.last.ok ? "good" : "bad"}">${esc(what)}</span></div>`;
+  };
+  const a = f.all;
+  return `<div class="label">Autofill, last ${f.days} days${tip("How well pasted and shared links fill in. Name, photo and price: the share of lookups that got one. Speed: half of lookups finished within this. Under 80% is highlighted. The daily check tries one real product per store overnight and notifies you if a store fails twice in a row.")}</div>
+    <div class="set-card">
+      ${a.fills ? `<p class="sub">${plural(a.fills, "lookup", "lookups")} · AI helped on ${a.ai}% · named from the link on ${a.guess}% · store blocked us on ${a.blocked}%</p>
+        <div class="fill-row head"><span>Store</span><span>Fills</span><span>Name</span><span>Photo</span><span>Price</span><span>Speed</span></div>
+        ${f.stores.map((r) => row(r.host, r)).join("")}
+        ${f.other ? row(`${plural(f.other.sites, "other site", "other sites")}`, f.other) : ""}`
+      : '<p class="sub" style="margin:0">No links filled in yet. Numbers show up here as people paste and share links.</p>'}
+      ${f.checks?.length ? `<h4 style="margin-top:16px">Daily check</h4>${f.checks.map(check).join("")}` : ""}
+    </div>`;
 }
 
 // A new invite link for a circle (admin). Old links and the old code stop working.
