@@ -364,6 +364,8 @@ const ROUTES = {
   "POST passkey/remove": "Answers with your own passkeys (device label and dates).",
   "POST passkey/start": "Signed out. Answers with a challenge only.",
   "POST passkey/signin": "Signs in. Answers with a token and your own name.",
+  "GET fill/stats": "Owner only. Store hosts and autofill hit rates; nothing about any person, link or product.",
+  "POST fill/check": "Needs the FILL_CHECK_KEY secret (404 without it). Details for a link the caller sends; nothing about anyone.",
   "POST owner/find": "Owner only. Names, join dates, wish counts and circle names; nothing marked, suggested, chatted or budgeted.",
   "POST owner/trust": "Owner only. Answers ok.",
   "POST owner/delete": "Owner only. Answers ok.",

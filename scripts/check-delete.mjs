@@ -14,6 +14,7 @@ const SKIP = {
   app_keys: "app-wide keys (push), nobody's information",
   push_sent: "keys of reminders already sent, swept after two days to 400 days",
   claims_new: "temporary table from a migration, renamed to claims",
+  fill_log: "store hosts and hit or miss only (no person, link or product), swept after 60 days",
 };
 
 const tables = [...new Set([...sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?([a-z_]+)/gi)].map((m) => m[1]))];

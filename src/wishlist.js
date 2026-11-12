@@ -28,6 +28,7 @@ import { json, callGemini } from "./gemini.js";
 import { LIMITS as ABUSE, hit, peek, ipOf, scope } from "./limits.js";
 import { sendPush, vapidKeys, pushEndpointOk } from "./push.js";
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from "@simplewebauthn/server";
+import { goldenSet } from "./golden.js";
 import { STORES, STORE_KEYS, PROMPT_STORE_LIST, isBlocked, storeFor, isBrandHost, cleanBrandDomain } from "./stores.js";
 // Sets globalThis.GIFT_CARDS. Shared with the app, so both sides use the same brand list.
 import "../public/giftcards.js";
@@ -1429,6 +1430,13 @@ async function canManage(env, meId, memberId) {
   for (const r of results) if ((await adminOf(env, r.group_id)) === meId) return true;
   return false;
 }
+// Compares two secrets without leaking how much of them matched (both are hashed first, so lengths don't matter).
+async function sameSecret(a, b) {
+  const [x, y] = await Promise.all([sha256(String(a)), sha256(String(b))]);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x.charCodeAt(i) ^ y.charCodeAt(i);
+  return diff === 0;
+}
 async function sha256(textValue) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(textValue)));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -1820,7 +1828,8 @@ const niceParam = (v) => {
 // Stores write messy JSON-LD: wrapped in CDATA or HTML comments, raw line breaks inside strings, trailing commas,
 // and the product nested under a WebPage's mainEntity. All of those still count.
 function parseLd(raw) {
-  let t = raw.trim().replace(/^\s*(\/\*\s*)?<!\[CDATA\[(\s*\*\/)?|(\/\*\s*)?\]\]>(\s*\*\/)?\s*$/g, "").replace(/^\s*<!--|-->\s*$/g, "").trim();
+  // CDATA wrappers come as /*<![CDATA[*/ ... /*]]>*/ or //<![CDATA[ ... //]]>.
+  let t = raw.trim().replace(/^\s*(\/\*\s*|\/\/\s*)?<!\[CDATA\[(\s*\*\/)?|(\/\*\s*|\/\/\s*)?\]\]>(\s*\*\/)?\s*$/g, "").replace(/^\s*<!--|-->\s*$/g, "").trim();
   try { return JSON.parse(t); } catch {}
   t = t.replace(/[\u0000-\u001f]+/g, " ").replace(/,\s*([}\]])/g, "$1");
   try { return JSON.parse(t); } catch { return null; }
@@ -2197,6 +2206,20 @@ async function cachePreview(u, data) {
   try { await caches.default.put(previewKey(u), new Response(JSON.stringify(data), { headers: { "content-type": "application/json", "cache-control": `max-age=${PREVIEW_TTL}` } })); } catch {}
 }
 
+// ---------- the fill log (docs/plans/autofill-hardening.md, step 1; migration 0052) ----------
+// One row per lookup: the store's host, what asked, what named it, what the page itself gave, and whether a name,
+// photo and price came back. No person, link or product name. Never fails a lookup.
+const hostOf = (u) => u.hostname.replace(/^www\./, "").replace(/^(smile|m)\./, "");
+// Returns { source, page, http, ms }, which previewLink also answers as `fill` (scripts/fill-check.mjs reads it).
+async function logFill(env, { host, kind, source, page, http, out, started }) {
+  const fill = { source, page, http, ms: Date.now() - started };
+  if (!env.DB) return fill;
+  await env.DB.prepare("INSERT INTO fill_log (at, host, kind, source, page, http, name, photo, price, ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(now(), String(host).slice(0, 100), kind, source, page, http, out?.found && !out.guessed ? 1 : 0, out?.image ? 1 : 0, out?.price != null ? 1 : 0, Date.now() - started)
+    .run().catch((err) => console.error("fill log", err));
+  return fill;
+}
+
 // Words in the link that describe the product ("stanley-quencher-tumbler" -> stanley, quencher, tumbler).
 const STOP_WORDS = new Set("the and for with from your this that www com http https html htm product products item items shop store page dp ip p".split(" "));
 function linkWords(u) {
@@ -2370,7 +2393,9 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
 
 // ai: when the store blocks us, look it up with Gemini (only for the Fill button, not background lookups).
 // hint: words shared along with the link ("Check out X! https://..."), used to help the lookup.
-async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
+// kind: what asked, for the fill log (fill, share, refresh, photo, canary, check). fresh: skip the edge cache.
+async function previewLink(env, rawUrl, { ai = false, hint = "", kind = "fill", fresh = false } = {}) {
+  const started = Date.now();
   // Share links (a.co/d/...) become the real product link first, and the link's words are read before
   // cleaning trims Amazon links down to /dp/ASIN.
   const full = await resolveShortLink(new URL(link(rawUrl) || fail(400, "Paste a link first.")));
@@ -2378,13 +2403,16 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
   const clean = cleanLink(full);
   const url = new URL(clean);
   const asin = amazonAsin(url);
-  if (ai) {
+  if (ai && !fresh) {
     const hit = await cachedPreview(clean);
-    if (hit && hit.price != null) return { ...hit, clean, cached: true };
+    if (hit && hit.price != null) {
+      const fill = await logFill(env, { host: hostOf(url), kind, source: "cache", page: "skipped", http: null, out: hit, started });
+      return { ...hit, clean, cached: true, fill };
+    }
   }
   const { html, finalUrl, status } = await readPage(url);
 
-  let title = null, price = null, siteName = null, image = null, brand = null, currency = null;
+  let title = null, price = null, siteName = null, image = null, brand = null, currency = null, botPage = false;
   if (html) {
     siteName = meta(html, "og:site_name");
     const ld = jsonLdProduct(html);
@@ -2403,10 +2431,11 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
       || decode(html.match(/id=["']landingImage["'][^>]*data-old-hires=["']([^"']+)["']/i)?.[1]) // Amazon
       || decode(html.match(/id=["']landingImage["'][^>]*src=["']([^"']+)["']/i)?.[1]);
     // Captcha and bot-check pages have useless titles.
-    if (BOT_PAGE.test(title || "")) title = null;
+    if (BOT_PAGE.test(title || "")) { title = null; botPage = true; }
   }
 
   title = cleanTitle(title, finalUrl.hostname, siteName);
+  const pageNamed = !!title;
   // Last resort for the name: the link's words. The app says it's a guess.
   const guess = !title ? slugGuess || titleFromPath(finalUrl) || titleFromPath(url) : null;
   // Same rule as before the lookup existed: keep the page's photo whenever we have any name for it.
@@ -2428,9 +2457,11 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
     sizes: opts.sizes, colors: opts.colors, size: opts.size, color: opts.color, brand: tidyBrand(brand) };
   // The page gave us no name, photo or price (blocked, a bot check, or an empty shell): look it up. The page's own
   // details win; the lookup only fills what's missing.
+  let lookupOpened = false;
   if (ai && (!title || !imageUrl || out.price == null)) {
     const found = await lookupLink(env, clean, [hint, slugGuess]).catch(() => null);
     if (found && (title || matchesLink(found.title, url))) {
+      lookupOpened = !!found.opened;
       // Gemini's price is only an estimate unless it really opened the page (and even then if it's another currency).
       let fp = { price: null, guess: false };
       if (price == null && found.price != null) {
@@ -2448,8 +2479,13 @@ async function previewLink(env, rawUrl, { ai = false, hint = "" } = {}) {
     if (out.image) out.imageVia = "asin";
   }
   console.log(`preview ${site} http=${status} page=${title ? "name" : html ? "noname" : "blocked"}${imageUrl ? "+photo" : ""} -> ${out.via || (out.guessed ? "guess" : "page")}${out.image ? " photo" : ""}${out.price != null ? " price" : ""}`);
+  const page = html ? (pageNamed ? "ok" : botPage ? "blocked" : "noname")
+    : status === 404 || status === 410 ? "gone" : [401, 403, 429, 503].includes(status) ? "blocked" : status === 0 ? "timeout" : "error";
+  const source = out.via === "search" ? (lookupOpened ? "ai-page" : "search")
+    : title ? (pageNamed ? "page" : "shopify") : out.guessed ? "guess" : "none";
+  const fill = await logFill(env, { host: hostOf(url), kind, source, page, http: status || null, out, started });
   if (ai && out.found) await cachePreview(clean, out);
-  return { ...out, clean };
+  return { ...out, clean, fill };
 }
 
 // ---------- Add to Hints from the iPhone Share button (POST quickadd) ----------
@@ -2499,7 +2535,7 @@ async function quickAdd(req, env) {
   let p = null;
   try {
     const ai = await underLimit(env, `preview:${me.id}`, ABUSE.previewPerMember);
-    p = await previewLink(env, url, { ai, hint: hint.slice(0, 150) });
+    p = await previewLink(env, url, { ai, hint: hint.slice(0, 150), kind: "share" });
   } catch (err) {
     console.log("quickadd preview failed", String(err?.message || err));
   }
@@ -2756,7 +2792,7 @@ async function markUnfilled(env, table, id, b, url) {
 }
 const REFRESH_BATCH = 3;
 async function refreshRow(env, table, row) {
-  const p = await previewLink(env, row.url, { ai: true }).catch(() => null);
+  const p = await previewLink(env, row.url, { ai: true, kind: "refresh" }).catch(() => null);
   const ok = p && p.found && !p.guessed;
   const t = now();
   const price = ok && p.price != null ? Math.round(p.price * 100) : null;
@@ -3106,6 +3142,82 @@ async function problemPing(env, budget) {
   }, budget);
 }
 
+// ---------- the daily autofill check (docs/plans/autofill-hardening.md, step 1) ----------
+// Each overnight run checks the one golden store (src/golden.js) whose last check is oldest, if that was 20+ hours
+// ago, with one of its links (a different one each day). It runs like the Fill button (Gemini allowed, no cache) and
+// lands in fill_log as kind "canary". One store per run keeps a run well under the 50 outside requests Workers allows.
+const CANARY_EVERY_MS = 20 * 3600_000;
+async function fillCanary(env, budget) {
+  const set = goldenSet(env);
+  if (!set.length) return "";
+  const { results } = await env.DB.prepare("SELECT host, MAX(at) AS last FROM fill_log WHERE kind = 'canary' GROUP BY host").all();
+  const last = new Map(results.map((r) => [r.host, r.last]));
+  const due = set.filter((g) => g.links?.length && (!last.has(g.host) || Date.now() - Date.parse(last.get(g.host)) >= CANARY_EVERY_MS))
+    .sort((a, b) => (last.get(a.host) || "").localeCompare(last.get(b.host) || ""));
+  const g = due[0];
+  if (!g) return "";
+  const day = Math.floor(Date.now() / 86_400_000);
+  const url = g.links[day % g.links.length];
+  budget.left -= 10; // the lookup's outside requests come out of the same per-run allowance as notifications
+  try {
+    await previewLink(env, url, { ai: true, kind: "canary", fresh: true });
+  } catch (err) {
+    // A link that can't even be read (bad URL) still counts as a failed check.
+    await logFill(env, { host: g.host, kind: "canary", source: "none", page: "error", http: null, out: null, started: Date.now() });
+    console.error("canary", g.host, String(err?.message || err));
+  }
+  return g.host;
+}
+// The last checks per golden store, newest first. ok: the check got a real name.
+async function canaryStatus(env) {
+  const set = goldenSet(env);
+  const out = [];
+  for (const g of set) {
+    const { results } = await env.DB.prepare("SELECT at, page, name, photo, price FROM fill_log WHERE kind = 'canary' AND host = ? ORDER BY at DESC LIMIT 7").bind(g.host).all();
+    let streak = 0;
+    for (const r of results) { if (r.name) break; streak++; }
+    out.push({ store: g.store, host: g.host, links: g.links?.length || 0, last: results[0] ? { at: results[0].at, ok: !!results[0].name, page: results[0].page,
+      photo: !!results[0].photo, price: !!results[0].price } : null, failing: streak });
+  }
+  return out;
+}
+// Morning: one notification to the owner when a store's check failed twice in a row (once a day).
+async function canaryPing(env, budget) {
+  const broken = (await canaryStatus(env)).filter((c) => c.failing >= 2);
+  if (!broken.length || budget.left <= 0) return 0;
+  const owner = await appOwner(env);
+  if (!owner || !(await onceOnly(env, `canary:${today()}`))) return 0;
+  const names = broken.map((c) => c.store);
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+  const gone = broken.every((c) => c.last?.page === "gone");
+  return deliver(env, owner.id, gone
+    ? { title: `A test link for ${list} is gone`, body: "Swap in another product in src/golden.js.", url: "/#settings/inbox", tag: "canary" }
+    : { title: `Autofill broke on ${list}`, body: "No name two checks in a row. Tap for the numbers.", url: "/#settings/inbox", tag: "canary" }, budget);
+}
+// Fill numbers per store for Settings > Inbox. People's own lookups only (not the checks), last `days` days.
+async function fillStats(env, days = 7) {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { results } = await env.DB.prepare(
+    "SELECT host, source, page, name, photo, price, ms FROM fill_log WHERE at > ? AND kind NOT IN ('canary', 'check') ORDER BY at DESC LIMIT 20000",
+  ).bind(since).all();
+  const pct = (n, of) => (of ? Math.round((n / of) * 100) : 0);
+  const sum = (rows) => {
+    const ms = rows.map((r) => r.ms).sort((a, b) => a - b);
+    const q = (f) => (ms.length ? ms[Math.min(ms.length - 1, Math.floor(f * ms.length))] : 0);
+    const n = rows.length, c = (f) => rows.filter(f).length;
+    return { fills: n, name: pct(c((r) => r.name), n), photo: pct(c((r) => r.photo), n), price: pct(c((r) => r.price), n),
+      ai: pct(c((r) => r.source === "ai-page" || r.source === "search"), n), guess: pct(c((r) => r.source === "guess" || r.source === "none"), n),
+      blocked: pct(c((r) => r.page === "blocked" || r.page === "timeout"), n), msHalf: q(0.5), msMost: q(0.9) };
+  };
+  const by = new Map();
+  for (const r of results) { if (!by.has(r.host)) by.set(r.host, []); by.get(r.host).push(r); }
+  const hosts = [...by.entries()].sort((a, b) => b[1].length - a[1].length);
+  const TOP = 12;
+  const stores = hosts.slice(0, TOP).map(([host, rows]) => ({ host, ...sum(rows) }));
+  const rest = hosts.slice(TOP).flatMap(([, rows]) => rows);
+  return { days, all: sum(results), stores, other: rest.length ? { sites: hosts.length - TOP, ...sum(rest) } : null, checks: await canaryStatus(env) };
+}
+
 // The Cron Trigger (src/worker.js, hourly). Every run: drop subscriptions whose device is gone. Outside quiet
 // hours: what quiet hours held (8 am), the wish digest, and from 9 am the daily reminders. One shared budget.
 export async function runSchedule(env) {
@@ -3123,6 +3235,7 @@ export async function runSchedule(env) {
     const old = new Date(Date.now() - 90 * 86_400_000).toISOString();
     await env.DB.prepare("DELETE FROM reports WHERE done_at < ?1 OR (kind = 'error' AND last_at < ?1)").bind(old).run().catch(() => {});
     await feedSweep(env).catch((err) => console.error("feed sweep", err));
+    await env.DB.prepare("DELETE FROM fill_log WHERE at < ?").bind(new Date(Date.now() - 60 * 86_400_000).toISOString()).run().catch(() => {});
   }
   await settleReceived(env).catch((err) => console.error("settle", err));
   await snapshotGifts(env).catch((err) => console.error("history", err));
@@ -3132,7 +3245,10 @@ export async function runSchedule(env) {
   // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
   const remind = (hour >= 9 && !isQuiet(hour)) || env.PUSH_DEV_REMIND === "1" ? await reminders(env, budget).catch((err) => (console.error("reminders", err), 0)) : 0;
   const problems = hour >= 9 && !isQuiet(hour) ? await problemPing(env, budget).catch((err) => (console.error("problems", err), 0)) : 0;
-  console.log(`schedule hour=${hour} later=${later} wishes=${wishes} reminders=${remind} problems=${problems} budget_left=${budget.left}`);
+  // Overnight, while nothing else is sent: one store's autofill check per run. From 9 am: tell the owner if one broke.
+  const canary = isQuiet(hour) ? await fillCanary(env, budget).catch((err) => (console.error("canary", err), "")) : "";
+  const broke = hour >= 9 && !isQuiet(hour) ? await canaryPing(env, budget).catch((err) => (console.error("canary ping", err), 0)) : 0;
+  console.log(`schedule hour=${hour} later=${later} wishes=${wishes} reminders=${remind} problems=${problems} canary=${canary || "-"} broke=${broke} budget_left=${budget.left}`);
 }
 
 // Signing in as someone who is looked after isn't allowed until a manager hands their list over.
@@ -4479,7 +4595,7 @@ const handlers = {
     const needImage = !row.image_checked_at;
     const needPrice = row.price_cents == null && !row.price_checked_at;
     if (!row.url || (!needImage && !needPrice)) return { image: row.image_url || null, price_cents: row.price_cents ?? null };
-    const preview = await previewLink(env, row.url).catch(() => ({}));
+    const preview = await previewLink(env, row.url, { kind: "photo" }).catch(() => ({}));
     const image = needImage ? preview.image || null : row.image_url || null;
     const price = needPrice && preview.price ? Math.round(preview.price * 100) : row.price_cents ?? null;
     const table = kind === "item" ? "items" : "private_ideas";
@@ -5994,6 +6110,25 @@ const handlers = {
     await env.DB.prepare("DELETE FROM reports WHERE id = ?").bind(String(b.id || "")).run();
     return { ok: true };
   },
+  // Settings > Inbox > Autofill (owner only): hit rates per store for the last 7 days, and the daily checks.
+  async "GET fill/stats"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    return fillStats(env, 7);
+  },
+  // scripts/fill-check.mjs: runs one golden link like the Fill button (no cache) and answers what came back. Needs the
+  // FILL_CHECK_KEY secret in the x-fill-check header; without the secret set, this route doesn't exist.
+  // { url, ai? } -> { title, price, image, found, guessed, source, page, http, ms }
+  async "POST fill/check"(req, env) {
+    const key = String(env.FILL_CHECK_KEY || "");
+    const given = String(req.headers.get("x-fill-check") || "");
+    if (key.length < 16 || !(await sameSecret(given, key))) fail(404, "Not found.");
+    const b = await body(req);
+    const url = typeof b.url === "string" ? b.url.slice(0, LIMITS.url) : "";
+    if (!url) fail(400, "Send a url.");
+    const p = await previewLink(env, url, { ai: b.ai !== false, kind: "check", fresh: true });
+    return { title: p.title || null, price: p.price ?? null, image: p.image || null, found: !!p.found && !p.guessed, ...p.fill };
+  },
 
   // Deletion requests by email from people who can't sign in (privacy page): whoever runs Hints finds the person
   // (Settings > Inbox) and deletes them the same way Delete my Hints does. Owner only.
@@ -6148,3 +6283,6 @@ export const routes = Object.fromEntries(
     },
   ]),
 );
+
+// The page parsers autofill uses, exported for test/parsers.test.mjs only.
+export const parsers = { jsonLdProduct, toPrice, cleanLink, cleanTitle, titleFromPath, pageCurrency, meta };
