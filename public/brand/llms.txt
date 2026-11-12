@@ -1,0 +1,9 @@
+# Alexis Davidson brand 2.0.0
+
+> The shared design system for Alexis Davidson's apps: tokens, components, light/dark theme and jewel-tone accents.
+> Garnet is the brand color. Load theme.js then brand.css from https://tools.alexisdavidson.org/brand/v2/.
+
+- [Rules for agents](https://tools.alexisdavidson.org/brand/v2/AGENTS.md): hard rules, states, scales
+- [Tokens](https://tools.alexisdavidson.org/brand/v2/tokens.json): every token, both themes, with descriptions
+- [Components](https://tools.alexisdavidson.org/brand/v2/components.json): classes, variants, ARIA, keyboard, snippets
+- [Style guide](https://tools.alexisdavidson.org/brand/): live previews

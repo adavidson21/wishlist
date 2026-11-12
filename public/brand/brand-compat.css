@@ -1,0 +1,521 @@
+/*! Alexis Davidson brand 2.0.0, full library, v1 class names. Source: personal-tools/brand. Fonts: SIL OFL 1.1 (fonts/OFL-*.txt). */
+/* Brand fonts, self-hosted (no third-party requests, works offline). All SIL OFL 1.1, notices in fonts/OFL-*.txt.
+   Bricolage Grotesque: titles and big numbers. Figtree: everything else. DM Mono: code, keys and tabular labels.
+   Sources: Fontsource (@fontsource-variable/bricolage-grotesque "standard", @fontsource-variable/figtree "wght",
+   @fontsource/dm-mono 400 and 500), latin and latin-ext subsets. Copied from Hints and Workshop. */
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:200 800;font-display:swap;src:url(fonts/bricolage-grotesque-latin-standard-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:200 800;font-display:swap;src:url(fonts/bricolage-grotesque-latin-ext-standard-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Figtree";font-style:normal;font-weight:300 900;font-display:swap;src:url(fonts/figtree-latin-wght-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Figtree";font-style:normal;font-weight:300 900;font-display:swap;src:url(fonts/figtree-latin-ext-wght-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Figtree";font-style:italic;font-weight:300 900;font-display:swap;src:url(fonts/figtree-latin-wght-italic.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Figtree";font-style:italic;font-weight:300 900;font-display:swap;src:url(fonts/figtree-latin-ext-wght-italic.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"DM Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/dm-mono-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"DM Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/dm-mono-latin-ext-400-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"DM Mono";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/dm-mono-latin-500-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"DM Mono";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/dm-mono-latin-ext-500-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+
+@layer brand{
+/* Generated from brand/tokens/*.json by npm run build. Edit the JSON, not this block. */
+:root{
+  /* primitives: raw values, never used directly by apps */
+  --p-amber-25:#FDF3E2; --p-amber-150:#F2C27A; --p-amber-475:#9A5806; --p-amber-700:#3A2C17; --p-amethyst-50:#F7ECFA; --p-amethyst-150:#E6C3EE; --p-amethyst-225:#D1A5DB; --p-amethyst-575:#693375; --p-amethyst-700:#342538; --p-amethyst-775:#251229; --p-brick-50:#FCECEA; --p-brick-250:#F98B6F; --p-brick-475:#B83200; --p-brick-725:#3A1F1D; --p-garnet-25:#FFF8F2; --p-garnet-30:#FFF1F4; --p-garnet-50:#F7E6EA; --p-garnet-150:#E8C3CD; --p-garnet-175:#F0B5C4; --p-garnet-225:#D9A7B5; --p-garnet-230:#E59AAE; --p-garnet-600:#7A1B36; --p-garnet-725:#3A2129; --p-garnet-730:#4A0E22; --p-garnet-800:#2B0D18; --p-garnet-805:#2A0E17; --p-neutral-0:#FFFFFF; --p-neutral-25:#FAF6F1; --p-neutral-50:#F3ECEE; --p-neutral-55:#F3ECE4; --p-neutral-100:#EADFD4; --p-neutral-250:#B6A9AD; --p-neutral-300:#A3979A; --p-neutral-375:#91827E; --p-neutral-425:#85787C; --p-neutral-450:#7B7175; --p-neutral-500:#6B5E62; --p-neutral-675:#3A3034; --p-neutral-725:#2E2629; --p-neutral-750:#2A1E22; --p-neutral-755:#241D20; --p-neutral-800:#1A1517; --p-pine-50:#E8F2EC; --p-pine-200:#8FD0B4; --p-pine-525:#2F6B4F; --p-pine-700:#1E3029; --p-sapphire-50:#E8EAF4; --p-sapphire-150:#C3CFF9; --p-sapphire-200:#B4BDF0; --p-sapphire-600:#33407A; --p-sapphire-700:#252A3D; --p-sapphire-775:#131832; --p-topaz-50:#FBF1DC; --p-topaz-125:#F1D08A; --p-topaz-200:#E0B75E; --p-topaz-250:#D9A94A; --p-topaz-525:#7A5410; --p-topaz-700:#3A2F1C; --p-tourmaline-50:#E0F4F9; --p-tourmaline-125:#A7DFED; --p-tourmaline-200:#7FCBDE; --p-tourmaline-550:#056374; --p-tourmaline-725:#0F2B31; --p-tourmaline-775:#001F26;
+}
+:root,
+:root[data-theme=light]{
+  --bg:var(--p-neutral-25); --surface:var(--p-neutral-0); --panel:var(--p-neutral-55); --line:var(--p-neutral-100); --line-strong:var(--p-neutral-375); --ink:var(--p-neutral-750); --muted:var(--p-neutral-500); --faint:var(--p-neutral-300); --brand:var(--p-garnet-600); --hero:var(--p-garnet-730); --hero-ink:var(--p-garnet-25); --hero-muted:var(--p-garnet-150); --gold:var(--p-topaz-250); --gold-ink:var(--p-topaz-525); --gold-soft:var(--p-topaz-50); --ok:var(--p-pine-525); --ok-soft:var(--p-pine-50); --warn:var(--p-amber-475); --warn-soft:var(--p-amber-25); --danger:var(--p-brick-475); --on-danger:var(--p-neutral-0); --danger-soft:var(--p-brick-50); --t0:var(--p-garnet-50); --t0-ink:var(--p-garnet-600); --t1:var(--p-tourmaline-50); --t1-ink:var(--p-tourmaline-550); --t2:var(--p-amethyst-50); --t2-ink:var(--p-amethyst-575); --t3:var(--p-sapphire-50); --t3-ink:var(--p-sapphire-600); --accent:var(--p-garnet-600); --on-accent:var(--p-neutral-0); --accent-soft:var(--p-garnet-50); --accent-soft-ink:var(--p-garnet-600);
+}
+:root[data-theme=dark]{
+  --bg:var(--p-neutral-800); --surface:var(--p-neutral-755); --panel:var(--p-neutral-725); --line:var(--p-neutral-675); --line-strong:var(--p-neutral-450); --ink:var(--p-neutral-50); --muted:var(--p-neutral-250); --faint:var(--p-neutral-425); --brand:var(--p-garnet-230); --hero:var(--p-garnet-800); --hero-ink:var(--p-garnet-30); --hero-muted:var(--p-garnet-225); --gold:var(--p-topaz-200); --gold-ink:var(--p-topaz-125); --gold-soft:var(--p-topaz-700); --ok:var(--p-pine-200); --ok-soft:var(--p-pine-700); --warn:var(--p-amber-150); --warn-soft:var(--p-amber-700); --danger:var(--p-brick-250); --on-danger:var(--p-neutral-755); --danger-soft:var(--p-brick-725); --t0:var(--p-garnet-725); --t0-ink:var(--p-garnet-175); --t1:var(--p-tourmaline-725); --t1-ink:var(--p-tourmaline-125); --t2:var(--p-amethyst-700); --t2-ink:var(--p-amethyst-150); --t3:var(--p-sapphire-700); --t3-ink:var(--p-sapphire-150); --accent:var(--p-garnet-230); --on-accent:var(--p-garnet-805); --accent-soft:var(--p-garnet-725); --accent-soft-ink:var(--p-garnet-175);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme]){
+    --bg:var(--p-neutral-800); --surface:var(--p-neutral-755); --panel:var(--p-neutral-725); --line:var(--p-neutral-675); --line-strong:var(--p-neutral-450); --ink:var(--p-neutral-50); --muted:var(--p-neutral-250); --faint:var(--p-neutral-425); --brand:var(--p-garnet-230); --hero:var(--p-garnet-800); --hero-ink:var(--p-garnet-30); --hero-muted:var(--p-garnet-225); --gold:var(--p-topaz-200); --gold-ink:var(--p-topaz-125); --gold-soft:var(--p-topaz-700); --ok:var(--p-pine-200); --ok-soft:var(--p-pine-700); --warn:var(--p-amber-150); --warn-soft:var(--p-amber-700); --danger:var(--p-brick-250); --on-danger:var(--p-neutral-755); --danger-soft:var(--p-brick-725); --t0:var(--p-garnet-725); --t0-ink:var(--p-garnet-175); --t1:var(--p-tourmaline-725); --t1-ink:var(--p-tourmaline-125); --t2:var(--p-amethyst-700); --t2-ink:var(--p-amethyst-150); --t3:var(--p-sapphire-700); --t3-ink:var(--p-sapphire-150); --accent:var(--p-garnet-230); --on-accent:var(--p-garnet-805); --accent-soft:var(--p-garnet-725); --accent-soft-ink:var(--p-garnet-175);
+  }
+}
+/* accent: sapphire */
+:root[data-accent=sapphire]{ --accent:var(--p-sapphire-600); --on-accent:var(--p-neutral-0); --accent-soft:var(--p-sapphire-50); --accent-soft-ink:var(--p-sapphire-600); }
+:root[data-theme=dark][data-accent=sapphire]{ --accent:var(--p-sapphire-200); --on-accent:var(--p-sapphire-775); --accent-soft:var(--p-sapphire-700); --accent-soft-ink:var(--p-sapphire-150); }
+@media (prefers-color-scheme: dark){ :root:not([data-theme])[data-accent=sapphire]{ --accent:var(--p-sapphire-200); --on-accent:var(--p-sapphire-775); --accent-soft:var(--p-sapphire-700); --accent-soft-ink:var(--p-sapphire-150); } }
+/* accent: tourmaline */
+:root[data-accent=tourmaline]{ --accent:var(--p-tourmaline-550); --on-accent:var(--p-neutral-0); --accent-soft:var(--p-tourmaline-50); --accent-soft-ink:var(--p-tourmaline-550); }
+:root[data-theme=dark][data-accent=tourmaline]{ --accent:var(--p-tourmaline-200); --on-accent:var(--p-tourmaline-775); --accent-soft:var(--p-tourmaline-725); --accent-soft-ink:var(--p-tourmaline-125); }
+@media (prefers-color-scheme: dark){ :root:not([data-theme])[data-accent=tourmaline]{ --accent:var(--p-tourmaline-200); --on-accent:var(--p-tourmaline-775); --accent-soft:var(--p-tourmaline-725); --accent-soft-ink:var(--p-tourmaline-125); } }
+/* accent: amethyst */
+:root[data-accent=amethyst]{ --accent:var(--p-amethyst-575); --on-accent:var(--p-neutral-0); --accent-soft:var(--p-amethyst-50); --accent-soft-ink:var(--p-amethyst-575); }
+:root[data-theme=dark][data-accent=amethyst]{ --accent:var(--p-amethyst-225); --on-accent:var(--p-amethyst-775); --accent-soft:var(--p-amethyst-700); --accent-soft-ink:var(--p-amethyst-150); }
+@media (prefers-color-scheme: dark){ :root:not([data-theme])[data-accent=amethyst]{ --accent:var(--p-amethyst-225); --on-accent:var(--p-amethyst-775); --accent-soft:var(--p-amethyst-700); --accent-soft-ink:var(--p-amethyst-150); } }
+:root{
+  --display:"Bricolage Grotesque",Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --sans:Figtree,"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"DM Mono","Cascadia Mono",Consolas,"SF Mono",Menlo,ui-monospace,monospace;
+  --weight-body:400;
+  --weight-mono:500;
+  --weight-ui:600;
+  --weight-strong:700;
+  --weight-eyebrow:800;
+  --lh-tight:1.15;
+  --lh-snug:1.35;
+  --lh-body:1.5;
+  --r-xs:6px;
+  --r-sm:10px;
+  --r-md:14px;
+  --r-lg:16px;
+  --r-xl:24px;
+  --r-pill:999px;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:20px;
+  --space-6:24px;
+  --space-7:32px;
+  --space-8:48px;
+  --bw-hair:1px;
+  --bw-base:1.5px;
+  --bw-heavy:3px;
+  --pop-sm:2px;
+  --pop-md:3px;
+  --pop-lg:4px;
+  --pop-xl:5px;
+  --dur-fast:150ms;
+  --dur-med:200ms;
+  --dur-slow:400ms;
+  --dur-spin:700ms;
+  --spring:cubic-bezier(0.3,1.4,0.5,1);
+  --ease-out:cubic-bezier(0.2,0.9,0.3,1);
+  --tap:44px;
+  --text-size:17px;
+}
+/* type scale: each step is relative to --text-size (17px; 15px in dense) */
+:root,:is(.dense,.b-dense){
+  --fs-xs:calc(var(--text-size) * 12 / 17); --fs-sm:calc(var(--text-size) * 13 / 17); --fs-md:calc(var(--text-size) * 15 / 17); --fs-base:var(--text-size); --fs-lg:calc(var(--text-size) * 19 / 17); --fs-xl:calc(var(--text-size) * 23 / 17); --fs-2xl:calc(var(--text-size) * 26 / 17); --fs-3xl:calc(var(--text-size) * 36 / 17); --fs-display:calc(var(--text-size) * 58 / 17);
+}
+
+/* Hand-written tokens: values built from other tokens (color-mix, shadows, layout) and aliases. The rest of the
+   tokens come from brand/tokens/*.json (DTCG 2025.10) and are generated into the top of tokens.css by the build.
+   Theme-specific values here use the same three selectors the build uses for colors. */
+
+:root,
+:root[data-theme=light]{
+  --tint:74,14,34;
+  --shadow:0 1px 2px rgba(var(--tint),.06),0 8px 20px rgba(var(--tint),.06);
+  --shadow-sm:0 1px 3px rgba(var(--tint),.18);
+  --shadow-lg:0 12px 32px rgba(var(--tint),.16);
+  --scrim:rgba(30,15,20,.45);
+  --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236B5E62' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+  color-scheme:light;
+}
+:root[data-theme=dark]{
+  --tint:0,0,0;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+  --shadow-sm:0 1px 3px rgba(0,0,0,.4);
+  --shadow-lg:0 12px 32px rgba(0,0,0,.45);
+  --scrim:rgba(0,0,0,.55);
+  --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23B6A9AD' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme]){
+    --tint:0,0,0;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+    --shadow-sm:0 1px 3px rgba(0,0,0,.4);
+    --shadow-lg:0 12px 32px rgba(0,0,0,.45);
+    --scrim:rgba(0,0,0,.55);
+    --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23B6A9AD' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    color-scheme:dark;
+  }
+}
+
+:root{
+  /* derived colors */
+  --hover:color-mix(in srgb,var(--ink) 5%,var(--surface));
+  --sunk:color-mix(in srgb,var(--ink) 4%,var(--bg));
+  --rule:var(--line-strong);
+  --hero-line:color-mix(in srgb,var(--hero-muted) 55%,transparent);
+  --hero-track:rgba(255,255,255,.16);
+  --knob:var(--p-neutral-0);
+  --photo-mat:var(--p-neutral-0);
+  --eyebrow:var(--accent);
+  --focus:var(--accent);
+  --ring:var(--bw-heavy);
+
+  /* cards (sticker style): outline, offset color, offset distance */
+  --card-line:var(--ink); --card-offset:var(--accent); --card-pop:var(--pop-lg);
+  --hero-edge:var(--gold); /* the topaz stripe under the wine band */
+
+  /* motion */
+  --dur-instant:.01ms;
+
+  /* layout (from Workshop): page gutter, list/form page width, long text measure, and Hints' phone column */
+  --gutter:18px; --w-page:100%; --w-read:68ch; --w-narrow:560px;
+
+  /* Aliases, so pages written for Hints, Workshop or brand v1 keep working */
+  --card:var(--surface); --brand-ink:var(--on-accent); --soft:var(--accent-soft); --soft-ink:var(--accent-soft-ink);
+  --err:var(--danger); --err-bg:var(--danger-soft); --serif:var(--display); --r:var(--r-lg); --raise:var(--shadow);
+}
+@media (min-width:1100px){:root{--gutter:28px;--w-page:72rem}}
+@media (min-width:1600px){:root{--gutter:36px;--w-page:88rem}}
+
+/* Work apps that want more on screen (Workshop, Docket): add class="b-dense" (or "dense") to <body> or a container.
+   Every --fs-* step follows --text-size, so the whole type scale shrinks together. Touch screens keep 44px targets. */
+:is(.dense,.b-dense){--text-size:15px;--tap:34px}
+@media (hover:none) and (pointer:coarse){:is(.dense,.b-dense){--tap:44px}}
+
+/* Base: a light reset, page text, headings, focus and motion. Everything sits in the "brand" cascade layer, so any
+   unlayered rule in an app wins without fighting specificity. Values come from the token scales only:
+   npm run check fails on raw colors, px font sizes, radii, durations, offsets or border widths. */
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:var(--weight-body) var(--fs-base)/var(--lh-body) var(--sans);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;-webkit-tap-highlight-color:transparent}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+img,svg,video{display:block;max-width:100%}
+a{color:var(--accent);text-underline-offset:3px}
+h1,h2,h3,h4{margin:0;font-family:var(--display);font-weight:var(--weight-strong);line-height:var(--lh-tight);letter-spacing:-.01em;color:var(--ink);text-wrap:balance}
+h1{font-size:clamp(calc(var(--fs-3xl) * .78),4vw,var(--fs-3xl))}
+h2{font-size:clamp(calc(var(--fs-2xl) * .85),2.6vw,var(--fs-2xl))}
+h3{font-size:var(--fs-lg)}
+h4{font-size:var(--fs-base)}
+p{margin:0 0 .8em;text-wrap:pretty}
+hr{border:0;height:var(--bw-hair);background:var(--line);margin:1.25rem 0}
+code,kbd,samp,pre{font-family:var(--mono);font-size:.9em} /* check:allow em, inline code follows the text around it */
+code{background:var(--panel);padding:.08em .35em;border-radius:var(--r-xs)}
+pre{background:var(--panel);padding:var(--space-4);border-radius:var(--r-md);overflow:auto}
+pre code{background:none;padding:0}
+kbd{font-size:var(--fs-sm);padding:.05em .4em;border:var(--bw-hair) solid var(--line-strong);border-bottom-width:var(--pop-sm);border-radius:var(--r-xs);background:var(--surface);color:var(--muted)}
+/* Focus: one ring everywhere, keyboard only, instant. Never remove it without a visible replacement. */
+:focus-visible{outline:var(--ring) solid var(--focus);outline-offset:2px}
+::selection{background:color-mix(in srgb,var(--accent) 24%,transparent)}
+::placeholder{color:var(--muted);opacity:1}
+/* iPhones zoom into boxes under 16px, so form text never goes below it */
+input:not([type=checkbox]):not([type=radio]),textarea,select{font-size:max(16px,1em)} /* check:allow px, iOS zoom floor */
+input[type=checkbox],input[type=radio],progress{accent-color:var(--accent)}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+@keyframes b-fade{from{opacity:0}to{opacity:1}}
+@keyframes b-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes b-pop{from{opacity:0;transform:scale(.97) translateY(4px)}to{opacity:1;transform:none}}
+@keyframes b-sheet-up{0%{transform:translateY(100%)}70%{transform:translateY(-6px)}100%{transform:none}}
+@keyframes b-check{0%{transform:scale(0) rotate(-30deg)}60%{transform:scale(1.25) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes b-hop{0%,100%{transform:none}35%{transform:translateY(-6px)}65%{transform:translateY(1px)}}
+@keyframes b-spin{to{rotate:360deg}}
+/* Reduced motion: nothing moves, but feedback still shows as color and opacity changes. Spinners keep turning
+   slowly, since a frozen spinner reads as stuck. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:var(--dur-instant)!important;animation-iteration-count:1!important;scroll-behavior:auto!important}
+  *,*::before,*::after{transition-property:color,background-color,border-color,opacity,outline-color!important}
+  .btn.busy::before{animation-duration:calc(var(--dur-spin) * 2)!important;animation-iteration-count:infinite!important}
+}
+
+/* Components. Hints' look (sticker cards, pill chips, friendly buttons, a little spring) on Workshop's structure
+   (page frame, page head, tabs, menus, toasts).
+
+   Written with plain names. The build prefixes every component class with b- in brand.css (.btn becomes .b-btn,
+   modifiers like .primary stay as they are) and keeps the plain names in brand-compat.css for apps not yet moved.
+
+   States, for every interactive component (docs: AGENTS.md, "States"):
+     default   semantic tokens only
+     hover     one small step, --dur-fast; never the only way to reveal something
+     focus     the global :focus-visible ring, instant
+     active    the sticker press, instant
+     disabled  [disabled] or [aria-disabled=true]: muted, no offset, no hover; aria-disabled stays focusable
+     loading   .busy plus aria-busy=true: spinner, blocks repeat clicks
+   .is-hover, .is-focus and .is-active force a state, for the brand page and for tests. */
+
+/* ---------- type helpers ---------- */
+.eyebrow{margin:0;font:var(--weight-eyebrow) var(--fs-xs)/1.4 var(--sans);letter-spacing:.07em;text-transform:uppercase;color:var(--eyebrow)}
+.kicker{margin:0;font-size:var(--fs-md);font-weight:var(--weight-ui);color:var(--muted)}
+.page-title{margin:0;font:var(--weight-strong) clamp(calc(var(--fs-3xl) * .78),4vw,var(--fs-3xl))/1.1 var(--display);letter-spacing:-.01em}
+.lead{margin:0 0 1.25rem;color:var(--muted);font-size:var(--fs-lg)}
+.subtle{margin:0 0 .75rem;color:var(--muted);font-size:var(--fs-md)}
+.label{display:flex;align-items:center;gap:var(--space-2);margin:1.75rem 0 .35rem;font-size:var(--fs-lg);font-weight:var(--weight-strong);color:var(--ink)}
+.label:first-child{margin-top:0}
+.big-num{display:block;font:var(--weight-ui) clamp(calc(var(--fs-display) * .7),7vw,var(--fs-display))/1.05 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+
+/* ---------- layout ---------- */
+/* .page: Hints' single column (phone-first, 560px). .page.wide: Workshop's list/form width. .page.full: edge to edge. */
+.page{width:100%;max-width:calc(var(--w-narrow) + 2 * var(--gutter));margin:0 auto;
+  padding:1.25rem max(var(--gutter),env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 4rem) max(var(--gutter),env(safe-area-inset-left,0px))}
+.page.wide{max-width:calc(var(--w-page) + 2 * var(--gutter))}
+.page.full{max-width:none}
+.read{max-width:var(--w-read)}
+.stack>*+*{margin-top:var(--space-3)}
+.hstack{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.spacer{flex:1}
+/* One header for every app: eyebrow and title on the left, actions on the right, tabs below (from Workshop) */
+.page-head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.6rem 1rem;margin:0 0 1.25rem}
+.page-head>.ph-main{flex:1 1 16rem;min-width:0}
+.page-head .eyebrow{margin-bottom:.3rem}
+.page-head>.ph-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-left:auto}
+.page-head>.tabs{flex:1 0 100%}
+/* Section tabs: underlined, one row, scroll sideways when they must */
+.tabs{display:flex;gap:1.4rem;border-bottom:var(--bw-hair) solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs>a,.tabs>button{position:relative;display:inline-flex;align-items:center;gap:.4rem;min-height:var(--tap);padding:0;border:0;background:none;
+  font-weight:var(--weight-ui);font-size:var(--fs-md);color:var(--muted);text-decoration:none;white-space:nowrap;transition:color var(--dur-fast)}
+.tabs>a:hover,.tabs>button:hover{color:var(--ink)}
+.tabs>:focus-visible{outline-offset:-3px}
+.tabs>:is(.on,[aria-current=page],[aria-selected=true]){color:var(--ink)}
+.tabs>:is(.on,[aria-current=page],[aria-selected=true])::after{content:"";position:absolute;left:0;right:0;bottom:calc(var(--bw-hair) * -1);height:var(--bw-heavy);border-radius:var(--bw-heavy) var(--bw-heavy) 0 0;background:var(--accent)}
+/* Dashboard grid: one column on phones, two from 720px, three from 1100px. .w2 spans two. */
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-4);align-items:start}
+@media (min-width:720px){.grid.two,.grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1100px){.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}.grid>.w2{grid-column:span 2}}
+
+/* ---------- hero: the wine header band (deep garnet, always, whatever the app's accent) ---------- */
+/* Sticker edge: an ink line and a topaz stripe under the band, like the cards. --hero-edge changes the stripe. */
+.hero{position:relative;overflow:hidden;background:var(--hero);color:var(--hero-ink);
+  border-bottom:var(--bw-heavy) solid var(--card-line);box-shadow:0 var(--pop-xl) 0 var(--hero-edge);margin-bottom:var(--pop-xl);
+  padding:calc(env(safe-area-inset-top,0px) + 26px) max(20px,env(safe-area-inset-right,0px)) 24px max(20px,env(safe-area-inset-left,0px))}
+.hero-in{position:relative;max-width:var(--w-narrow);margin:0 auto}
+.hero.wide .hero-in{max-width:var(--w-page)}
+.hero :is(h1,h2,.page-title,.big-num){color:var(--hero-ink)}
+.hero h1{margin-top:var(--space-1)}
+.hero :is(.kicker,.subtle,.lead){color:var(--hero-muted)}
+.hero .eyebrow{color:var(--gold)}
+.hero a:not([class]){color:var(--hero-ink)}
+.hero .btn{background:transparent;color:var(--hero-ink);border-color:var(--hero-line);border-radius:var(--r-pill);box-shadow:none}
+.hero .btn.primary{background:var(--hero-ink);color:var(--hero);border-color:var(--hero-ink)}
+.hero :focus-visible{outline-color:var(--gold)}
+.hero .meter{margin-top:var(--space-4)}
+.hero .meter>i{background:var(--hero-track)}
+.hero .meter>i>b{background:var(--gold)}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:calc(var(--tap) + 4px);padding:var(--space-2) 18px;
+  border:var(--bw-base) solid var(--line-strong);border-radius:var(--r-md);background:var(--surface);color:var(--ink);
+  font-weight:var(--weight-strong);font-size:var(--fs-md);line-height:1.2;text-decoration:none;white-space:nowrap;
+  transition:transform var(--dur-fast) var(--spring),background-color var(--dur-med),border-color var(--dur-med),color var(--dur-med)}
+.btn:is(:hover,.is-hover){border-color:var(--ink)}
+.btn:is(:active,.is-active){transform:scale(.97)}
+.btn.is-focus{outline:var(--ring) solid var(--focus);outline-offset:2px}
+.btn svg{width:18px;height:18px;flex:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:is(:hover,.is-hover){background:color-mix(in srgb,var(--accent) 80%,var(--ink));border-color:color-mix(in srgb,var(--accent) 80%,var(--ink))}
+/* the big call to action: a sticker, one per screen */
+.btn.cta{width:100%;min-height:54px;border:var(--bw-base) solid var(--card-line);border-radius:var(--r-lg);background:var(--accent);color:var(--on-accent);font-size:var(--fs-base);
+  box-shadow:var(--pop-md) var(--pop-md) 0 var(--card-line);transition:transform var(--dur-fast) ease,box-shadow var(--dur-fast) ease,background-color var(--dur-med)}
+.btn.cta:is(:hover,.is-hover){transform:translate(-1px,-1px);box-shadow:var(--pop-lg) var(--pop-lg) 0 var(--card-line)}
+.btn.cta:is(:active,.is-active){transform:translate(var(--pop-md),var(--pop-md));box-shadow:0 0 0 var(--card-line)}
+.btn.soft{background:var(--accent-soft);border-color:transparent;color:var(--accent-soft-ink)}
+.btn.soft:is(:hover,.is-hover){border-color:var(--accent)}
+.btn.quiet,.btn.ghost{background:transparent;border-color:transparent;color:var(--accent)}
+.btn.quiet:is(:hover,.is-hover),.btn.ghost:is(:hover,.is-hover){background:var(--accent-soft);border-color:transparent}
+.btn.dashed{background:transparent;color:var(--accent);border-style:dashed;border-color:var(--accent)}
+.btn.danger{color:var(--danger)}
+.btn.danger:is(:hover,.is-hover){border-color:var(--danger)}
+.btn.danger.solid{background:var(--danger);border-color:var(--danger);color:var(--on-danger)}
+.btn.small{min-height:var(--tap);padding:6px 14px;font-size:var(--fs-sm);border-radius:var(--r-sm)}
+.btn.pill{border-radius:var(--r-pill)}
+.btn.wide{width:100%}
+/* disabled: muted, flat, no hover. [aria-disabled] keeps the button focusable so it can explain itself on click. */
+.btn:is(:disabled,[aria-disabled=true]),.btn:is(:disabled,[aria-disabled=true]):is(:hover,:active,.is-hover,.is-active){
+  background:var(--panel);border-color:var(--line);color:var(--muted);box-shadow:none;transform:none;cursor:not-allowed}
+/* loading: add .busy and aria-busy="true"; clicks are blocked and the label stays so the width holds */
+.btn:is(.busy,[aria-busy=true]){pointer-events:none}
+.btn.busy::before{content:"";width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:b-spin var(--dur-spin) linear infinite} /* check:allow px, spinner glyph */
+/* round icon button (Hints) and the square one for toolbars (Workshop) */
+.iconbtn,.ibtn{display:grid;place-items:center;flex:none;padding:0;color:var(--muted);transition:transform var(--dur-fast) var(--spring),background-color var(--dur-med),color var(--dur-med)}
+.iconbtn{width:var(--tap);height:var(--tap);border:var(--bw-hair) solid var(--line-strong);border-radius:50%;background:var(--surface)}
+.ibtn{position:relative;width:calc(var(--tap) - 6px);height:calc(var(--tap) - 6px);border:0;border-radius:var(--r-sm);background:transparent}
+.ibtn::after{content:"";position:absolute;inset:-3px}
+.iconbtn:is(:hover,.is-hover),.ibtn:is(:hover,.is-hover){color:var(--ink);background:var(--hover)}
+.iconbtn:is(:active,.is-active),.ibtn:is(:active,.is-active){transform:scale(.94)}
+.iconbtn svg,.ibtn svg{width:18px;height:18px}
+/* text-sized link button with a full 44px hit area */
+.linkbtn{position:relative;display:inline-flex;align-items:center;gap:var(--space-1);min-height:32px;padding:0;border:0;background:none;color:var(--accent);font-weight:var(--weight-strong);font-size:var(--fs-md);text-decoration:underline;text-underline-offset:3px}
+.linkbtn::after{content:"";position:absolute;left:0;right:0;top:50%;height:var(--tap);transform:translateY(-50%)}
+.btns{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+
+/* ---------- cards ---------- */
+/* Sticker cards: an ink outline and a solid offset in the accent. Cards you can tap lift a little on hover and press
+   flat. Change the look for one app with --card-line and --card-offset. */
+.card{background:var(--surface);border:var(--bw-base) solid var(--card-line);border-radius:var(--r-lg);padding:18px;box-shadow:var(--card-pop) var(--card-pop) 0 var(--card-offset)}
+.card.flat{box-shadow:none;border:var(--bw-hair) solid var(--line)}
+.card.soft{background:var(--panel);border-color:transparent;box-shadow:none}
+.card.draft{background:var(--panel);box-shadow:none;border:var(--bw-base) dashed var(--line-strong)}
+.card.done{background:var(--ok-soft);--card-line:var(--ok);--card-offset:var(--ok)}
+.card.pick{--card-offset:var(--gold)}
+.card.hero-card{background:var(--hero);color:var(--hero-ink);border-color:var(--hero);--card-offset:var(--gold)}
+.card.hero-card :is(h2,h3){color:var(--hero-ink)}
+.card.hero-card :is(.subtle,.kicker){color:var(--hero-muted)}
+a.card,button.card{display:block;width:100%;text-align:left;color:inherit;text-decoration:none;font:inherit;cursor:pointer;transition:transform var(--dur-fast) ease,box-shadow var(--dur-fast) ease}
+:is(a,button).card:is(:hover,.is-hover){transform:translate(-1px,-1px);box-shadow:var(--pop-xl) var(--pop-xl) 0 var(--card-offset)}
+:is(a,button).card:is(:active,.is-active){transform:translate(var(--card-pop),var(--card-pop));box-shadow:0 0 0 var(--card-offset)}
+.card>:is(h2,h3){margin-bottom:6px}
+/* a list inside one card, rows on hairlines */
+.list{list-style:none;margin:0;padding:0}
+.list>li{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) 0;border-top:var(--bw-hair) solid var(--line)}
+.list>li:first-child{border-top:0;padding-top:0}
+.list>li:last-child{padding-bottom:0}
+.list .grow{flex:1;min-width:0}
+.list small{display:block;color:var(--muted);font-size:var(--fs-sm)}
+/* tile: the rounded square that leads a row (icon, emoji, initial or photo). Category tints t0 to t3. */
+.tile{width:56px;height:56px;flex:none;display:grid;place-items:center;border-radius:var(--r-md);background:var(--t0);color:var(--t0-ink);font:var(--weight-ui) var(--fs-xl)/1 var(--display)}
+.tile.sm{width:40px;height:40px;border-radius:var(--r-sm);font-size:var(--fs-base)}
+.tile svg{width:50%;height:50%}
+.tile.t1{background:var(--t1);color:var(--t1-ink)}.tile.t2{background:var(--t2);color:var(--t2-ink)}.tile.t3{background:var(--t3);color:var(--t3-ink)}
+.tile.photo{background:var(--photo-mat);padding:5px;overflow:hidden;box-shadow:inset 0 0 0 var(--bw-hair) var(--line)}
+.tile.photo img{width:100%;height:100%;object-fit:contain;border-radius:var(--r-xs)}
+/* stats: the small number cards */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:var(--space-3)}
+.stat{display:flex;flex-direction:column;min-width:0;padding:var(--space-3) var(--space-3) 10px;border:var(--bw-base) solid var(--card-line);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--pop-md) var(--pop-md) 0 var(--card-offset)}
+.stat b{font:var(--weight-ui) var(--fs-2xl)/1.1 var(--display);color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat span{font-size:var(--fs-sm);font-weight:var(--weight-ui);color:var(--muted)}
+.stat.ok{background:var(--ok-soft);--card-line:var(--ok);--card-offset:var(--ok)}.stat.ok b{color:var(--ok)}
+.stat.gold{--card-offset:var(--gold)}
+/* meter: <div class="meter"><i><b style="width:40%"></b></i><span>40%</span></div> */
+.meter{display:flex;align-items:center;gap:var(--space-3);font-size:var(--fs-md);font-weight:var(--weight-ui)}
+.meter>i{flex:1;height:8px;border-radius:var(--r-pill);background:var(--panel);box-shadow:inset 0 0 0 var(--bw-hair) var(--line);overflow:hidden}
+.meter>i>b{display:block;height:100%;border-radius:var(--r-pill);background:var(--accent);transform-origin:left;animation:b-fill 1s var(--spring) .15s both} /* check:allow s, one-time fill */
+@keyframes b-fill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+/* ---------- chips and tags ---------- */
+/* filter chips (soft tint): pills on the panel color; the selected one turns pale accent with a ring and a check.
+   Selected from aria-pressed, aria-selected or .on. */
+.chips{display:flex;gap:var(--space-2);overflow-x:auto;scrollbar-width:none;padding:var(--space-1);margin:calc(var(--space-1) * -1)}
+.chips::-webkit-scrollbar{display:none}
+.chip{display:inline-flex;align-items:center;gap:7px;flex:none;min-height:var(--tap);padding:0 var(--space-4);border:0;border-radius:var(--r-pill);
+  background:var(--panel);color:var(--ink);font-weight:var(--weight-strong);font-size:var(--fs-md);white-space:nowrap;
+  transition:transform var(--dur-fast) var(--spring),background-color var(--dur-med),color var(--dur-med),box-shadow var(--dur-med)}
+.chip:is(:hover,.is-hover){background:color-mix(in srgb,var(--ink) 6%,var(--panel))}
+.chip:is(:active,.is-active){transform:scale(.97)}
+.chip.is-focus{outline:var(--ring) solid var(--focus);outline-offset:2px}
+.chip:is([aria-pressed=true],[aria-selected=true],.on){background:var(--accent-soft);color:var(--accent-soft-ink);box-shadow:inset 0 0 0 var(--bw-base) var(--accent)}
+.chip:is([aria-pressed=true],[aria-selected=true],.on)::before{content:"";width:14px;height:14px;margin-left:-3px;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/contain no-repeat;
+  animation:b-check var(--dur-slow) var(--spring) both}
+.chip .n,.count{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 7px;border-radius:var(--r-pill);background:var(--surface);color:var(--muted);font-size:var(--fs-sm);font-weight:var(--weight-strong)}
+.count{background:var(--panel)}
+.chip:is([aria-pressed=true],[aria-selected=true],.on) .n{background:var(--accent);color:var(--on-accent)}
+/* tags: small labels on a card. Status tags (ok, warn, danger, gold) mean something; category tags (t0 to t3) only group. */
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:0 10px;border-radius:var(--r-pill);background:var(--panel);color:var(--ink);font-size:var(--fs-sm);font-weight:var(--weight-ui);white-space:nowrap}
+.tag svg{width:14px;height:14px;flex:none}
+.tag.accent{background:var(--accent-soft);color:var(--accent-soft-ink)}
+.tag.gold{background:var(--gold-soft);color:var(--gold-ink)}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.danger{background:var(--danger-soft);color:var(--danger)}
+.tag.t0{background:var(--t0);color:var(--t0-ink)}.tag.t1{background:var(--t1);color:var(--t1-ink)}.tag.t2{background:var(--t2);color:var(--t2-ink)}.tag.t3{background:var(--t3);color:var(--t3-ink)}
+.tag.outline{background:none;box-shadow:inset 0 0 0 var(--bw-base) var(--line-strong);color:var(--muted)}
+.tag.price{background:var(--accent-soft);color:var(--accent-soft-ink);font:var(--weight-ui) var(--fs-md)/1 var(--display);height:28px;padding:0 var(--space-3) 0 9px;border-radius:var(--r-xs) var(--r-md) var(--r-md) var(--r-xs);transform:rotate(-3deg);transform-origin:10px 50%}
+.tag.price::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--surface)}
+.tag.mono{font-family:var(--mono);font-weight:var(--weight-mono)}
+
+/* ---------- forms ---------- */
+.field{display:block;margin-bottom:var(--space-4)}
+.field>span,.field>.lbl{display:block;margin-bottom:7px;font-weight:var(--weight-strong);font-size:var(--fs-md)}
+.field>span em,.field>.lbl em{font-style:normal;font-weight:var(--weight-body);color:var(--muted)}
+.field>small{display:block;margin-top:6px;color:var(--muted);font-size:var(--fs-sm)}
+.field>small.err{color:var(--danger);font-weight:var(--weight-ui)}
+/* Inputs (soft filled): the panel color with a 3:1 edge at rest; white with an accent ring while typing */
+.input{display:block;width:100%;min-height:calc(var(--tap) + 10px);padding:var(--space-3) 15px;border:var(--bw-base) solid var(--line-strong);border-radius:var(--r-md);background:var(--panel);color:var(--ink);
+  transition:border-color var(--dur-med),box-shadow var(--dur-med),background-color var(--dur-med)}
+.input:is(:hover,.is-hover){border-color:var(--muted)}
+.dense .input{padding:7px var(--space-3);border-radius:var(--r-sm)}
+.input:is(:focus,.is-focus){outline:none;background:var(--surface);border-color:var(--accent);box-shadow:0 0 0 var(--ring) color-mix(in srgb,var(--accent) 18%,transparent)}
+:is(.card.soft,.card.draft,.note) .input{background:var(--surface)}
+.input[aria-invalid=true]{border-color:var(--danger);background:var(--danger-soft)}
+.input:is(:disabled,[aria-disabled=true]){border-color:var(--line);color:var(--muted);cursor:not-allowed}
+textarea.input{min-height:96px;resize:vertical;line-height:1.45}
+select.input{appearance:none;padding-right:40px;background-image:var(--select-arrow);background-repeat:no-repeat;background-position:right var(--space-3) center;background-size:20px}
+.check{display:inline-flex;align-items:center;gap:10px;min-height:var(--tap);font-weight:var(--weight-ui);cursor:pointer}
+.check input{width:22px;height:22px;margin:0}
+/* switch: <button class="sw-row" role="switch" aria-checked="false">Label <span class="switch"></span></button> */
+.sw-row{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);width:100%;min-height:var(--tap);padding:6px 0;border:0;background:none;text-align:left;font-weight:var(--weight-ui)}
+.switch{position:relative;flex:none;width:52px;height:32px;border-radius:var(--r-pill);background:var(--line-strong);transition:background-color var(--dur-med)}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:var(--knob);box-shadow:var(--shadow-sm);transition:transform var(--dur-slow) var(--spring)}
+.sw-row[aria-checked=true] .switch{background:var(--accent)}
+.sw-row[aria-checked=true] .switch::after{transform:translateX(20px)}
+/* segmented control: <div class="seg" role="radiogroup"><button role="radio" aria-checked="true">... */
+.seg{display:grid;grid-auto-columns:1fr;grid-auto-flow:column;gap:var(--space-1);padding:var(--space-1);border-radius:var(--r-md);background:var(--panel);box-shadow:inset 0 0 0 var(--bw-hair) var(--line)}
+.seg>button{min-height:calc(var(--tap) - 4px);padding:0 10px;border:0;border-radius:var(--r-sm);background:none;color:var(--muted);font-weight:var(--weight-strong);font-size:var(--fs-md);transition:background-color var(--dur-med),color var(--dur-med)}
+.seg>button:hover{color:var(--ink)}
+.seg>button:is([aria-checked=true],[aria-selected=true],[aria-pressed=true],.on){background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 var(--bw-base) var(--card-line)}
+
+/* ---------- people ---------- */
+.avatar{position:relative;overflow:hidden;flex:none;display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--accent);color:var(--on-accent);font:var(--weight-ui) var(--fs-lg)/1 var(--display)}
+.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.avatar.sm{width:36px;height:36px;font-size:var(--fs-md)}
+.avatar.big{width:56px;height:56px;font-size:var(--fs-xl)}
+.avatar.huge{width:88px;height:88px;font-size:var(--fs-3xl)}
+.avatar.square{border-radius:30%}
+
+/* ---------- notes and empty states ---------- */
+.note{display:flex;gap:10px;align-items:flex-start;padding:var(--space-3) 14px;border-radius:var(--r-md);background:var(--panel);color:var(--muted);font-size:var(--fs-md);line-height:var(--lh-snug)}
+.note svg{flex:none;width:18px;height:18px;margin-top:1px}
+.note strong{color:var(--ink)}
+.note.accent{background:var(--accent-soft);color:var(--accent-soft-ink)}
+.note.gold{background:var(--gold-soft);color:var(--gold-ink)}
+.note.ok{background:var(--ok-soft);color:var(--ok)}
+.note.warn{background:var(--warn-soft);color:var(--warn)}
+.note.danger{background:var(--danger-soft);color:var(--danger)}
+.note:is(.accent,.gold,.ok,.warn,.danger) strong{color:inherit}
+.empty{text-align:center;padding:var(--space-6) var(--space-3) var(--space-2)}
+.empty>svg,.empty>.art{margin:0 auto 10px;color:var(--accent)}
+.empty strong{display:block;max-width:300px;margin:0 auto 6px;font:var(--weight-ui) var(--fs-xl)/1.25 var(--display);color:var(--ink)}
+.empty p{max-width:320px;margin:0 auto 18px;color:var(--muted)}
+.check-done{display:grid;place-items:center;width:26px;height:26px;flex:none;border-radius:50%;background:var(--ok);color:var(--surface);animation:b-check var(--dur-slow) var(--spring) both}
+
+/* ---------- floating things: menu, tooltip, toast, sheet (blur shadows only here: they float) ---------- */
+.menu{position:fixed;z-index:46;min-width:12rem;padding:6px;border:var(--bw-base) solid var(--card-line);border-radius:var(--r-md);background:var(--surface);box-shadow:var(--shadow-lg);animation:b-pop var(--dur-fast) ease}
+.menu button,.menu a{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap);padding:6px 10px;border:0;border-radius:var(--r-sm);background:none;color:var(--ink);font-size:var(--fs-md);text-align:left;text-decoration:none}
+.menu :is(button,a):hover{background:var(--hover)}
+.menu :is(button,a):focus-visible{background:var(--hover);outline-offset:calc(var(--ring) * -1)}
+.menu .danger{color:var(--danger)}
+.menu .sep{height:var(--bw-hair);margin:var(--space-1) 6px;background:var(--line)}
+.tip{position:fixed;z-index:70;max-width:16rem;padding:6px 10px;border-radius:var(--r-sm);background:var(--ink);color:var(--bg);font-size:var(--fs-sm);line-height:var(--lh-snug);pointer-events:none;opacity:0;transition:opacity var(--dur-fast)}
+.tip.show{opacity:1}
+@media (hover:none){.tip{display:none}}
+/* toast (sticker): white with an ink outline and a pine offset; .err switches the offset and icon to danger.
+   <div class="toast show" role="status"><svg>..</svg><span>Saved</span><button>Undo</button></div> */
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);z-index:60;display:flex;align-items:center;gap:10px;width:max-content;max-width:min(30rem,calc(100vw - 32px));
+  padding:10px 10px 10px var(--space-4);border:var(--bw-base) solid var(--card-line);border-radius:var(--r-lg);background:var(--surface);color:var(--ink);font-size:var(--fs-md);font-weight:var(--weight-ui);box-shadow:var(--pop-md) var(--pop-md) 0 var(--ok);
+  transform:translate(-50%,16px);opacity:0;pointer-events:none;transition:opacity var(--dur-med),transform var(--dur-slow) var(--spring)}
+.toast.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+.toast svg{flex:none;width:20px;height:20px;color:var(--ok)}
+.toast.err{box-shadow:var(--pop-md) var(--pop-md) 0 var(--danger)}
+.toast.err svg{color:var(--danger)}
+.toast span{flex:1;min-width:0}
+.toast button{position:relative;flex:none;min-height:36px;padding:0 10px;border:0;border-radius:var(--r-sm);background:none;color:var(--accent);font-weight:var(--weight-eyebrow);text-decoration:underline;text-underline-offset:3px}
+.toast button::after{content:"";position:absolute;left:0;right:0;top:50%;height:var(--tap);transform:translateY(-50%)}
+.toast button:hover{background:var(--hover)}
+/* sheet (sticker): a <dialog class="sheet">. Slides up from the bottom on phones with an ink outline and a topaz
+   stripe on top; a centered card with a topaz offset on wider screens. */
+dialog.sheet{width:100%;max-width:var(--w-narrow);max-height:calc(92dvh - 4px);margin:auto auto 0;padding:0;border:var(--bw-base) solid var(--card-line);border-bottom:0;border-radius:var(--r-lg) var(--r-lg) 0 0;
+  background:var(--surface);color:var(--ink);box-shadow:0 calc(var(--pop-lg) * -1) 0 var(--hero-edge);overflow:auto}
+dialog.sheet[open]{animation:b-sheet-up var(--dur-slow) var(--ease-out) both}
+dialog.sheet::backdrop{background:var(--scrim);animation:b-fade var(--dur-med) ease both}
+dialog.sheet>.sheet-in{padding:20px 20px calc(env(safe-area-inset-bottom,0px) + 22px)}
+dialog.sheet>.sheet-in::before{content:"";display:block;width:36px;height:4px;margin:-8px auto 14px;border-radius:var(--r-pill);background:var(--line-strong)}
+dialog.sheet .sheet-close{position:absolute;top:12px;right:12px}
+@media (min-width:720px){
+  dialog.sheet{margin:auto;border-bottom:var(--bw-base) solid var(--card-line);border-radius:var(--r-lg);box-shadow:var(--pop-xl) var(--pop-xl) 0 var(--hero-edge)}
+  dialog.sheet>.sheet-in::before{display:none}
+  dialog.sheet[open]{animation:b-pop var(--dur-med) var(--ease-out) both}
+}
+
+/* ---------- the light/dark toggle (theme.js adds it to the top right corner) ---------- */
+/* Always .b-theme-toggle (theme.js renders it), in brand.css and brand-compat.css alike.
+   Sticker: ink outline with a small accent offset; on the wine band (.on-hero) it goes clear with a topaz offset. */
+.b-theme-toggle{position:absolute;z-index:20;top:var(--theme-top,calc(env(safe-area-inset-top,0px) + 16px));right:calc(env(safe-area-inset-right,0px) + 16px);
+  display:grid;place-items:center;width:40px;height:40px;padding:0;margin:0;border:var(--bw-base) solid var(--card-line);border-radius:50%;background:var(--surface);color:var(--ink);
+  box-shadow:var(--pop-sm) var(--pop-sm) 0 var(--card-offset);cursor:pointer;transition:transform var(--dur-fast) ease,box-shadow var(--dur-fast) ease}
+.b-theme-toggle::after{content:"";position:absolute;inset:-3px;border-radius:50%}
+.b-theme-toggle:hover{transform:translate(-1px,-1px);box-shadow:var(--pop-md) var(--pop-md) 0 var(--card-offset)}
+.b-theme-toggle:active{transform:translate(var(--pop-sm),var(--pop-sm));box-shadow:0 0 0 var(--card-offset)}
+.b-theme-toggle svg{width:18px;height:18px;transition:transform var(--dur-slow) var(--spring)}
+.b-theme-toggle:hover svg{transform:rotate(-20deg)}
+.b-theme-toggle.on-hero{background:transparent;color:var(--hero-ink);border-color:var(--hero-muted);--card-offset:var(--hero-edge)}
+@media (min-width:720px){.b-theme-toggle{top:var(--theme-top,20px);right:24px}}
+
+/* reduced motion: presses and lifts become color only */
+@media (prefers-reduced-motion:reduce){
+  :is(.btn,.iconbtn,.ibtn,.chip,.card,.b-theme-toggle){transform:none!important}
+  .toast{transform:translate(-50%,0)}
+}
+}

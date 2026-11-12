@@ -701,11 +701,12 @@ const shareToken = () => {
 const escHtml = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const SHARE_SIZES = [["shirt", "Shirt / top"], ["pants", "Pants"], ["shoe", "Shoe"], ["ring", "Ring"]];
 export async function sharePage(env, token, url) {
-  const html = (status, body, title = "Hints") => new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+  const html = (status, body, title = "Hints") => new Response(`<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow">
-<title>${escHtml(title)}</title><link rel="icon" href="/icons/icon-192.png"><link rel="stylesheet" href="/fonts/fonts.css">
+<title>${escHtml(title)}</title><link rel="icon" href="/icons/icon-192.png"><link rel="stylesheet" href="/brand/tokens.css">
 <style>
-:root{--brand:#7A1E3A;--ink:#2A1A1F;--muted:#7C6A70;--bg:#FBF7F2;--card:#fff;--line:#EFE6E1;--gold:#D9A94A;--gold-soft:#FBF1DC}
+/* Colors and fonts from the brand library; this page stays light. --brand is the action color. */
+:root{--brand:var(--accent)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Figtree,system-ui,sans-serif}
 h1,h2{font-family:"Bricolage Grotesque",Figtree,sans-serif;margin:0}
 header{background:var(--brand);color:#fff;padding:28px 20px 26px}header .in{max-width:860px;margin:0 auto;display:flex;align-items:center;gap:14px}

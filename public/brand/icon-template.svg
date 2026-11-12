@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254">
+<!-- App icon template, from Hints (the standard): a flat rounded square, radius 287 of 1254 (about 23%), no gradient,
+     one white glyph centered and filling about 60% of the square. Hints uses #82263C; keep it for one family look, or swap in the app's own color,
+     and replace the circle below with the app's glyph as a single white path. -->
+<rect width="1254" height="1254" rx="287" fill="#82263C"/>
+<circle cx="627" cy="627" r="250" fill="#FFFFFF"/>
+</svg>
