@@ -834,7 +834,7 @@
   .sw-row[aria-checked="true"] .switch::after { transform: translateX(20px); }
   .sw-row:focus-visible, .mode:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 12px; }
   .modes + .sw-row { margin-top: 8px; }
-  .accents { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 12px; }
+  .accents { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 12px; } /* wraps to a second row on phones */
   .accent { border: 2px solid var(--line); background: var(--card); border-radius: 14px; padding: 10px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
     font-size: 13px; font-weight: 600; line-height: 1.2; text-align: center; transition: border-color .2s, transform .2s var(--spring); }
   .accent:active { transform: scale(.95); }
