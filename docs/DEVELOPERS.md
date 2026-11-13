@@ -19,7 +19,7 @@ src/stores.js         Stores photo search may link to, plus blocked marketplaces
 migrations/           D1 schema (wrangler d1 migrations)
 public/index.html     The app (single page)
 public/sw.js          Service worker (network first, offline fallback)
-public/manifest.webmanifest, icons/, fonts/ (Figtree, Bricolage Grotesque, OFL)
+public/manifest.webmanifest, icons/, fonts/ (Figtree, Bricolage Grotesque, OFL; unused, the app loads fonts from brand/)
 public/theme.js       Applies the saved light/dark choice (picked in Settings)
 public/xlsx.js        Builds the budget Excel export (Settings) in the browser
 public/giftcards.js   Gift card brands (name, color, emoji, group). Loaded by the app and imported by src/wishlist.js
@@ -191,7 +191,7 @@ public/og-invite.png  Link preview image for invite links
   - **Opening:** `public/sw.js` shows the notification (status bar icon `icons/badge.png`, a white H, since Android draws it as a silhouette), sets the home screen badge when the payload has a count, and tapping it opens the right screen.
   - **Testing locally:** put `PUSH_DEV_ENDPOINT=http://localhost:9911/` (lets a fake push service subscribe) and `PUSH_DEV_REMIND=1` (reminders on every run), and optionally `PUSH_DEV_HOUR=9` (pretend New York hour, for quiet hours) and `PUSH_DEV_TODAY=20261115` (pretend date for reminders) in `.dev.vars`, run `npx wrangler dev --test-scheduled`, and trigger a run with `curl "localhost:8787/__scheduled?cron=0+*+*+*+*"`. Never set these in production.
 - **Settings:** text size (Default, Large, Extra large) and appearance (Automatic, Light, Dark) are saved on the device.
-- **Look and motion:** cream background, a wine header band, burgundy actions, gold for top picks, pine for "you're getting this". Bricolage Grotesque for titles and big numbers, Figtree for everything else. Animations mark real moments (opening an invite, joining, the tour, adding a wish, starring a top pick, "I'll get this" confetti, budget numbers counting) and all turn off with the device's Reduce Motion setting.
+- **Look and motion:** cream background, a wine header band, burgundy actions, gold for top picks, pine for "you're getting this". Inter Tight for titles and big numbers, Figtree for everything else. Animations mark real moments (opening an invite, joining, the tour, adding a wish, starring a top pick, "I'll get this" confetti, budget numbers counting) and all turn off with the device's Reduce Motion setting.
 
 ## Abuse limits
 

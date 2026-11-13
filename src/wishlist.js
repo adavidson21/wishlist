@@ -708,7 +708,7 @@ export async function sharePage(env, token, url) {
 /* Colors and fonts from the brand library; this page stays light. --brand is the action color. */
 :root{--brand:var(--accent)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Figtree,system-ui,sans-serif}
-h1,h2{font-family:"Bricolage Grotesque",Figtree,sans-serif;margin:0}
+h1,h2{font-family:"Inter Tight",Figtree,sans-serif;margin:0}
 header{background:var(--brand);color:#fff;padding:28px 20px 26px}header .in{max-width:860px;margin:0 auto;display:flex;align-items:center;gap:14px}
 .av{width:58px;height:58px;border-radius:50%;background:#ffffff26;display:grid;place-items:center;font-weight:800;font-size:24px;overflow:hidden;flex:none}.av img{width:100%;height:100%;object-fit:cover}
 header h1{font-size:30px;line-height:1.1}header p{margin:4px 0 0;opacity:.85}

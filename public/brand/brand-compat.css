@@ -1,10 +1,10 @@
-/*! Alexis Davidson brand 2.0.0, full library, v1 class names. Source: personal-tools/brand. Fonts: SIL OFL 1.1 (fonts/OFL-*.txt). */
+/*! Alexis Davidson brand 2.1.0, full library, v1 class names. Source: personal-tools/brand. Fonts: SIL OFL 1.1 (fonts/OFL-*.txt). */
 /* Brand fonts, self-hosted (no third-party requests, works offline). All SIL OFL 1.1, notices in fonts/OFL-*.txt.
-   Bricolage Grotesque: titles and big numbers. Figtree: everything else. DM Mono: code, keys and tabular labels.
-   Sources: Fontsource (@fontsource-variable/bricolage-grotesque "standard", @fontsource-variable/figtree "wght",
-   @fontsource/dm-mono 400 and 500), latin and latin-ext subsets. Copied from Hints and Workshop. */
-@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:200 800;font-display:swap;src:url(fonts/bricolage-grotesque-latin-standard-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:200 800;font-display:swap;src:url(fonts/bricolage-grotesque-latin-ext-standard-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+   Inter Tight: titles and big numbers. Figtree: everything else. DM Mono: code, keys and tabular labels.
+   Sources: Fontsource (@fontsource-variable/inter-tight "wght", @fontsource-variable/figtree "wght",
+   @fontsource/dm-mono 400 and 500), latin and latin-ext subsets. Inter Tight replaced Bricolage Grotesque in 2.1.0 (plain capital F). */
+@font-face{font-family:"Inter Tight";font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/inter-tight-latin-wght-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Inter Tight";font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/inter-tight-latin-ext-wght-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 @font-face{font-family:"Figtree";font-style:normal;font-weight:300 900;font-display:swap;src:url(fonts/figtree-latin-wght-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:"Figtree";font-style:normal;font-weight:300 900;font-display:swap;src:url(fonts/figtree-latin-ext-wght-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 @font-face{font-family:"Figtree";font-style:italic;font-weight:300 900;font-display:swap;src:url(fonts/figtree-latin-wght-italic.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
@@ -45,7 +45,7 @@
 :root[data-theme=dark][data-accent=amethyst]{ --accent:var(--p-amethyst-225); --on-accent:var(--p-amethyst-775); --accent-soft:var(--p-amethyst-700); --accent-soft-ink:var(--p-amethyst-150); }
 @media (prefers-color-scheme: dark){ :root:not([data-theme])[data-accent=amethyst]{ --accent:var(--p-amethyst-225); --on-accent:var(--p-amethyst-775); --accent-soft:var(--p-amethyst-700); --accent-soft-ink:var(--p-amethyst-150); } }
 :root{
-  --display:"Bricolage Grotesque",Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Inter Tight",Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;
   --sans:Figtree,"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   --mono:"DM Mono","Cascadia Mono",Consolas,"SF Mono",Menlo,ui-monospace,monospace;
   --weight-body:400;
@@ -378,7 +378,7 @@ a.card,button.card{display:block;width:100%;text-align:left;color:inherit;text-d
 .chips{display:flex;gap:var(--space-2);overflow-x:auto;scrollbar-width:none;padding:var(--space-1);margin:calc(var(--space-1) * -1)}
 .chips::-webkit-scrollbar{display:none}
 .chip{display:inline-flex;align-items:center;gap:7px;flex:none;min-height:var(--tap);padding:0 var(--space-4);border:0;border-radius:var(--r-pill);
-  background:var(--panel);color:var(--ink);font-weight:var(--weight-strong);font-size:var(--fs-md);white-space:nowrap;
+  background:var(--panel);color:var(--ink);font-weight:var(--weight-strong);font-size:var(--fs-md);white-space:nowrap;text-decoration:none;
   transition:transform var(--dur-fast) var(--spring),background-color var(--dur-med),color var(--dur-med),box-shadow var(--dur-med)}
 .chip:is(:hover,.is-hover){background:color-mix(in srgb,var(--ink) 6%,var(--panel))}
 .chip:is(:active,.is-active){transform:scale(.97)}
