@@ -1,4 +1,4 @@
-# Alexis Davidson brand 2.0.0: rules for coding agents
+# Alexis Davidson brand 2.1.0: rules for coding agents
 
 Read this before writing or reviewing UI for any of Alexis's apps (LifeKit, Hints, Workshop, Docket, Dispatch, Thrift,
 Classroom, the personal site and anything new). Machine-readable companions, same folder:
@@ -57,7 +57,7 @@ Reduced motion is handled by the library: presses and slides become color and op
 - Type: `--fs-xs` 12, `--fs-sm` 13, `--fs-md` 15, `--fs-base` 17, `--fs-lg` 19, `--fs-xl` 23, `--fs-2xl` 26,
   `--fs-3xl` 36, `--fs-display` 58 (px at 17px base; all shrink together in `.b-dense`)
 - Weights: `--weight-body` 400, `--weight-ui` 600, `--weight-strong` 700, `--weight-eyebrow` 800
-- Fonts: `--display` Bricolage Grotesque (titles, big numbers), `--sans` Figtree (everything else), `--mono` DM Mono
+- Fonts: `--display` Inter Tight (titles, big numbers), `--sans` Figtree (everything else), `--mono` DM Mono
 - Radius: `--r-xs` 6, `--r-sm` 10, `--r-md` 14, `--r-lg` 16 (cards, sheets, toasts), `--r-xl` 24, `--r-pill`
 - Space: `--space-1` 4 through `--space-8` 48 (4, 8, 12, 16, 20, 24, 32, 48)
 - Borders: `--bw-hair` 1, `--bw-base` 1.5, `--bw-heavy` 3. Sticker offsets: `--pop-sm` 2, `--pop-md` 3, `--pop-lg` 4, `--pop-xl` 5

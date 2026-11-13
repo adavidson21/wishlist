@@ -1,4 +1,4 @@
-/*! Alexis Davidson brand 2.0.0, Tailwind v4 bridge. Import after tailwindcss and brand.css (or tokens.css). */
+/*! Alexis Davidson brand 2.1.0, Tailwind v4 bridge. Import after tailwindcss and brand.css (or tokens.css). */
 @theme inline {
   --color-*: initial;
   --color-bg: var(--bg);

@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "files": [
     "brand.css",
     "brand-compat.css",
@@ -15,6 +15,7 @@
     "fonts/OFL-BricolageGrotesque.txt",
     "fonts/OFL-DMMono.txt",
     "fonts/OFL-Figtree.txt",
+    "fonts/OFL-InterTight.txt",
     "fonts/bricolage-grotesque-latin-ext-standard-normal.woff2",
     "fonts/bricolage-grotesque-latin-standard-normal.woff2",
     "fonts/dm-mono-latin-400-normal.woff2",
@@ -24,6 +25,8 @@
     "fonts/figtree-latin-ext-wght-italic.woff2",
     "fonts/figtree-latin-ext-wght-normal.woff2",
     "fonts/figtree-latin-wght-italic.woff2",
-    "fonts/figtree-latin-wght-normal.woff2"
+    "fonts/figtree-latin-wght-normal.woff2",
+    "fonts/inter-tight-latin-ext-wght-normal.woff2",
+    "fonts/inter-tight-latin-wght-normal.woff2"
   ]
 }
