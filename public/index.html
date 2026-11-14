@@ -1254,6 +1254,10 @@
   .own-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .own-photo .btn { flex: 0 1 auto; }
   .photo-btn { background: var(--soft); border-color: transparent; color: var(--soft-ink); min-height: 50px; }
+  .photo-pick { display: flex; gap: 8px; }
+  .photo-pick .photo-btn { flex: 1 1 0; }
+  .photo-pick .photo-btn + .photo-btn { flex: 0 1 auto; }
+  .own-photo + .photo-pick { margin-top: 10px; }
   .photo-status { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 15px; color: var(--muted); }
   .photo-status img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; flex: none; }
   .photo-status strong { color: var(--ink); }
@@ -5184,18 +5188,24 @@ function linkField(value, first) {
 // Wishes (own): "Add a photo". It becomes the wish's picture, over the store's, and when the wish has no name yet we
 // guess what it is too. ownSrc: the wish's own photo, already saved.
 function photoField(own, ownSrc) {
+  // Two inputs: capture opens the camera straight away (Android's photo picker has no camera option); the other is the library.
   return `<div class="photo-box"${own ? " data-own" : ""}>
+      <input type="file" accept="image/*" capture="environment" data-photo-cam hidden>
       <input type="file" accept="image/*" data-photo hidden>
       ${own ? `<div class="own-photo" data-own-row${ownSrc ? "" : " hidden"}>
         <span class="own-thumb">${ownSrc ? `<img src="${esc(ownSrc)}" alt="Your photo">` : ""}</span>
         <button class="btn small" type="button" data-photo-change>Change photo</button>
         <button class="btn small quiet" type="button" data-photo-drop>Remove photo</button>
       </div>` : ""}
-      <button class="btn wide photo-btn" type="button" data-photo-btn${ownSrc ? " hidden" : ""}>${CAMERA} ${own ? "Add a photo" : "Or snap a photo of it"}</button>
+      <div class="photo-pick" data-photo-pick${ownSrc ? " hidden" : ""}>
+        <button class="btn photo-btn" type="button" data-photo-btn>${CAMERA} ${own ? "Take a photo" : "Or snap a photo"}</button>
+        <button class="btn photo-btn" type="button" data-photo-lib>${GALLERY_I} Library</button>
+      </div>
       <div class="photo-status" hidden></div>
       <div class="picks" hidden></div>
     </div>`;
 }
+const GALLERY_I = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9"/></svg>';
 
 // Shrink the photo on the phone before sending (faster, cheaper). Returns a JPEG data URL.
 function shrinkPhoto(file, maxSide = 1024, quality = 0.8) {
@@ -5332,7 +5342,8 @@ const where = (x) => (x.link === "product" ? `At ${x.store}${x.price ? ` for ${m
 // Photo: Gemini suggests what it might be; tapping a suggestion fills the name, a store link, and the price when known.
 function wirePhoto(form) {
   const box = form.querySelector(".photo-box"), own = box.hasAttribute("data-own");
-  const input = box.querySelector("[data-photo]"), btn = box.querySelector("[data-photo-btn]");
+  const input = box.querySelector("[data-photo]"), cam = box.querySelector("[data-photo-cam]");
+  const btn = box.querySelector("[data-photo-pick]"), pickBtns = btn.querySelectorAll("button");
   const status = box.querySelector(".photo-status"), picks = box.querySelector(".picks"), row = box.querySelector("[data-own-row]");
   // Wishes: form.dataset.photo is the new photo to save, "" to remove the saved one; unset leaves it.
   const showOwn = (src) => {
@@ -5340,20 +5351,22 @@ function wirePhoto(form) {
     btn.hidden = !!src;
     if (src) row.querySelector(".own-thumb").innerHTML = `<img src="${esc(src)}" alt="Your photo">`;
   };
-  btn.addEventListener("click", () => input.click());
-  box.querySelector("[data-photo-change]")?.addEventListener("click", () => input.click());
+  box.querySelector("[data-photo-btn]").addEventListener("click", () => cam.click());
+  box.querySelector("[data-photo-lib]").addEventListener("click", () => input.click());
+  // Change photo: show the camera / library choice again under the current photo.
+  box.querySelector("[data-photo-change]")?.addEventListener("click", () => { btn.hidden = !btn.hidden; });
   box.querySelector("[data-photo-drop]")?.addEventListener("click", () => {
     if (form.dataset.hadPhoto) form.dataset.photo = "";
     else delete form.dataset.photo;
     showOwn("");
     status.hidden = picks.hidden = true;
   });
-  input.addEventListener("change", async () => {
-    const file = input.files[0];
-    input.value = "";
+  const onPick = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
     if (!file) return;
     picks.hidden = true;
-    btn.disabled = true;
+    pickBtns.forEach((b) => (b.disabled = true));
     try {
       let photo;
       if (own) {
@@ -5404,8 +5417,10 @@ function wirePhoto(form) {
       if (e.detail) console.warn("Photo search:", e.detail);
       status.innerHTML = `<span>${esc(e.message)}</span>`;
       status.hidden = false;
-    } finally { btn.disabled = false; }
-  });
+    } finally { pickBtns.forEach((b) => (b.disabled = false)); }
+  };
+  input.addEventListener("change", onPick);
+  cam.addEventListener("change", onPick);
 }
 
 // Share buttons in store apps paste text plus a link ("Check out X! https://...").
