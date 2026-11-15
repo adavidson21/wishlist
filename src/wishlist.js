@@ -2322,9 +2322,20 @@ function tidyBrand(v) {
 // Checked when someone opens a list, at most every 12 hours per link (shared through Cloudflare's edge cache,
 // nothing stored in D1). Reads the store page; Gemini only for stores that block us. Misses are cached for
 // 6 hours so a blocked store isn't looked up on every visit.
+// Amazon's stock status, read only from the availability box by the Buy button. The rest of the page carries
+// "Currently unavailable" and hidden out-of-stock boxes for other sizes and colors even when this one is in stock,
+// so matching the whole page marked in-stock items as out. Unknown (null) unless the page clearly says.
+function amazonStock(html) {
+  const box = html.match(/id=["']availability["'][^>]*>([\s\S]{0,2000}?)<\/div>/i)?.[1] || "";
+  const text = decode(box.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  if (/out of stock|currently unavailable|no longer available/i.test(text)) return false;
+  if (/in stock|ships|arrives|available|pre-?order|usually/i.test(text)) return true;
+  if (/id=["'](add-to-cart-button|buy-now-button)["']/i.test(html)) return true;
+  return null;
+}
 const LIVE_TTL = 12 * 3600, LIVE_MISS_TTL = 6 * 3600;
-// v4: drops cached answers from before currencies were converted.
-const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v4/${encodeURIComponent(u)}`);
+// v5: drops cached answers from before Amazon stock was read from the availability box only.
+const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v5/${encodeURIComponent(u)}`);
 async function livePrice(env, rawUrl, { ai = true } = {}) {
   let clean;
   try { clean = cleanLink(await resolveShortLink(new URL(link(rawUrl)))); } catch { return null; }
@@ -2348,7 +2359,7 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
     inStock = ld.inStock ?? null;
     const availMeta = meta(html, "product:availability", "og:availability", "availability");
     if (inStock === null && availMeta) inStock = /out|sold|unavailable|discontinued/i.test(availMeta) ? false : /in ?stock|available|preorder/i.test(availMeta) ? true : null;
-    if (inStock === null && /id=["']outOfStock["']|currently unavailable\./i.test(html)) inStock = false; // Amazon
+    if (inStock === null && /(^|\.)amazon\./i.test(site)) inStock = amazonStock(html);
   }
   if (price == null && inStock === null && ai) {
     const found = await lookupLink(env, clean).catch(() => null);
