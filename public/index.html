@@ -2218,21 +2218,27 @@ const CATS = [
   ["experiences", "Experiences", "ticket"], ["other", "Other", "gift"],
 ];
 const CAT = Object.fromEntries(CATS.map(([k, label, icon]) => [k, { label, icon }]));
+// Fallback for wishes Gemini hasn't sorted yet (items.category_auto, filled right after a save): checked against the
+// name and brand. Order matters: first match wins.
 const CAT_RULES = [
-  [/perfume|parfum|cologne|fragrance|eau de|lipstick|makeup|mascara|skin ?care|serum|lotion|moisturi|nail polish|shampoo|beauty|razor|beard/i, "beauty"],
-  [/kindle|paperwhite|ipad|tablet|laptop|iphone|phone|camera|smart ?watch|apple watch|charger|\btv\b|monitor|echo|alexa|keyboard|mouse|headphone|earbud|airpod|speaker|soundbar|beats|drone|\bssd\b|router/i, "tech"],
-  [/playstation|ps5|xbox|nintendo|switch|controller|video game|lego|puzzle|\btoy|doll|plush|board game|blocks|card game/i, "toys"],
-  [/book|novel|journal|notebook|comic/i, "books"],
-  [/slipper|shoe|sneaker|boot|sandal|heels|loafer|crocs/i, "shoes"],
-  [/\bbag\b|tote|purse|handbag|wallet|backpack|duffel|necklace|\bring\b|earring|bracelet|jewel|pendant|watch|sunglasses|belt\b/i, "accessories"],
-  [/shirt|sweater|cardigan|hoodie|jacket|coat|dress|pants|jeans|sock|pajama|scarf|\bhats?\b|\bcap\b|beanie|glove|legging|robe|sweatshirt/i, "clothing"],
-  [/skillet|\bpans?\b|\bpots?\b|cookware|dutch oven|air fryer|wok|griddle|mug|tumbler|water bottle|stanley|yeti|coffee|\btea\b|kitchen|knife|blender|baking/i, "kitchen"],
-  [/candle|blanket|throw|pillow|vase|decor|lamp|frame|plant|towel|sheets/i, "home"],
-  [/tent|camping|hiking|yoga|golf|bike|fitness|dumbbell|\bball\b|fishing|kayak|ski/i, "outdoors"],
-  [/wine|whiskey|bourbon|beer|chocolate|candy|cookie|snack/i, "treats"],
-  [/ticket|concert|experience|\bspa\b|massage|lesson|class\b/i, "experiences"],
+  [/perfume|parfum|cologne|fragrance|eau de|lipstick|lip (gloss|balm|oil|liner|mask)|makeup|mascara|eyeliner|eyeshadow|eye ?shadow|palette|foundation|concealer|blush|bronzer|highlighter|primer|setting spray|skin ?care|serum|cleanser|toner|moisturi|sunscreen|\bspf\b|retinol|face (mask|wash|oil)|lotion|body (wash|butter|oil|mist|scrub)|bath bomb|nail polish|press-?on|shampoo|conditioner|hair (mask|oil|dryer|straightener)|flat iron|curling|airwrap|hair ?brush|beauty|razor|beard|deodorant|sephora|ulta|glossier|rare beauty|fenty|drunk elephant|sol de janeiro|laneige|olaplex|cerave/i, "beauty"],
+  [/kindle|paperwhite|e-?reader|ipad|tablet|laptop|macbook|chromebook|iphone|phone|camera|gopro|polaroid|instax|smart ?watch|apple watch|fitbit|garmin|charger|power ?bank|\bcable\b|\busb\b|\btv\b|monitor|projector|printer|webcam|\becho\b|alexa|google (home|nest)|roku|fire (tv|stick)|chromecast|apple tv|keyboard|(gaming|wireless|computer|magic) mouse|headphone|headset|earbud|airpod|speaker|soundbar|beats|bose|sonos|jbl|drone|\bssd\b|hard drive|router|\bvr\b|oculus|meta quest|smart (plug|bulb|light)|ring doorbell|tile tracker|airtag/i, "tech"],
+  [/playstation|ps5|xbox|nintendo|switch|steam deck|controller|video game|lego|puzzle|\btoys?\b|doll|plush|stuffed|squishmallow|funko|barbie|hot wheels|nerf|action figure|play ?set|board game|blocks|card game|\bgames?\b|jigsaw|rc car|remote control car|crayons|coloring|art set|craft kit|slime|magna-?tiles|fisher-?price|melissa (&|and) doug|baby (toy|gym)|teether|rattle/i, "toys"],
+  [/book|novel|journal|notebook|comic|manga|planner|calendar|bible|paperback|hardcover|audible|audiobook/i, "books"],
+  [/slipper|shoe|sneaker|boot|sandal|heels|loafer|crocs|clogs|\buggs?\b|birkenstock|flip ?flops|mules|cleats|jordans|air max|air force|new balance|converse|\bvans\b|hoka|on cloud/i, "shoes"],
+  [/\bbags?\b|tote|purse|handbag|wallet|backpack|duffel|crossbody|clutch|necklace|\brings?\b|earring|bracelet|anklet|jewel|pendant|locket|charm|\bwatch\b|watch band|sunglasses|belt\b|keychain|claw clip|hair clip|scrunchie|headband|cufflink|\btie\b|pandora|kendra scott|mejuri/i, "accessories"],
+  [/shirt|crewneck|turtleneck|henley|quarter-?zip|\btee\b|t-shirt|tank top|blouse|\btop\b|sweater|cardigan|hoodie|sweatshirt|pullover|fleece|jacket|coat|parka|puffer|\bvests?\b|dress|skirt|shorts|pants|jeans|joggers|sweatpants|leggings?|sock|pajama|pjs|loungewear|scarf|\bhats?\b|\bcap\b|beanie|gloves?|mittens|robe|underwear|\bbra\b|lingerie|swimsuit|bikini|onesie|romper|jumpsuit|overalls|polo|flannel|outfit|lululemon|aritzia|uniqlo|old navy|\bgap\b|zara|h&m|abercrombie|american eagle|carhartt|patagonia/i, "clothing"],
+  [/skillet|\bpans?\b|\bpots?\b|cookware|bakeware|cast iron|dutch oven|air fryer|instant pot|wok|griddle|mug|tumbler|water bottle|stanley|yeti|owala|hydro ?flask|thermos|coffee|espresso|keurig|nespresso|french press|kettle|toaster|blender|stand mixer|kitchenaid|ninja|\btea\b|kitchen|knife|knives|cutting board|spatula|utensil|plates|bowls|cutlery|flatware|glassware|wine glass|baking|lunch ?box|le creuset|our place|caraway|vitamix|cuisinart/i, "kitchen"],
+  [/candle|blanket|throw|pillow|vase|decor|lamp|frame|plant|towel|sheets|bedding|duvet|comforter|quilt|mattress|rug|curtain|diffuser|wall art|poster|mirror|clock|storage|organizer|basket|shelf|furniture|chair|desk|ottoman|vacuum|roomba|humidifier|air purifier|bath mat|ornament|christmas tree|wreath|bath ?(&|and) ?body works|pottery barn|west elm|crate (&|and) barrel|target home/i, "home"],
+  [/tent|camping|hiking|yoga|golf|bike|cycling|fitness|dumbbell|kettlebell|weights|resistance band|jump rope|treadmill|peloton|running|\bball\b|basketball|football|soccer|baseball|softball|tennis|pickleball|hockey|fishing|kayak|paddle|surf|\bski\b|skis|snowboard|sled|skateboard|scooter|helmet|climbing|hammock|cooler|grill|swim|goggles/i, "outdoors"],
+  [/wine|whiskey|whisky|bourbon|beer|vodka|tequila|\bgin\b|\brum\b|champagne|prosecco|cocktail|spirits|chocolate|candy|sweets|cookie|snack|gift basket|cheese|charcuterie|jerky|hot sauce|popcorn|nuts|gourmet|truffle|treats|godiva|harry (&|and) david/i, "treats"],
+  [/tickets?|concert|experience|\bspa\b|massage|facial|manicure|lesson|class(es)?\b|workshop|course|membership|subscription|gift card|getaway|\btrip\b|museum|\bzoo\b|aquarium|theater|theatre|broadway|disney ?(world|land)/i, "experiences"],
 ];
-const catOf = (i) => (i.category && CAT[i.category] ? i.category : (CAT_RULES.find(([re]) => re.test(i.title || "")) || [, "other"])[1]);
+const ruleCat = (text) => (CAT_RULES.find(([re]) => re.test(text)) || [, "other"])[1];
+// The owner's pick, then Gemini's guess, then the keyword rules on the name and brand.
+const catOf = (i) => (i.category && CAT[i.category] ? i.category
+  : i.category_auto && CAT[i.category_auto] ? i.category_auto
+  : ruleCat(`${i.title || ""} ${i.brand || ""}`));
 const catIcon = (k, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON_PATHS[CAT[k].icon]}"/></svg>`;
 // "Added today", "Added 3 days ago", "Added Oct 2".
 function addedOn(iso) {
@@ -4995,7 +5001,7 @@ function editItem(item, opts = {}) {
   const hasDetails = item.price_cents != null || !!item.notes || !!item.category || !!item.brand;
   const priceField = `<label class="field"><span>Price</span><input class="input" name="price" inputmode="decimal" value="${esc(priceIn(item.price_cents))}" placeholder="${isNew ? "Fills in from the link" : item.price_est ? `About ${money(item.price_est)} (a guess)` : "From the link"}"><small class="price-sync" hidden>Synced with the store. Type your own price to stop syncing.</small></label>`;
   const catField = `<label class="field"><span>Category</span>
-    <select class="input" name="category"><option value="">${isNew ? "Pick for me" : "Auto"}${item.title ? ` (${esc(CAT[catOf({ title: item.title })].label)})` : ""}</option>
+    <select class="input" name="category"><option value="">${isNew ? "Pick for me" : "Auto"}${item.title ? ` (${esc(CAT[catOf({ ...item, category: null })].label)})` : ""}</option>
       ${CATS.map(([k, label]) => `<option value="${k}"${item.category === k ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>`;
   const brandField = `<label class="field"><span>Brand</span><input class="input" name="brand" maxlength="40" value="${esc(item.brand || "")}" placeholder="Store or brand" autocomplete="off"></label>`;
   const notesField = `<label class="field"><span>Notes</span><textarea class="input" name="notes" maxlength="1000" placeholder="Where to buy, fit, anything else">${esc(item.notes)}</textarea></label>`;
