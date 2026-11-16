@@ -5505,7 +5505,11 @@ function wirePriceSync(form) {
     if (b.matches("[data-price-ok]")) setAutoPrice(form, price.value.trim());
     else if (b.matches("[data-price-clear]")) { price.value = ""; setAutoPrice(form, ""); price.dispatchEvent(new Event("input", { bubbles: true })); }
   });
-  price.addEventListener("input", form.paintPriceSync);
+  // Typing the same price the estimate showed means you checked it: keep it as exact, like "It's right".
+  price.addEventListener("input", (e) => {
+    if (e.isTrusted && form.dataset.priceGuess && autoPrice(form) === "guess") setAutoPrice(form, price.value.trim());
+    else form.paintPriceSync();
+  });
   form.paintPriceSync();
 }
 
