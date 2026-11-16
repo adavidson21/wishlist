@@ -42,3 +42,35 @@ test("only the household can change its pets", async () => {
   const { pet } = await w.api(alexis, "POST pet/save", { householdId: hh, name: "Biscuit", kind: "dog" });
   await assert.rejects(w.api(olivia, "POST pet/save", { id: pet.id, birthday: "01-01" }));
 });
+
+// People who aren't in a household keep pets on their own profile (key "m:<id>").
+test("someone not in a household can add their own pet, and their circle sees it", async () => {
+  const { w, alexis, olivia } = setup();
+  const { pet } = await w.api(olivia, "POST pet/save", { name: "Mochi", kind: "cat", birthday: "06-01", favorites: "Boxes" });
+  assert.equal((await w.api(olivia, "GET me")).pets[`m:${olivia.id}`][0].id, pet.id);
+  const seen = (await w.api(alexis, "GET me")).pets[`m:${olivia.id}`];
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].name, "Mochi");
+  // She can edit and remove it; others can't.
+  await w.api(olivia, "POST pet/save", { id: pet.id, notes: "Loves crinkle toys" });
+  await assert.rejects(w.api(alexis, "POST pet/save", { id: pet.id, notes: "nope" }));
+  await assert.rejects(w.api(alexis, "POST pet/delete", { id: pet.id }));
+  await w.api(olivia, "POST pet/delete", { id: pet.id });
+  assert.equal((await w.api(olivia, "GET me")).pets[`m:${olivia.id}`], undefined);
+});
+
+test("someone with no circle and no household can still add a pet", async () => {
+  const w = world();
+  const solo = w.person("Sam");
+  await w.api(solo, "POST pet/save", { name: "Rex", kind: "dog" });
+  assert.equal((await w.api(solo, "GET me")).pets[`m:${solo.id}`][0].name, "Rex");
+});
+
+test("whoever looks after someone not in a household can add their pet", async () => {
+  const { w, olivia, alexis, mike } = setup();
+  const kid = w.person("Lily", { circle: w.sql("SELECT group_id FROM group_members WHERE member_id = ?", olivia.id)[0].group_id, managedBy: olivia });
+  await w.api(olivia, "POST pet/save", { as: kid.id, name: "Goldie", kind: "fish" });
+  assert.equal((await w.api(alexis, "GET me")).pets[`m:${kid.id}`][0].name, "Goldie");
+  // Mike isn't in her household or the circle admin, so it isn't his to change.
+  await assert.rejects(w.api(mike, "POST pet/save", { as: kid.id, name: "Nope", kind: "dog" }));
+});
