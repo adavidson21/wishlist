@@ -6154,13 +6154,16 @@ async function renderFamily() {
     const bday = (m.occasions || []).find((o) => o.birthday);
     const soon = !skipped && bday && daysUntil(bday) <= 30 ? `<span class="pchip occ-chip">🎂 Birthday ${inDays(bday)}</span>` : "";
     const age = m.kid ? `<span class="pchip kid-chip">Kid</span>` : "";
+    // Not in a household: their own pets, the way a household card shows its pets.
+    const pets = m.householdId ? [] : petsOf(`m:${m.id}`);
+    const petLine = pets.length ? `<small class="row-pets">${petNames(pets)}</small>` : "";
     const dupe = hhId && dupeTag(m) === householdLabel(hhId) ? "" : dupeHtml(m);
     const q = [m.name, m.fullName, m.lastName].filter(Boolean).join(" ").toLowerCase();
     const cls = `member${inHh ? " in-hh" : " slide"}${skipped ? " is-off" : ""}`;
     const delay = inHh ? "" : ` style="animation-delay:${Math.min(i++, 12) * 0.05}s"`;
     return `<button class="${cls}"${delay} type="button" data-id="${esc(m.id)}" data-q="${esc(q)}">
       ${avatar(m.name, m.id)}
-      <span class="who"><strong>${esc(m.name)}${dupe}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}</small>${age}${soon}</span>${skipped ? "" : budgetMini(p)}</span>${CHEV}
+      <span class="who"><strong>${esc(m.name)}${dupe}${newBadge(m)}${m.chatUnread ? `<span class="new-badge chat-badge" aria-label="${plural(m.chatUnread, "new message", "new messages")}">💬 ${m.chatUnread}</span>` : ""}</strong><span class="pchips"><small>${wishes}${getting ? ` · you're getting ${getting}` : ""}</small>${petLine}${age}${soon}</span>${skipped ? "" : budgetMini(p)}</span>${CHEV}
     </button>`;
   };
   // Each household is one card holding its people; someone not in a household gets their own card right alongside,
