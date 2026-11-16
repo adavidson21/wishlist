@@ -2739,7 +2739,7 @@ For each suggestion give:
   Use an empty list if you found none.
 - store: of the retailers above (or amazon), the one most likely to carry it, used to search if no link works
 - category: the one that fits best: beauty, tech, clothing, shoes, accessories (bags and jewelry), home, kitchen,
-  books, toys (toys and games), outdoors (outdoors and fitness), treats (food and drink), experiences, or other
+  books, toys (games, hobbies and toys: video games, board games, puzzles, LEGO, crafts, collectibles), outdoors (outdoors and fitness), treats (food and drink), experiences, or other
 If the list is too vague to suggest anything, return an empty list.`;
 // Same as photo search, plus a category: the app draws that category's icon when there's no product photo.
 const RECOMMEND_SCHEMA = {
@@ -2827,8 +2827,8 @@ const CATEGORY_PROMPT = `You sort gift wish list items into categories.
 The input is JSON: a list of items, each with id, name, brand (may be empty) and store (the website, may be empty).
 For every item return its id and the category that fits best: beauty, tech, clothing, shoes, accessories (bags,
 jewelry, watches, sunglasses, hair accessories), home (decor, bedding, furniture, cleaning, organizing), kitchen
-(cookware, appliances, drinkware, tableware), books (and journals, planners, calendars), toys (toys and games,
-including video games and consoles), outdoors (outdoors, sports and fitness), treats (food and drink),
+(cookware, appliances, drinkware, tableware), books (and journals, planners, calendars), toys (games, hobbies and toys,
+including video games, consoles, puzzles, LEGO, crafts and collectibles), outdoors (outdoors, sports and fitness), treats (food and drink),
 experiences (tickets, classes, trips, memberships, subscriptions, gift cards), or other.
 Use other only when nothing fits. Use what you know about the brand and store when the name is vague.`;
 const CATEGORY_SCHEMA = {
