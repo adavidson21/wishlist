@@ -1,6 +1,6 @@
 // Network first so updates show up right away; cached copy only if offline.
 // API calls are never cached here (the page keeps its own last-loaded copy for offline viewing).
-const CACHE = "wishlist-v59";
+const CACHE = "wishlist-v60";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/xlsx.js", "/giftcards.js", "/qr.js", "/brand/tokens.css", "/brand/fonts/figtree-latin-wght-normal.woff2", "/brand/fonts/inter-tight-latin-wght-normal.woff2", "/theme.js"];
 
 self.addEventListener("install", (e) => {
