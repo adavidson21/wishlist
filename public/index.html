@@ -4986,6 +4986,8 @@ function editItem(item, opts = {}) {
   const isNew = !item?.id;
   const c = opts.carry;
   const asId = opts.as || null, asName = asId ? personName(asId) : "";
+  // fix: whoever runs Hints tidying up someone else's wish. No Top pick, how many, Goes with or Remove.
+  const fix = !!opts.fix && !!asId && !isNew;
   item ||= c ? { title: c.title, url: c.url, price_cents: toCents(c.price), price_auto: !!c.priceAuto, price_guess: c.priceAuto === "guess", notes: c.notes } : {};
   const draft = !asId && (isNew || !!item.draft);
   // Your own published wish can go back to Maybe (Remove offers it too).
@@ -5004,7 +5006,7 @@ function editItem(item, opts = {}) {
     ${qtyNow > 10 ? `<option value="${qtyNow}" selected>${qtyNow}</option>` : ""}
     <option value="0"${qtyNow === 0 ? " selected" : ""}>As many as ${asId ? "they" : "I"} like</option></select></label>`;
   // Goes with: link this wish to another on the same list. One link per wish. New wishes have it under Add details.
-  const sibs = ((asId ? opts.list : state.myItems) || []).filter((o) => o.id !== item.id && !o.received_at && !o.removed);
+  const sibs = fix ? [] : ((asId ? opts.list : state.myItems) || []).filter((o) => o.id !== item.id && !o.received_at && !o.removed);
   const linkNow = (item.goesWith || []).find((x) => x.kind !== "pairs" && !x.removed) || null;
   const pairsNow = (item.goesWith || []).filter((x) => x.kind === "pairs");
   const goesSection = !sibs.length ? "" : `<section class="fsec" data-goes><h4 class="fsec-h">Goes with</h4>
@@ -5025,7 +5027,7 @@ function editItem(item, opts = {}) {
       <div class="err" hidden></div>
       ${isNew ? linkField(item.url, true) : ""}
       <div class="name-row"><label class="field"><span${isNew ? ' class="vh"' : ""}>What is it?</span><input class="input" name="title" maxlength="200" value="${esc(item.title ?? opts.title ?? "")}" placeholder="${esc(opts.placeholder || (isNew ? "Or type what it is" : "What is it?"))}" required></label>
-        ${draft ? "" : `<button class="star-btn name-star" type="button" data-must aria-pressed="${item.priority === "must"}" aria-label="Top pick" title="Top pick">${STAR}</button>
+        ${draft || fix ? "" : `<button class="star-btn name-star" type="button" data-must aria-pressed="${item.priority === "must"}" aria-label="Top pick" title="Top pick">${STAR}</button>
         <input type="hidden" name="must" value="${item.priority === "must" ? "1" : ""}">`}</div>
       ${isNew ? "" : linkField(item.url)}
       ${isNew ? "" : brandField}
@@ -5035,7 +5037,8 @@ function editItem(item, opts = {}) {
         <summary>${CHEV_D.replace('class="chev-d"', "")} Add details <span style="font-weight:500;color:var(--muted)">(brand, price, notes${sibs.length ? ", goes with" : ""})</span></summary>
         <div>${brandField}<div class="two pq">${priceField}${qtyField}</div>${catField}${notesField}${goesSection}</div>
       </details>` : `<section class="fsec"><h4 class="fsec-h">Details</h4>
-        <div class="two pq">${priceField}${qtyField}</div>${catField}${notesField}</section>`}
+        ${fix ? priceField : `<div class="two pq">${priceField}${qtyField}</div>`}${catField}${notesField}</section>`}
+      ${fix ? `<p class="hint">${esc(asName)} can change it back anytime.</p>` : ""}
       ${draft || asId || !multi() ? "" : `<section class="fsec"><h4 class="fsec-h">On your list</h4>${familySwitches(item.hiddenFrom)}</section>`}
       ${isNew ? "" : goesSection}
       ${isNew && !asId ? `<p class="hint gc-hint"><button class="linkbtn" type="button" id="toGiftCards" style="padding:0">Want a gift card instead?</button></p>
@@ -5043,7 +5046,7 @@ function editItem(item, opts = {}) {
       ${draft && !isNew ? `<button class="btn quiet wide" type="button" id="publishItem">${PUBLISH_ICON} Publish to my wish list</button>` : ""}
       ${canMaybe ? `<button class="btn quiet wide" type="button" id="toMaybe">${LOCK} Move to Maybe</button>` : ""}
       <div class="actions sticky">
-        ${isNew ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
+        ${isNew || fix ? "" : `<button class="btn danger" type="button" id="removeItem">Remove</button>`}
         ${isNew && asId ? `<button class="btn primary" type="submit" value="list">Add to ${esc(asName)}'s list</button>`
           : isNew
           ? `<button class="btn primary wide" type="submit" id="addBtn">Add to wish list</button>`
@@ -5126,6 +5129,7 @@ function editItem(item, opts = {}) {
         if (multi() && !draft && !asId) payload.hiddenFrom = hiddenFromForm(form);
         if (asId) {
           payload.as = asId;
+          if (fix) { payload.fix = true; delete payload.priority; delete payload.quantity; }
           const { id } = await api("item/save", payload);
           await saveLink(d, id);
           closeSheet();
@@ -6667,6 +6671,8 @@ async function renderPerson(id) {
   // Someone you look after: you add and edit their wishes and profile here.
   const manage = !!list.canManage;
   state.manageList = manage;
+  // Whoever runs Hints can tidy up anyone's wishes (name, photo, link, details), but not add or remove them.
+  state.fixList = !manage && !!state.me.owner?.you;
   state.chatCounts = list.chatCounts || {};
 
   // Summary numbers.
@@ -6785,6 +6791,10 @@ async function renderPerson(id) {
   }));
   $("#nudge")?.addEventListener("click", () => shareInvite(group(), name));
   if (manage) { wireManageCard(v, list, name, id); wireReceived(v, id); }
+  else if (state.fixList) v.querySelectorAll("[data-edit-wish]").forEach((b) => (b.onclick = () => {
+    const item = all.find((x) => x.id === b.dataset.editWish);
+    if (item) editItem(item, { as: id, fix: true });
+  }));
   paintGivenCard($("#givenSlot", v), id, name);
   wireGiftBox(v, () => addThing(id));
   const redo = () => render();
@@ -7487,7 +7497,7 @@ function personRow(i, kind, n = 0) {
     foot += foot.includes('class="spacer"') ? ask : `<span class="spacer"></span>${ask}`;
   }
   if (i.removed) foot = `<span class="taken-line">Removed by ${esc(personName(state.person))}</span><span class="spacer"></span>` + foot;
-  else if (kind === "item" && state.manageList) foot += `<button class="btn small quiet" type="button" data-edit-wish="${esc(i.id)}" aria-label="Edit this wish">${PENCIL}</button>`;
+  else if (kind === "item" && (state.manageList || state.fixList)) foot += `<button class="btn small quiet" type="button" data-edit-wish="${esc(i.id)}" aria-label="Edit this wish">${PENCIL}</button>`;
   const top = kind === "item" && i.priority === "must" && !i.claim;
   const notes = kind === "idea" ? i.note : i.notes;
   // Your own price paid replaces the listed one, except a group gift share (the wish's price still matters there).

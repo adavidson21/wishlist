@@ -1455,6 +1455,18 @@ async function ownerFor(env, me, as) {
   return String(as);
 }
 
+// Whoever runs Hints (appOwner) can tidy up a wish on the list of anyone they share a circle with: fix the name,
+// photo, link, price and the other details (fix: true on item/save, existing wishes only). Unlike canManage it
+// shows nothing more than they already see (no marks), and it can't add, remove, publish, link or re-pick
+// Top pick or how many. The person can change it back like any of their own edits.
+async function fixerFor(env, me, as) {
+  const who = String(as || "");
+  if (!who || who === me.id || (await appOwner(env))?.id !== me.id || !(await sharesGroup(env, me.id, who))) {
+    fail(403, "You can only change lists you look after.");
+  }
+  return who;
+}
+
 // Each circle has one admin (groups.created_by): renames it, sets its photo, manages its households and can
 // hand admin to someone else. If the admin is no longer in the circle (left, or dropped with a household),
 // it passes to whoever has been in it longest. Returns the admin's member id, or null for an empty circle.
@@ -3847,12 +3859,16 @@ const handlers = {
   async "POST item/save"(req, env) {
     const me = await auth(req, env);
     const b = await body(req);
-    const owner = await ownerFor(env, me, b.as);
+    // fix: whoever runs Hints tidying up someone's existing wish (fixerFor). Someone they look after uses the usual path.
+    const fixing = b.fix === true && !!b.id && !!b.as && !(await canManage(env, me.id, b.as));
+    const owner = fixing ? await fixerFor(env, me, b.as) : await ownerFor(env, me, b.as);
     const forOther = owner !== me.id;
     const existing = b.id
-      ? await env.DB.prepare("SELECT draft FROM items WHERE id = ? AND owner_id = ? AND removed_at IS NULL").bind(b.id, owner).first()
+      ? await env.DB.prepare("SELECT draft, priority FROM items WHERE id = ? AND owner_id = ? AND removed_at IS NULL").bind(b.id, owner).first()
       : null;
     if (b.id && !existing) fail(404, "Item not found.");
+    // Top pick and how many stay the person's call.
+    if (fixing) { b.priority = existing.priority; delete b.quantity; }
     const isDraft = existing ? !!existing.draft : !forOther;
     const fields = [
       text(b.title, LIMITS.title, "Title", true),
