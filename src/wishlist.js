@@ -1700,6 +1700,7 @@ const itemOut = (r) => ({
   brand: r.brand || null,
   priority: r.priority,
   category: r.category || null,
+  category_auto: r.category_auto || null, // Gemini's guess, used when the owner didn't pick one
   quantity: r.quantity ?? 1, // how many they want; 0 = as many as you like
   held: r.held_season || null, // waiting on "Did you get this?" for this occasion (owner only sees it)
   draft: !!r.draft,
@@ -2818,6 +2819,51 @@ async function estimatePrice(env, row) {
   return p != null && p > 0 && p < 100000 ? Math.round(p * 100) : null;
 }
 
+// ---------- category guess: sort wishes the owner didn't put in a category ----------
+// The app's keyword rules (CAT_RULES in public/index.html) only catch obvious names, so most wishes landed in Other.
+// Gemini sorts them instead, from the name, brand and store only, many per call, saved in items.category_auto.
+// The owner's own pick (items.category) always wins. Runs right after a save and hourly for anything missed.
+const CATEGORY_PROMPT = `You sort gift wish list items into categories.
+The input is JSON: a list of items, each with id, name, brand (may be empty) and store (the website, may be empty).
+For every item return its id and the category that fits best: beauty, tech, clothing, shoes, accessories (bags,
+jewelry, watches, sunglasses, hair accessories), home (decor, bedding, furniture, cleaning, organizing), kitchen
+(cookware, appliances, drinkware, tableware), books (and journals, planners, calendars), toys (toys and games,
+including video games and consoles), outdoors (outdoors, sports and fitness), treats (food and drink),
+experiences (tickets, classes, trips, memberships, subscriptions, gift cards), or other.
+Use other only when nothing fits. Use what you know about the brand and store when the name is vague.`;
+const CATEGORY_SCHEMA = {
+  type: "object",
+  properties: { items: { type: "array", items: { type: "object", properties: { id: { type: "string" }, category: { type: "string", enum: [...CATEGORIES] } }, required: ["id", "category"] } } },
+  required: ["items"],
+};
+const CATEGORY_BATCH = 40;
+// id: just that wish (after a save). Without it, the oldest wishes still waiting, up to a batch.
+async function guessCategories(env, id = null) {
+  if (!env.GEMINI_API_KEY || !env.DB) return 0;
+  const where = "category IS NULL AND category_auto IS NULL AND removed_at IS NULL AND title IS NOT NULL AND title != ''";
+  const { results } = await (id
+    ? env.DB.prepare(`SELECT id, title, brand, url FROM items WHERE id = ? AND ${where}`).bind(id)
+    : env.DB.prepare(`SELECT id, title, brand, url FROM items WHERE ${where} ORDER BY created_at DESC LIMIT ?`).bind(CATEGORY_BATCH)).all();
+  if (!results.length) return 0;
+  const input = results.map((r) => {
+    let store = "";
+    try { store = r.url ? new URL(r.url).hostname.replace(/^www\./, "") : ""; } catch {}
+    return { id: r.id, name: String(r.title).slice(0, 200), brand: r.brand || "", store };
+  });
+  const r = await callGemini(env, CATEGORY_PROMPT, [{ text: JSON.stringify({ items: input }) }], CATEGORY_SCHEMA, 20000);
+  if (r.error) return 0; // try again next run (rate limit, daily cap)
+  const got = new Map((Array.isArray(r.data?.items) ? r.data.items : []).map((x) => [String(x?.id), category(x?.category)]));
+  // Only if the name is still the one we sent, so a rename in the meantime gets its own guess.
+  const rows = results.map((x) => env.DB.prepare("UPDATE items SET category_auto = ? WHERE id = ? AND title IS ? AND category_auto IS NULL")
+    .bind(got.get(x.id) || "other", x.id, x.title));
+  await env.DB.batch(rows);
+  return rows.length;
+}
+function guessCategorySoon(env, ctx, id) {
+  const p = guessCategories(env, id).catch((err) => console.error("category guess", err));
+  if (ctx?.waitUntil) ctx.waitUntil(p);
+}
+
 // ---------- handlers ----------
 
 // ---------- notifications ----------
@@ -3151,12 +3197,13 @@ export async function runSchedule(env) {
   await settleReceived(env).catch((err) => console.error("settle", err));
   await snapshotGifts(env).catch((err) => console.error("history", err));
   await pepperPins(env).catch((err) => console.error("pepper", err));
+  const sorted = await guessCategories(env).catch((err) => (console.error("categories", err), 0));
   const later = isQuiet(hour) ? 0 : await flushLater(env, budget).catch((err) => (console.error("later", err), 0));
   const wishes = await wishDigest(env, budget, hour).catch((err) => (console.error("digest", err), 0));
   // PUSH_DEV_REMIND: local testing only (.dev.vars), runs reminders every time.
   const remind = (hour >= 9 && !isQuiet(hour)) || env.PUSH_DEV_REMIND === "1" ? await reminders(env, budget).catch((err) => (console.error("reminders", err), 0)) : 0;
   const problems = hour >= 9 && !isQuiet(hour) ? await problemPing(env, budget).catch((err) => (console.error("problems", err), 0)) : 0;
-  console.log(`schedule hour=${hour} later=${later} wishes=${wishes} reminders=${remind} problems=${problems} budget_left=${budget.left}`);
+  console.log(`schedule hour=${hour} later=${later} wishes=${wishes} reminders=${remind} problems=${problems} categories=${sorted} budget_left=${budget.left}`);
 }
 
 // Signing in as someone who is looked after isn't allowed until a manager hands their list over.
@@ -3856,7 +3903,7 @@ const handlers = {
   // Add (no id) or edit (id) one of your own items. size and color: free text, absent = unchanged. New items start in "Maybe" (draft) until published.
   // "Must have" only applies to published items, so it is dropped on drafts.
   // as: someone you look after (their wishes skip Maybe and go straight on their list).
-  async "POST item/save"(req, env) {
+  async "POST item/save"(req, env, url, ctx) {
     const me = await auth(req, env);
     const b = await body(req);
     // fix: whoever runs Hints tidying up someone's existing wish (fixerFor). Someone they look after uses the usual path.
@@ -3893,7 +3940,8 @@ const handlers = {
     };
     if (b.id) {
       const res = await env.DB.prepare(
-        `UPDATE items SET ${IMAGE_SET}, title = ?4, url = ?2, price_cents = ?5, notes = ?6, priority = ?7, updated_at = ?3
+        `UPDATE items SET ${IMAGE_SET}, title = ?4, url = ?2, price_cents = ?5, notes = ?6, priority = ?7, updated_at = ?3,
+            category_auto = CASE WHEN title IS ?4 THEN category_auto ELSE NULL END
           WHERE id = ?8 AND owner_id = ?9 AND removed_at IS NULL`,
       )
         .bind(image, fields[1], t, fields[0], fields[2], fields[3], fields[4], b.id, owner)
@@ -3909,6 +3957,7 @@ const handlers = {
       rows.push(...wishPhotoRows(env, b.id, photo, image, t));
       await env.DB.batch(rows);
       await markUnfilled(env, "items", b.id, b, fields[1]);
+      guessCategorySoon(env, ctx, b.id);
       return { id: b.id };
     }
     const { n: itemCount } = await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE owner_id = ? AND removed_at IS NULL").bind(owner).first();
@@ -3926,6 +3975,7 @@ const handlers = {
     ]);
     await markUnfilled(env, "items", id, b, fields[1]);
     if (!isDraft) await feedWish(env, owner, id);
+    guessCategorySoon(env, ctx, id);
     return { id };
   },
 
