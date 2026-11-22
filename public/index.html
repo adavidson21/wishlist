@@ -10067,7 +10067,7 @@ async function paintInbox(box) {
         <button class="btn small${r.done ? " quiet" : " primary"}" type="button" data-rdone="${esc(r.id)}" data-on="${r.done ? "" : "1"}">${r.done ? "Reopen" : "Done"}</button>
       </div></div>`;
   };
-  box.innerHTML = `<div class="label">Notes and problems${tip("Notes people send you from Settings, and errors the app ran into. Only you can see this.")}</div>
+  box.innerHTML = `<div class="set-card"><p class="sub" style="margin:0">On a computer, the <a href="/admin" target="_blank" rel="noopener">dashboard</a> shows everyone's lists in one place (asks for your PIN).</p></div><div class="label">Notes and problems${tip("Notes people send you from Settings, and errors the app ran into. Only you can see this.")}</div>
     ${open.length ? open.map(card).join("") : `<div class="set-card"><p class="sub" style="margin:0">All clear. Nothing new.</p></div>`}
     ${done.length ? `<div class="label">Done</div>${done.map(card).join("")}` : ""}
     <p class="subtle" style="margin-top:14px">Done cards, and problems that stop happening, clear themselves after 90 days.</p>

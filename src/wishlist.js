@@ -3144,6 +3144,28 @@ async function appOwner(env) {
 async function ownerOnly(env, me) {
   if ((await appOwner(env))?.id !== me.id) fail(404, "Not found.");
 }
+// ---------- Dashboard (owner only): helpers for the owner/* dashboard routes ----------
+const DASH_MINUTES = 30;
+// SQL: wish `i` is on its owner's list right now (published, not removed, received or held after an occasion).
+const DASH_LISTED = "i.draft = 0 AND i.removed_at IS NULL AND i.received_at IS NULL AND i.held_season IS NULL";
+// The unlock is kept per device (app_keys "dash:" + hash of its token), so a PIN typed on one computer opens nothing else.
+const dashKey = async (token) => `dash:${(await sha256(`dash:${token}`)).slice(0, 40)}`;
+async function dashboardAuth(req, env) {
+  const me = await auth(req, env);
+  await ownerOnly(env, me);
+  const row = await env.DB.prepare("SELECT value FROM app_keys WHERE name = ?").bind(await dashKey(me.token)).first();
+  if (!row || row.value < now()) fail(403, "Enter your PIN to open the dashboard.", { locked: true });
+  return { me, until: row.value };
+}
+// People the owner shares a circle with: the only lists where the app already shows them marks.
+async function dashSeen(env, meId) {
+  const { results } = await env.DB.prepare(
+    "SELECT DISTINCT y.member_id FROM group_members x JOIN group_members y ON y.group_id = x.group_id WHERE x.member_id = ?",
+  ).bind(meId).all();
+  return new Set(results.map((r) => r.member_id));
+}
+// Whether the dashboard shows "taken" for this person's list: never your own, and only for people you can see.
+const dashMarks = (memberId, meId, seen) => memberId !== meId && seen.has(memberId);
 const clip = (v, n) => String(v ?? "").slice(0, n);
 // Saves a problem the app or the API ran into. The same message from the same place is one row with a count,
 // and a repeat reopens it if it was marked done. Never form contents: just the message, where, and the browser.
@@ -6097,6 +6119,124 @@ const handlers = {
     const done = await env.DB.prepare("UPDATE members SET ai_trusted = ? WHERE id = ?").bind(on === false ? 0 : 1, String(memberId || "")).run();
     if (!done.meta?.changes) fail(404, "That person isn't on Hints anymore.");
     return { ok: true, trusted: on !== false };
+  },
+  // ---------- Dashboard (owner only, desktop page public/admin.html) ----------
+  // A read-only look across everyone's lists for upkeep. Owner only, and unlocked with the owner's PIN for
+  // DASH_MINUTES on this one device (the PIN goes through checkPin, so the usual try limits apply).
+  // What it never shows, so the owner's own surprises stay safe:
+  //   - Purchased marks on the owner's own list (or anything that would hint at them: removed and held wishes).
+  //   - Marks on lists the owner couldn't already see in the app (people they share no circle with).
+  //   - Who bought what: only "taken" counts, never buyer names. No ideas, suggestions, budgets or chat.
+  //   - What's in anyone else's Maybe (drafts are "Only you" on the privacy page): just how many and how old.
+  async "POST owner/unlock"(req, env) {
+    const me = await auth(req, env);
+    await ownerOnly(env, me);
+    const b = await body(req);
+    const member = await env.DB.prepare("SELECT id, name, pin_hash FROM members WHERE id = ?").bind(me.id).first();
+    if (!member?.pin_hash) fail(409, "Set a PIN first (Settings > Sign-in), then come back.");
+    await checkPin(env, req, member, pinValue(b.pin), b.turnstile);
+    const until = new Date(Date.now() + DASH_MINUTES * 60_000).toISOString();
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM app_keys WHERE name LIKE 'dash:%' AND value < ?").bind(now()),
+      env.DB.prepare("INSERT INTO app_keys (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value")
+        .bind(await dashKey(me.token), until),
+    ]);
+    return { ok: true, until };
+  },
+  async "POST owner/lock"(req, env) {
+    const me = await auth(req, env);
+    await env.DB.prepare("DELETE FROM app_keys WHERE name = ?").bind(await dashKey(me.token)).run();
+    return { ok: true };
+  },
+  // Everyone, their circles, wish counts and what might need a look.
+  async "GET owner/dashboard"(req, env) {
+    const { me, until } = await dashboardAuth(req, env);
+    const t = today();
+    const { results: people } = await env.DB.prepare(
+      `SELECT m.id, m.name, m.last_name, m.created_at, m.managed_by, m.is_kid, m.household_id, m.pin_hash IS NOT NULL AS has_pin,
+         (SELECT MAX(d.last_seen) FROM devices d WHERE d.member_id = m.id) AS last_seen,
+         (SELECT GROUP_CONCAT(g.name, ', ') FROM group_members gm JOIN groups g ON g.id = gm.group_id WHERE gm.member_id = m.id) AS circles,
+         (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND ${DASH_LISTED}) AS wishes,
+         (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND i.draft = 1 AND i.removed_at IS NULL) AS maybes,
+         (SELECT MIN(i.created_at) FROM items i WHERE i.owner_id = m.id AND i.draft = 1 AND i.removed_at IS NULL) AS oldest_maybe,
+         (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND ${DASH_LISTED} AND i.price_cents IS NULL) AS no_price,
+         (SELECT COUNT(*) FROM items i WHERE i.owner_id = m.id AND ${DASH_LISTED} AND i.category IS NULL AND i.category_auto IS NULL) AS no_category,
+         (SELECT COUNT(DISTINCT c.item_id) FROM claims c JOIN items i ON i.id = c.item_id WHERE i.owner_id = m.id AND ${DASH_LISTED} AND c.season >= ?1) AS taken,
+         (SELECT MAX(i.updated_at) FROM items i WHERE i.owner_id = m.id AND i.removed_at IS NULL) AS last_edit
+         FROM members m ORDER BY m.name COLLATE NOCASE, m.last_name COLLATE NOCASE`,
+    ).bind(t).all();
+    const seen = await dashSeen(env, me.id);
+    const managers = new Map(people.map((p) => [p.id, p.name]));
+    const { results: circles } = await env.DB.prepare(
+      `SELECT g.id, g.name, g.created_at, (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id) AS people FROM groups g ORDER BY g.name COLLATE NOCASE`,
+    ).all();
+    for (const c of circles) c.admin = managers.get(await adminOf(env, c.id)) || null;
+    const open = await env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE done_at IS NULL").first();
+    return {
+      until,
+      me: me.id,
+      openReports: open?.n || 0,
+      circles: circles.map((c) => ({ id: c.id, name: c.name, people: c.people, admin: c.admin, since: c.created_at })),
+      people: people.map((p) => ({
+        id: p.id,
+        name: p.last_name ? `${p.name} ${p.last_name}` : p.name,
+        you: p.id === me.id,
+        since: p.created_at,
+        lookedAfterBy: p.managed_by ? managers.get(p.managed_by) || "someone" : null,
+        kid: !!p.is_kid,
+        hasPin: !!p.has_pin,
+        lastSeen: p.last_seen || null,
+        circles: p.circles || "",
+        wishes: p.wishes,
+        maybes: p.maybes,
+        oldestMaybe: p.oldest_maybe || null,
+        noPrice: p.no_price,
+        noCategory: p.no_category,
+        lastEdit: p.last_edit || null,
+        // null = not shown (your own list, or someone you can't see in the app).
+        taken: dashMarks(p.id, me.id, seen) ? p.taken : null,
+      })),
+    };
+  },
+  // One person's list and Maybe wishes. ?member=
+  async "GET owner/person"(req, env, url) {
+    const { me } = await dashboardAuth(req, env);
+    const memberId = String(url.searchParams.get("member") || "");
+    const member = await env.DB.prepare("SELECT id, name, last_name FROM members WHERE id = ?").bind(memberId).first();
+    if (!member) fail(404, "That person isn't on Hints anymore.");
+    const marks = dashMarks(memberId, me.id, await dashSeen(env, me.id));
+    const { results } = await env.DB.prepare(
+      `SELECT i.* FROM items i WHERE i.owner_id = ?1 AND ((${DASH_LISTED}) OR (i.owner_id = ?2 AND i.draft = 1 AND i.removed_at IS NULL))
+        ORDER BY i.draft, (i.priority = 'must') DESC, i.created_at`,
+    ).bind(memberId, me.id).all();
+    const drafts = await env.DB.prepare("SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM items WHERE owner_id = ? AND draft = 1 AND removed_at IS NULL")
+      .bind(memberId).first();
+    let taken = new Map();
+    if (marks) {
+      const { results: rows } = await env.DB.prepare(
+        `SELECT c.item_id, SUM(CASE WHEN c.chip_in THEN 0 ELSE COALESCE(c.qty, 1) END) AS qty, MAX(c.chip_in) AS group_gift
+           FROM claims c JOIN items i ON i.id = c.item_id WHERE i.owner_id = ? AND c.season >= ? GROUP BY c.item_id`,
+      ).bind(memberId, today()).all();
+      taken = new Map(rows.map((r) => [r.item_id, { qty: r.qty || 0, groupGift: !!r.group_gift }]));
+    }
+    const out = (r) => {
+      const i = itemOut(r);
+      return {
+        id: i.id, title: i.title, url: i.url, price_cents: i.price_cents, priority: i.priority, quantity: i.quantity,
+        category: i.category || i.category_auto, brand: i.brand, size: i.size, color: i.color, notes: i.notes,
+        image_url: i.image_url, created_at: i.created_at, updated_at: i.updated_at,
+        ...(marks ? { taken: taken.get(r.id) || { qty: 0, groupGift: false } } : {}),
+      };
+    };
+    return {
+      member: { id: member.id, name: member.last_name ? `${member.name} ${member.last_name}` : member.name, you: member.id === me.id },
+      marksShown: marks,
+      wishes: results.filter((r) => !r.draft).map(out),
+      // Titles only for your own Maybe. Everyone else's: how many, and the oldest one's date.
+      maybeCount: drafts?.n || 0,
+      oldestMaybe: drafts?.oldest || null,
+      maybes: member.id === me.id ? results.filter((r) => r.draft).map((r) => { const o = out(r); delete o.taken; return o; }) : null,
+    };
   },
   async "POST owner/delete"(req, env) {
     const me = await auth(req, env);
