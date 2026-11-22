@@ -145,6 +145,21 @@ test("only whoever runs Hints can find and delete someone", async () => {
   assert.equal(w.sql("SELECT COUNT(*) AS n FROM members WHERE id = ?", sam.id)[0].n, 0);
 });
 
+test("with OWNER_ID set, only that person runs Hints, and nobody does once they're gone", async () => {
+  const w = world();
+  const c = w.circle();
+  const first = w.person("Ann", { circle: c });
+  const owner = w.person("Alexis", { circle: c });
+  w.env.OWNER_ID = owner.id;
+  assert.equal((await w.call(first, "POST owner/find", { q: "al" })).status, 404, "the oldest person isn't the owner");
+  await w.api(owner, "POST owner/find", { q: "an" });
+
+  w.env.OWNER_ID = "no-such-person";
+  assert.equal((await w.call(first, "POST owner/find", { q: "al" })).status, 404, "no fallback to the oldest person");
+  assert.equal((await w.call(owner, "POST owner/find", { q: "an" })).status, 404);
+  delete w.env.OWNER_ID;
+});
+
 test("Gemini: trusted accounts only count toward the whole-app cap; background search stops early", async () => {
   const w = world();
   const env = { DB: w.env.DB, GEMINI_DAILY_CAP: "100", GEMINI_GROUNDED_CAP: "60" };

@@ -3134,10 +3134,11 @@ async function chatPosted(env, author, groupId, subjectId, msg) {
 // ---------- problems and notes for whoever runs Hints ----------
 // The owner is OWNER_ID (wrangler.jsonc vars) when it's set, otherwise the first person who ever joined (whoever
 // set Hints up). Only they get notes, the problem list (Settings > Inbox) and the morning "problems" notification.
+// Once OWNER_ID is set it's the only answer: if that person is gone (or the id is mistyped) there's no owner,
+// rather than the next oldest person quietly getting owner tools.
 async function appOwner(env) {
   if (env.OWNER_ID) {
-    const row = await env.DB.prepare("SELECT id, name FROM members WHERE id = ?").bind(String(env.OWNER_ID)).first();
-    if (row) return row;
+    return (await env.DB.prepare("SELECT id, name FROM members WHERE id = ?").bind(String(env.OWNER_ID)).first()) || null;
   }
   return env.DB.prepare("SELECT id, name FROM members WHERE managed_by IS NULL ORDER BY created_at, id LIMIT 1").first();
 }
