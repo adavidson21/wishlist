@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "check": "node scripts/check-routes.mjs && node scripts/check-delete.mjs && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "check": "node scripts/check-routes.mjs && node scripts/check-delete.mjs && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler deploy --dry-run --env preview --outdir .wrangler/dry-run-preview",
     "deploy": "wrangler deploy",
     "migrate": "wrangler d1 migrations apply wishlist --remote",
     "backup": "node scripts/backup.mjs",
