@@ -8012,6 +8012,7 @@ function editPurchase(x, p, o) {
       <label class="field"><span>Where it's hidden</span><input class="input" name="stash" maxlength="80" value="${esc(x.stash)}" placeholder="Hall closet, top shelf"></label>
       ${theirs ? `<p class="subtle">${(x.total_cents ?? x.spent_cents) ? `${money(x.total_cents ?? x.spent_cents)}. ` : ""}Only ${esc(x.buyerName)} can change the price or take it back.</p>` : `<label class="field"><span>${x.kind === "giftcard" ? "Amount" : "Price you paid"}</span>
         <div class="input money-in"><span>$</span><input name="paid" inputmode="decimal" value="${esc(priceIn(x.paid_cents ?? x.list_cents))}" aria-label="Price you paid"></div></label>`}
+      ${theirs ? "" : `<button class="add" type="button" id="copyBuy">${PLUS} Got one for someone else too</button>`}
       <div class="actions">
         ${theirs ? "" : '<button class="btn danger" type="button" id="unbuy">Not getting it</button>'}
         <button class="btn primary" type="submit">Save</button>
@@ -8028,9 +8029,41 @@ function editPurchase(x, p, o) {
         toast("Saved");
         render();
       });
+      $("#copyBuy", el)?.addEventListener("click", () => copyPurchase(x, p, o));
       $("#unbuy", el)?.addEventListener("click", async () => {
         if (!(await ask(`Take back "${x.title}"? It won't count as purchased anymore.`, { yes: "Take back", danger: true }))) return;
         try { await setPurchase(x, p, o, false); closeSheet(); toast("Taken back"); render(); } catch (e) { oops(e.message); }
+      });
+    });
+}
+
+// The same gift for more people: pick who else you got it for, and each gets it recorded as your purchase too
+// (same price, progress and hiding spot), for their Christmas if this one's for Christmas, else their next occasion.
+function copyPurchase(x, p, o) {
+  const skip = new Set([p.id, ...(x.for_ids || [])]);
+  const people = (state.tracker?.people || []).filter((q) => !skip.has(q.id));
+  openSheet(`
+    <h3>Got ${esc(x.title)} for someone else too?${lockTip("Only you see this. The people you pick never will.")}</h3>
+    <p class="what">Each person you pick gets it as your purchase too, with the same price${x.status || x.stash ? ", progress and hiding spot" : ""}.${o.christmas ? " It goes under their Christmas." : " It goes under their next occasion."}</p>
+    <form id="copyForm" autocomplete="off">
+      <div class="err" hidden></div>
+      ${people.length ? `<fieldset style="border:0;padding:0;margin:0" aria-label="Who else">
+        ${people.map((q) => `<label class="check"><span>${esc(q.name)}</span><input type="checkbox" data-copy="${esc(q.id)}"></label>`).join("")}</fieldset>`
+        : `<p class="subtle">There's nobody else in your circles to add it for.</p>`}
+      <div class="actions">
+        <button class="btn" type="button" id="copyBack">Back</button>
+        <button class="btn primary" type="submit"${people.length ? "" : " disabled"}>Add</button>
+      </div>
+    </form>`, (el) => {
+      $("#copyBack", el).onclick = () => editPurchase(x, p, o);
+      wireForm($("#copyForm", el), async () => {
+        const toIds = [...el.querySelectorAll("[data-copy]:checked")].map((b) => b.dataset.copy);
+        if (!toIds.length) throw new Error("Pick who else you got it for.");
+        await api("purchase/copy", { kind: x.kind, id: x.id, subjectId: p.id, occasion: o.code, toIds });
+        closeSheet();
+        buzz();
+        toast(toIds.length === 1 ? `Added for ${people.find((q) => q.id === toIds[0])?.name || "them"}` : `Added for ${toIds.length} more people`);
+        render();
       });
     });
 }
