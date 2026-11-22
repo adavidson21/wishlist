@@ -3564,7 +3564,8 @@ async function offerJoin(inv) {
     <div class="actions"><button class="btn" type="button" id="notNow">Not now</button><button class="btn primary shine" type="button" id="yesJoin">Join ${esc(name)}</button></div>`, (el) => {
     $("#notNow", el).onclick = closeSheet;
     $("#yesJoin", el).onclick = async (e) => {
-      e.currentTarget.disabled = true;
+      const btn = e.currentTarget;
+      btn.disabled = true;
       try {
         const r = await api("family/join", { code: inv.code });
         closeSheet();
@@ -3577,7 +3578,7 @@ async function offerJoin(inv) {
         const box = $(".err", el);
         box.textContent = err.message;
         box.hidden = false;
-        e.currentTarget.disabled = false;
+        btn.disabled = false;
       }
     };
   });
@@ -6411,8 +6412,9 @@ function openHouseholds(gid) {
       $("#hhMake", el2)?.addEventListener("click", async (e) => {
         const ids = [...el2.querySelectorAll('[data-pick][aria-pressed="true"]')].map((b) => b.dataset.pick);
         if (!ids.length) return showErr(el2, new Error("Pick who's in the household."));
-        e.currentTarget.disabled = true;
-        try { await onDone(ids, $("#hhNewName", el2).value); } catch (err) { showErr(el2, err); e.currentTarget.disabled = false; }
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try { await onDone(ids, $("#hhNewName", el2).value); } catch (err) { showErr(el2, err); btn.disabled = false; }
       });
     });
     el.querySelectorAll("[data-addto]").forEach((b) => (b.onclick = () => {
@@ -8358,9 +8360,10 @@ function editSplitBudget(p, o, members) {
     const upd = () => { $("#splitSum", el).textContent = money(sum()); };
     el.querySelectorAll("[data-per]").forEach((i) => (i.oninput = upd));
     $("#splitSw", el).onclick = async (e) => {
-      e.currentTarget.disabled = true;
+      const btn = e.currentTarget;
+      btn.disabled = true;
       try { await api("budget/split", { subjectId: p.id, occasion: o.code, on: false }); closeSheet(); toast(`One budget for ${h.label} again`); render(); }
-      catch (err) { oops(err.message); e.currentTarget.disabled = false; }
+      catch (err) { oops(err.message); btn.disabled = false; }
     };
     wireForm($("#splitForm", el), async () => {
       // Only the amounts you changed are sent, each checked against what this sheet showed.
@@ -8399,7 +8402,8 @@ function editBudget(p, o, members = null) {
       el.querySelectorAll("[data-amt]").forEach((b) => (b.onclick = () => { const i = $("[name=amount]", el); i.value = b.dataset.amt; i.focus(); }));
       // Splitting divides the current total evenly; then the sheet shows each person.
       $("#splitSw", el)?.addEventListener("click", async (e) => {
-        e.currentTarget.disabled = true;
+        const btn = e.currentTarget;
+        btn.disabled = true;
         try {
           await api("budget/split", { subjectId: p.id, occasion: o.code, on: true });
           const t = await load("tracker");
@@ -8407,7 +8411,7 @@ function editBudget(p, o, members = null) {
           const rows = members.map((m) => { const q = t.people.find((x) => x.id === m.p.id); return { p: q, o: q.occasions.find((x) => x.code === o.code) }; });
           editSplitBudget(rows[0].p, rows[0].o, rows);
           render();
-        } catch (err) { oops(err.message); e.currentTarget.disabled = false; }
+        } catch (err) { oops(err.message); btn.disabled = false; }
       });
       // was: what this sheet showed. If someone else in your household changed it meanwhile, ask before replacing it.
       const save = async (amount) => { const ok = await saveBudget(p.id, amount, o.code, o.budget_cents ?? null); if (!ok) render(); return ok; };
@@ -9554,14 +9558,15 @@ function paintPushNudge() {
     <div class="actions" style="margin:0"><button class="btn quiet" type="button" id="pushLater">Not now</button><button class="btn primary" type="button" id="pushYes">Turn on</button></div></div>`;
   oneNudge();
   $("#pushYes", slot).onclick = async (e) => {
-    e.currentTarget.disabled = true;
+    const btn = e.currentTarget;
+    btn.disabled = true;
     try {
       const ok = await enablePush();
       slot.innerHTML = "";
       oneNudge();
       if (ok) toast("Notifications are on. Change them anytime in Settings.");
       else { try { localStorage.setItem(PUSH_NUDGE_KEY, JSON.stringify({ off: true })); } catch {} toast("No problem. You can turn them on in Settings."); }
-    } catch (err) { oops(err.message || "That didn't work. Try again."); e.currentTarget.disabled = false; }
+    } catch (err) { oops(err.message || "That didn't work. Try again."); btn.disabled = false; }
   };
   $("#pushLater", slot).onclick = () => {
     const st = readPushNudge(), snoozes = (st.snoozes || 0) + 1;
@@ -9999,11 +10004,12 @@ async function renderSettings() {
       signOutHere();
     };
     $("#signOutOthers", v).onclick = async (e) => {
+      const btn = e.currentTarget; // gone once the handler awaits
       if (!(await ask("Sign out everywhere else? Every other phone and computer signed in as you will need your PIN to sign in again. This one stays signed in.", { yes: "Sign them out" }))) return;
-      e.currentTarget.disabled = true;
+      btn.disabled = true;
       try { const { signedOut } = await api("signout/others", {}); toast(signedOut ? `Signed out ${plural(signedOut, "other device", "other devices")}` : "You weren't signed in anywhere else"); }
       catch (err) { oops(err.message); }
-      e.currentTarget.disabled = false;
+      btn.disabled = false;
     };
   }
   if (sec === "account") {
@@ -10173,9 +10179,10 @@ function openCircleManage(gid) {
     $("#cmHh", el).onclick = () => openHouseholds(gid);
     $("#askJoin", el).onclick = async (e) => {
       const on = e.currentTarget.getAttribute("aria-checked") !== "true";
-      e.currentTarget.disabled = true;
+      const btn = e.currentTarget;
+      btn.disabled = true;
       try { await api("family/edit", { groupId: gid, askToJoin: on }); await reload(on ? "New people will ask to join" : "Anyone with the link can join"); }
-      catch (err) { oops(err.message); e.currentTarget.disabled = false; }
+      catch (err) { oops(err.message); btn.disabled = false; }
     };
     $("#cmReset", el).onclick = () => resetInvite(g, reload);
     wireClearPin(el, reload);
