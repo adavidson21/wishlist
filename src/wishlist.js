@@ -4155,14 +4155,18 @@ const handlers = {
       if (!existing && item.removed_at) fail(400, "This item was removed from the list.");
       // Everyone in a group gift goes with the occasion it was started for.
       const s = wantChip && groupOthers.length ? groupOthers[0].season : await pickOccasion(env, item.owner_id, occasion, existing?.season);
-      if (existing) {
-        await env.DB.prepare("UPDATE claims SET price_cents = ?, season = ?, qty = ?, chip_in = ? WHERE item_id = ? AND season = ? AND buyer_id = ?")
-          .bind(paid, s, n, wantChip ? 1 : 0, itemId, existing.season, me.id).run();
-      } else {
-        await env.DB.prepare("INSERT INTO claims (item_id, season, buyer_id, price_cents, created_at, qty, chip_in) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(itemId, s, me.id, paid, now(), n, wantChip ? 1 : 0)
-          .run();
-      }
+      // The check above can be stale by now: someone else may have tapped "I'll get this" in the meantime. So the
+      // write itself re-checks what others hold (one statement, so nothing can slip in between) and changes
+      // nothing if there's no room left.
+      const room = `(?1 = 0 OR (SELECT COALESCE(SUM(CASE WHEN chip_in = 1 THEN 0 ELSE COALESCE(qty, 1) END), 0)
+        + COALESCE(MAX(chip_in), 0) FROM claims WHERE item_id = ?2 AND season >= ?3 AND buyer_id <> ?4) + ?5 <= ?1)`;
+      const roomArgs = [quantity, itemId, t, me.id, need];
+      const wrote = existing
+        ? await env.DB.prepare(`UPDATE claims SET price_cents = ?6, season = ?7, qty = ?8, chip_in = ?9 WHERE item_id = ?2 AND season = ?10 AND buyer_id = ?4 AND ${room}`)
+          .bind(...roomArgs, paid, s, n, wantChip ? 1 : 0, existing.season).run()
+        : await env.DB.prepare(`INSERT INTO claims (item_id, season, buyer_id, price_cents, created_at, qty, chip_in) SELECT ?2, ?6, ?4, ?7, ?8, ?9, ?10 WHERE ${room}`)
+          .bind(...roomArgs, s, paid, now(), n, wantChip ? 1 : 0).run();
+      if (!wrote.meta?.changes) fail(409, quantity === 1 ? "Someone already marked this as purchased." : "Someone just got some of these. Check how many are left.");
       const started = wantChip && !groupOthers.length && !existing?.chip_in;
       if (started) ctx?.waitUntil(groupGiftStarted(env, me, item).catch((err) => console.error("group push", err)));
       return { ok: true, started };
