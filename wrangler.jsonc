@@ -16,6 +16,9 @@
   "triggers": { "crons": ["0 * * * *"] },
   // Deploy id, sent as x-app-version on every response so an open app can tell it's out of date (src/worker.js).
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  // No workers.dev preview URLs for production versions: they would run against the live database.
+  // Previews come from the separate wishlist-preview Worker below (env.preview).
+  "preview_urls": false,
   // GEMINI_DAILY_CAP: most Gemini requests the whole app makes per day (UTC), so abuse can't run up the bill.
   // GEMINI_GROUNDED_CAP: of those, how many may use Google Search (billed per search after 5,000 free a month).
   "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite", "GEMINI_DAILY_CAP": "1500", "GEMINI_GROUNDED_CAP": "150" },
@@ -28,5 +31,29 @@
   // `npx wrangler d1 migrations apply wishlist --remote`.
   "d1_databases": [
     { "binding": "DB", "database_name": "wishlist", "database_id": "7b96cbbb-eb6e-4720-9b3a-4bce9f2e2d78", "migrations_dir": "migrations" }
-  ]
+  ],
+  // Previews (.github/workflows/preview.yml, docs/DEVELOPERS.md "Previews"): a separate Worker, wishlist-preview,
+  // with its own empty D1 database, so nothing a preview does can touch the live app or its data.
+  // Bindings and vars aren't inherited, so everything the Worker reads is listed again here.
+  "env": {
+    "preview": {
+      "name": "wishlist-preview",
+      "routes": [],
+      "workers_dev": true,
+      "preview_urls": true,
+      // No hourly notifications from previews.
+      "triggers": { "crons": [] },
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      // Lower Gemini caps: previews share the account's Gemini key only if one is added to this Worker.
+      "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite", "GEMINI_DAILY_CAP": "100", "GEMINI_GROUNDED_CAP": "10" },
+      "ratelimits": [
+        { "name": "BURST", "namespace_id": "4822", "simple": { "limit": 240, "period": 60 } }
+      ],
+      // The preview workflow finds (or creates) the wishlist-preview database and fills in its id before
+      // uploading, so the id never has to be copied here. It is never the live wishlist database.
+      "d1_databases": [
+        { "binding": "DB", "database_name": "wishlist-preview", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+      ]
+    }
+  }
 }
