@@ -156,6 +156,10 @@ async function aliceView(x) {
   await get("gift history", "GET history", "history");
   await get("gift history for me", "GET history", `history?member=${A.id}`);
   await get("inbox (she runs Hints)", "GET reports", "reports");
+  await post("open the dashboard (she runs Hints)", "POST owner/unlock", "owner/unlock", { pin: "1111" });
+  await get("dashboard", "GET owner/dashboard", "owner/dashboard");
+  for (const p of [A, M, S, P]) await get(`dashboard: ${p.name}'s list`, "GET owner/person", `owner/person?member=${p.id}`);
+  await post("lock the dashboard", "POST owner/lock", "owner/lock", {});
   await get("chat about me", "GET chat", `chat?group=${group}&member=${A.id}`);
   await get("chat about me, polling", "GET chat", `chat?group=${group}&member=${A.id}&after=2000-01-01T00:00:00.000Z`);
   const share = await w.request(`/s/${(await A.api("me")).me.shareToken}`);
@@ -237,6 +241,12 @@ test("Alexis's view is identical whether or not anyone did anything secret", () 
   const list = changed.map(([[what, route]]) => `  - ${what} (${route})`).join("\n");
   // Shows the first difference in full.
   assert.deepEqual(changed[0][1], changed[0][0], `These changed because of something secret:\n${list}\nFirst one:`);
+});
+
+test("the dashboard probes really opened it (not just two identical errors)", () => {
+  const dash = spoiledView.filter(([what]) => what.startsWith("dashboard"));
+  assert.equal(dash.length, 5);
+  for (const [what, , status] of dash) assert.equal(status, 200, what);
 });
 
 test("nothing Alexis can reach contains a secret", () => {
@@ -367,6 +377,10 @@ const ROUTES = {
   "POST owner/find": "Owner only. Names, join dates, wish counts and circle names; nothing marked, suggested, chatted or budgeted.",
   "POST owner/trust": "Owner only. Answers ok.",
   "POST owner/delete": "Owner only. Answers ok.",
+  "POST owner/unlock": "probe",
+  "POST owner/lock": "probe",
+  "GET owner/dashboard": "probe",
+  "GET owner/person": "probe",
   "POST signout": "Answers ok.",
 };
 

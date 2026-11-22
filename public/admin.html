@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>Hints dashboard</title>
+<link rel="stylesheet" href="/brand/tokens.css">
+<link rel="icon" href="/icons/icon.svg">
+<script src="/theme.js"></script>
+<!--
+  The owner's dashboard: a read-only look across everyone's lists for upkeep. Desktop first.
+  Uses the sign-in Hints already saved in this browser (open Hints here first), then the owner's PIN.
+  API: owner/unlock, owner/lock, owner/dashboard, owner/person (src/wishlist.js, "Dashboard").
+-->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 28px; padding-right: 72px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  h1 { font: 700 20px/1.2 var(--display); margin: 0; }
+  h2 { font: 700 16px/1.2 var(--display); margin: 0 0 12px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .grow { flex: 1; }
+  main { padding: 24px 28px 48px; max-width: 1400px; margin: 0 auto; }
+  button { font: inherit; font-weight: 600; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 7px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, tr[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; padding: 7px 12px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tile .n { font: 700 28px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+  .tile .l { color: var(--muted); font-size: 13px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 20px; align-items: start; }
+  @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar label { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; cursor: pointer; user-select: none; }
+  th.num, td.num { text-align: right; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr[tabindex] { cursor: pointer; }
+  tbody tr[tabindex]:hover { background: var(--panel); }
+  tbody tr.on { background: var(--accent-soft); }
+  .muted { color: var(--muted); }
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--panel); color: var(--muted); margin-left: 6px; white-space: nowrap; }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.you { background: var(--accent-soft); color: var(--accent-soft-ink); }
+  .warn-text { color: var(--warn); font-weight: 600; }
+  .panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+  .item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .item:last-child { border-bottom: 0; }
+  .item img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; background: var(--panel); flex: none; }
+  .item .ph { width: 48px; height: 48px; border-radius: 8px; background: var(--panel); flex: none; }
+  .item .t { font-weight: 600; }
+  .item a { color: var(--accent); }
+  .note { background: var(--panel); border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--muted); margin: 10px 0; }
+  .gate { max-width: 380px; margin: 12vh auto; text-align: center; }
+  .gate input { width: 140px; text-align: center; font-size: 22px; letter-spacing: .3em; margin: 14px 0; }
+  .err { color: var(--danger); min-height: 1.5em; font-size: 14px; }
+  .section { margin-top: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hints dashboard</h1>
+  <span class="sub" id="until"></span>
+  <span class="grow"></span>
+  <a href="/" class="sub">Back to Hints</a>
+  <button id="refresh" hidden>Refresh</button>
+  <button id="lock" hidden>Lock</button>
+</header>
+<main id="main"><p class="muted">Loading...</p></main>
+
+<script>
+const TOKEN_KEY = "wishlist-token"; // same as the app (public/index.html)
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const token = (() => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } })();
+const main = $("#main");
+const state = { data: null, sort: "name", dir: 1, filter: "", selected: null, lockTimer: null };
+
+async function api(path, body) {
+  const res = await fetch(`/api/${path}`, {
+    method: body ? "POST" : "GET",
+    headers: { "x-wishlist-token": token || "", ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(out.error || "Something went wrong."), { status: res.status, out });
+  return out;
+}
+
+const safeUrl = (u) => (/^https?:\/\//i.test(String(u || "")) ? u : null);
+const money = (c) => (c == null ? "" : `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })}`);
+const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "");
+const daysAgo = (iso) => (iso ? Math.floor((Date.now() - Date.parse(iso)) / 86_400_000) : null);
+const ago = (iso) => {
+  const d = daysAgo(iso);
+  if (d == null) return "Never";
+  if (d < 1) return "Today";
+  if (d < 2) return "Yesterday";
+  if (d < 60) return `${d} days ago`;
+  return day(iso);
+};
+const STALE_MAYBE = 60; // days
+const AWAY = 90; // days
+
+function gate(message = "") {
+  $("#refresh").hidden = $("#lock").hidden = true;
+  $("#until").textContent = "";
+  main.innerHTML = `<div class="gate card">
+    <h2>Enter your PIN</h2>
+    <p class="muted">The dashboard shows everyone's lists, so it asks for your Hints PIN. It stays open on this computer for 30 minutes.</p>
+    <form id="pinForm"><input id="pin" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" aria-label="4-digit PIN" required autofocus><br>
+    <button class="primary" type="submit">Open dashboard</button></form>
+    <p class="err" id="err">${esc(message)}</p></div>`;
+  $("#pinForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = $("#err");
+    err.textContent = "";
+    try {
+      await api("owner/unlock", { pin: $("#pin").value });
+      await load();
+    } catch (x) {
+      err.textContent = x.out?.turnstile ? "Too many tries for now. Open Hints, sign in there, then try again." : x.message;
+      $("#pin").select();
+    }
+  });
+}
+
+async function load() {
+  try {
+    state.data = await api("owner/dashboard");
+  } catch (x) {
+    if (x.status === 403 && x.out?.locked) return gate();
+    if (x.status === 401) return (main.innerHTML = `<div class="gate card"><h2>Not signed in</h2><p class="muted">Open <a href="/">Hints</a> in this browser and sign in first, then come back here.</p></div>`);
+    if (x.status === 404) return (main.innerHTML = `<div class="gate card"><h2>Not available</h2><p class="muted">Only the person who runs Hints can open this page.</p></div>`);
+    return (main.innerHTML = `<div class="gate card"><p class="err">${esc(x.message)}</p></div>`);
+  }
+  $("#refresh").hidden = $("#lock").hidden = false;
+  const until = new Date(state.data.until);
+  $("#until").textContent = `Open until ${until.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  clearTimeout(state.lockTimer);
+  state.lockTimer = setTimeout(() => gate("Locked again after 30 minutes."), Math.max(0, until - Date.now()));
+  render();
+  if (state.selected) openPerson(state.selected);
+}
+
+function render() {
+  const d = state.data;
+  const people = d.people;
+  const sum = (k) => people.reduce((n, p) => n + (p[k] || 0), 0);
+  const staleMaybes = people.filter((p) => p.maybes && daysAgo(p.oldestMaybe) >= STALE_MAYBE).length;
+  const noPin = people.filter((p) => !p.hasPin && !p.lookedAfterBy).length;
+  main.innerHTML = `
+    <div class="tiles">
+      ${tile(people.length, "People", people.some((p) => p.lookedAfterBy) ? `${people.filter((p) => p.lookedAfterBy).length} looked after by someone` : "")}
+      ${tile(d.circles.length, "Circles")}
+      ${tile(sum("wishes"), "Wishes on lists")}
+      ${tile(sum("maybes"), "In Maybe", staleMaybes ? `${staleMaybes} ${staleMaybes === 1 ? "person has" : "people have"} one over ${STALE_MAYBE} days old` : "")}
+      ${tile(sum("noPrice") + sum("noCategory"), "Wishes to tidy", `${sum("noPrice")} no price, ${sum("noCategory")} no category`)}
+      ${tile(d.openReports, "Open in Inbox", d.openReports ? `<a href="/#settings/inbox">Open Inbox</a>` : "", d.openReports > 0)}
+      ${tile(noPin, "No PIN", noPin ? "Anyone with the link could sign in as them" : "", noPin > 0)}
+    </div>
+    <div class="layout">
+      <div>
+        <div class="card">
+          <div class="toolbar">
+            <h2 style="margin:0">People</h2><span class="grow" style="flex:1"></span>
+            <label>Find <input id="filter" type="search" value="${esc(state.filter)}" placeholder="Name or circle"></label>
+          </div>
+          <div class="scroll"><table id="people"></table></div>
+          <div class="note">Taken counts are hidden on your own list, so your surprises stay safe. They show only for people you share a circle with, the same lists where the app already shows you marks. Never who bought what. Maybe wishes show as counts only.</div>
+        </div>
+        <div class="card section">
+          <h2>Circles</h2>
+          <div class="scroll"><table>
+            <thead><tr><th>Name</th><th class="num">People</th><th>Admin</th><th>Since</th></tr></thead>
+            <tbody>${d.circles.map((c) => `<tr><td>${esc(c.name)}</td><td class="num">${c.people}</td><td>${esc(c.admin || "")}</td><td class="muted">${day(c.since)}</td></tr>`).join("")}</tbody>
+          </table></div>
+        </div>
+      </div>
+      <aside class="card panel" id="panel"><p class="muted">Pick someone to see their list.</p></aside>
+    </div>`;
+  $("#filter").addEventListener("input", (e) => { state.filter = e.target.value; paintPeople(); });
+  paintPeople();
+}
+
+function tile(n, label, sub = "", warn = false) {
+  return `<div class="card tile"><div class="n${warn ? " warn-text" : ""}">${n}</div><div class="l">${esc(label)}</div>${sub ? `<div class="l">${sub}</div>` : ""}</div>`;
+}
+
+const COLS = [
+  ["name", "Name"], ["circles", "Circles"], ["wishes", "Wishes", true], ["maybes", "Maybe", true], ["taken", "Taken", true],
+  ["noPrice", "No price", true], ["noCategory", "No category", true], ["lastEdit", "Last edit"], ["lastSeen", "Last seen"],
+];
+
+function paintPeople() {
+  const q = state.filter.trim().toLowerCase();
+  const rows = state.data.people
+    .filter((p) => !q || p.name.toLowerCase().includes(q) || p.circles.toLowerCase().includes(q))
+    .sort((a, b) => {
+      const k = state.sort, x = a[k], y = b[k];
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * state.dir;
+    });
+  $("#people").innerHTML = `
+    <thead><tr>${COLS.map(([k, l, num]) => `<th data-k="${k}" class="${num ? "num" : ""}" aria-sort="${state.sort === k ? (state.dir > 0 ? "ascending" : "descending") : "none"}">${l}${state.sort === k ? (state.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(personRow).join("") || `<tr><td colspan="${COLS.length}" class="muted">Nobody matches.</td></tr>`}</tbody>`;
+  $("#people thead").addEventListener("click", (e) => {
+    const k = e.target.closest("th")?.dataset.k;
+    if (!k) return;
+    state.dir = state.sort === k ? -state.dir : (k === "name" || k === "circles" ? 1 : -1);
+    state.sort = k;
+    paintPeople();
+  });
+  $("#people tbody").addEventListener("click", (e) => { const id = e.target.closest("tr")?.dataset.id; if (id) openPerson(id); });
+  $("#people tbody").addEventListener("keydown", (e) => {
+    const id = e.target.closest("tr")?.dataset.id;
+    if (id && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openPerson(id); }
+  });
+}
+
+function personRow(p) {
+  const chips = [
+    p.you ? `<span class="chip you">You</span>` : "",
+    p.lookedAfterBy ? `<span class="chip" title="Looked after by ${esc(p.lookedAfterBy)}">${p.kid ? "Kid" : "Looked after"}</span>` : "",
+    !p.hasPin && !p.lookedAfterBy ? `<span class="chip warn">No PIN</span>` : "",
+  ].join("");
+  const staleMaybe = p.maybes && daysAgo(p.oldestMaybe) >= STALE_MAYBE;
+  const away = !p.lookedAfterBy && (p.lastSeen == null || daysAgo(p.lastSeen) >= AWAY);
+  return `<tr tabindex="0" data-id="${esc(p.id)}" class="${state.selected === p.id ? "on" : ""}">
+    <td>${esc(p.name)}${chips}</td>
+    <td class="muted">${esc(p.circles)}</td>
+    <td class="num">${p.wishes}</td>
+    <td class="num${staleMaybe ? " warn-text" : ""}" title="${p.maybes ? `Oldest added ${day(p.oldestMaybe)}` : ""}">${p.maybes || ""}</td>
+    <td class="num">${p.taken == null ? `<span class="muted" title="${p.you ? "Hidden on your own list" : "You don't share a circle"}">·</span>` : p.taken || ""}</td>
+    <td class="num">${p.noPrice || ""}</td>
+    <td class="num">${p.noCategory || ""}</td>
+    <td class="muted">${p.lastEdit ? ago(p.lastEdit) : ""}</td>
+    <td class="${away ? "warn-text" : "muted"}">${p.lookedAfterBy ? `By ${esc(p.lookedAfterBy)}` : ago(p.lastSeen)}</td>
+  </tr>`;
+}
+
+async function openPerson(id) {
+  state.selected = id;
+  document.querySelectorAll("#people tbody tr").forEach((tr) => tr.classList.toggle("on", tr.dataset.id === id));
+  const panel = $("#panel");
+  panel.innerHTML = `<p class="muted">Loading...</p>`;
+  let d;
+  try {
+    d = await api(`owner/person?member=${encodeURIComponent(id)}`);
+  } catch (x) {
+    if (x.status === 403 && x.out?.locked) return gate("Locked again after 30 minutes.");
+    panel.innerHTML = `<p class="err">${esc(x.message)}</p>`;
+    return;
+  }
+  if (state.selected !== id) return;
+  const maybe = d.member.you
+    ? (d.maybes.length ? d.maybes.map((i) => itemHtml(i, false)).join("") : `<p class="muted">Nothing in your Maybe.</p>`)
+    : `<p class="muted">${d.maybeCount ? `${d.maybeCount} in Maybe. Oldest added ${day(d.oldestMaybe)}.` : "Nothing in Maybe."} What's in someone's Maybe stays private to them.</p>`;
+  panel.innerHTML = `
+    <h2>${esc(d.member.name)}${d.member.you ? `<span class="chip you">You</span>` : ""}</h2>
+    ${d.marksShown ? "" : `<div class="note">${d.member.you ? "Taken marks are hidden on your own list." : "Taken marks are hidden: you don't share a circle with them."}</div>`}
+    <h2 class="section">On their list <span class="muted">(${d.wishes.length})</span></h2>
+    ${d.wishes.length ? d.wishes.map((i) => itemHtml(i, d.marksShown)).join("") : `<p class="muted">Nothing on their list yet.</p>`}
+    <h2 class="section">Maybe</h2>
+    ${maybe}`;
+}
+
+function itemHtml(i, marks) {
+  const src = i.image_url && (safeUrl(i.image_url) || String(i.image_url).startsWith("/api/photo?")) ? i.image_url : null;
+  const img = src ? `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph'}))">` : `<div class="ph"></div>`;
+  const bits = [money(i.price_cents), i.category, i.brand, i.size && `Size ${i.size}`, i.color].filter(Boolean).map(esc);
+  const flags = [
+    i.priority === "must" ? `<span class="chip">Top pick</span>` : "",
+    i.quantity !== 1 ? `<span class="chip">${i.quantity === 0 ? "Any number" : `Wants ${i.quantity}`}</span>` : "",
+    i.price_cents == null ? `<span class="chip warn">No price</span>` : "",
+    !i.category ? `<span class="chip warn">No category</span>` : "",
+  ].join("");
+  let taken = "";
+  if (marks && i.taken) {
+    const left = i.quantity === 0 ? null : Math.max(0, i.quantity - i.taken.qty);
+    if (i.taken.groupGift) taken = `<span class="chip">Group gift</span>`;
+    else if (i.taken.qty) taken = `<span class="chip">${left === 0 ? "Taken" : `${i.taken.qty} taken`}</span>`;
+  }
+  return `<div class="item">${img}<div>
+    <div class="t">${safeUrl(i.url) ? `<a href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a>` : esc(i.title)}${taken}</div>
+    <div class="muted" style="font-size:13px">${bits.join(" · ")}</div>
+    <div>${flags}</div>
+    ${i.notes ? `<div class="muted" style="font-size:13px">${esc(i.notes)}</div>` : ""}
+    <div class="muted" style="font-size:12px">Added ${day(i.created_at)}${i.updated_at && i.updated_at !== i.created_at ? `, edited ${day(i.updated_at)}` : ""}</div>
+  </div></div>`;
+}
+
+$("#refresh").addEventListener("click", load);
+$("#lock").addEventListener("click", async () => {
+  await api("owner/lock", {}).catch(() => {});
+  state.selected = null;
+  gate();
+});
+
+if (!token) main.innerHTML = `<div class="gate card"><h2>Not signed in</h2><p class="muted">Open <a href="/">Hints</a> in this browser and sign in first, then come back here.</p></div>`;
+else load();
+</script>
+</body>
+</html>
