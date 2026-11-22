@@ -4389,6 +4389,80 @@ const handlers = {
     return { ok: true };
   },
 
+  // The same gift, bought for more people: copies one of your own purchases to each person in toIds, for their
+  // Christmas when the original is for Christmas, else their next occasion. A wish or idea becomes a private
+  // idea of yours for them, already marked bought with the same price, progress and hiding spot. A gift card
+  // becomes the same gift card for them. Only ever looks at purchases you made, so it can't tell anyone
+  // whether someone else bought something.
+  // kind "item" / "idea": id is the item or idea. kind "giftcard": id is the brand, subjectId who it's for.
+  async "POST purchase/copy"(req, env) {
+    const me = await auth(req, env);
+    const b = await body(req);
+    const season = Number(b.occasion);
+    if (!Number.isInteger(season) || season < today()) fail(400, "That occasion has passed.");
+    const id = String(b.id || "");
+    let src;
+    if (b.kind === "item") {
+      src = await env.DB.prepare(
+        `SELECT i.owner_id AS subject_id, i.title, i.url, i.price_cents AS list_cents, i.image_url, c.price_cents AS paid_cents, c.chip_in, c.status, c.stash
+           FROM claims c JOIN items i ON i.id = c.item_id WHERE c.item_id = ? AND c.season = ? AND c.buyer_id = ?`,
+      ).bind(id, season, me.id).first();
+    } else if (b.kind === "idea") {
+      src = await env.DB.prepare(
+        `SELECT p.subject_id, p.title, p.url, p.price_cents AS list_cents, p.image_url, c.price_cents AS paid_cents, c.status, c.stash
+           FROM idea_claims c JOIN private_ideas p ON p.id = c.idea_id WHERE c.idea_id = ? AND c.season = ? AND c.buyer_id = ?`,
+      ).bind(id, season, me.id).first();
+    } else if (b.kind === "giftcard") {
+      src = await env.DB.prepare(
+        "SELECT member_id AS subject_id, amount_cents AS paid_cents, status, stash FROM gift_card_gifts WHERE member_id = ? AND brand = ? AND season = ? AND buyer_id = ?",
+      ).bind(String(b.subjectId || ""), id, season, me.id).first();
+    } else fail(400, "Pick a purchase.");
+    if (!src) fail(404, "Purchase not found.");
+    // A group gift share with no amount yet counts as nothing, the same as on the original.
+    if (src.chip_in && src.paid_cents == null) src.paid_cents = 0;
+    const to = [...new Set((Array.isArray(b.toIds) ? b.toIds : []).map(String))].filter((x) => x && x !== me.id && x !== src.subject_id);
+    if (!to.length) fail(400, "Pick who else you got it for.");
+    if (to.length > 12) fail(400, "That's a lot of people at once. Try 12 or fewer.");
+    for (const who of to) if (!(await sharesGroup(env, me.id, who))) fail(400, "Pick people from your circles.");
+    if (b.kind !== "giftcard") {
+      const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM private_ideas WHERE author_id = ?").bind(me.id).first();
+      if (n + to.length > ABUSE.ideasPerMember) fail(409, `You have ${n} gift ideas, near the most allowed (${ABUSE.ideasPerMember}). Delete a few to add more.`);
+    }
+    // Their Christmas for a Christmas gift, otherwise their soonest occasion.
+    const occasionFor = async (who) => {
+      const codes = (await memberOccasions(env, who)).map((o) => o.code);
+      return isXmasCode(season) && codes.includes(season) ? season : codes[0];
+    };
+    // Your own photo of someone's wish stays with that wish, so a copy only keeps a store photo.
+    const image = src.image_url && !String(src.image_url).startsWith(WISH_PHOTO_URL) ? src.image_url : null;
+    const t = now();
+    const rows = [];
+    const copies = [];
+    for (const who of to) {
+      const s = await occasionFor(who);
+      if (b.kind === "giftcard") {
+        rows.push(env.DB.prepare(
+          `INSERT INTO gift_card_gifts (member_id, brand, season, buyer_id, amount_cents, created_at, status, stash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (member_id, brand, season, buyer_id) DO UPDATE SET amount_cents = excluded.amount_cents`,
+        ).bind(who, id, s, me.id, src.paid_cents, t, src.status, src.stash));
+        copies.push({ subjectId: who, occasion: s });
+      } else {
+        const ideaId = newId();
+        rows.push(
+          env.DB.prepare(
+            `INSERT INTO private_ideas (id, author_id, subject_id, title, url, price_cents, note, shared, created_at, updated_at, image_url, image_checked_at, details_v)
+             VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ${DETAILS_V})`,
+          ).bind(ideaId, me.id, who, src.title, src.url, src.list_cents, t, t, image, image ? t : null),
+          env.DB.prepare("INSERT INTO idea_claims (idea_id, season, buyer_id, price_cents, created_at, status, stash) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .bind(ideaId, s, me.id, src.paid_cents, t, src.status, src.stash),
+        );
+        copies.push({ subjectId: who, occasion: s, id: ideaId });
+      }
+    }
+    await env.DB.batch(rows);
+    return { copies };
+  },
+
   // Not doing gifts with someone (or a whole household): { target: "m:<id>" | "h:<householdId>", skip: true|false }.
   // Only changes your own budget page and reminders; nobody else ever sees it.
   async "POST budget/skip"(req, env) {

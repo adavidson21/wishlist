@@ -108,6 +108,10 @@ async function build(spoiled, worlds) {
     await S.api("budget", { subjectId: A.id, amount: 100 });
     await S.api("purchase/progress", { kind: "item", id: ids.sweater, occasion: xmas, status: "wrapped", stash: `${SPOILER} hall closet` });
     await S.api("nickname", { subjectId: A.id, nickname: `${SPOILER} Lex` });
+    // Sam got Pat a gift and the same one for Alexis, and the sweater he got Alexis for Pat too.
+    const copied = (await S.api("idea/save", { subjectId: P.id, title: `${SPOILER} copied gift`, price: 15, bought: true, paid: 12 })).id;
+    await S.api("purchase/copy", { kind: "idea", id: copied, occasion: xmas, toIds: [A.id] });
+    await S.api("purchase/copy", { kind: "item", id: ids.sweater, occasion: xmas, toIds: [P.id] });
     await S.api("chat/send", { group: friends.id, member: A.id, body: `${SPOILER} in the other circle` });
     // Gifts from last Christmas (the API can't backdate, so straight into the database). The next run copies them
     // into gift history: Sam's, Pat's, and one from Mike, who gives with Alexis's household.
@@ -176,6 +180,7 @@ async function aliceView(x) {
     await post(`live price for ${name}`, "POST prices", "prices", { keys: [`item:${id}`] });
     await post(`move ${name} along as Mike`, "POST purchase/progress", "purchase/progress", { kind: "item", id, occasion: xmas, status: "wrapped", buyerId: M.id });
     await post(`move ${name} along as me`, "POST purchase/progress", "purchase/progress", { kind: "item", id, occasion: xmas, status: "wrapped" });
+    await post(`copy ${name} as if I bought it`, "POST purchase/copy", "purchase/copy", { kind: "item", id, occasion: xmas, toIds: [P.id] });
     await post(`tag ${name} in a chat about me`, "POST chat/send", "chat/send", { group, member: A.id, body: "hi", itemId: id });
   }
   await post("write in the chat about me", "POST chat/send", "chat/send", { group, member: A.id, body: "hi" });
@@ -189,6 +194,8 @@ async function aliceView(x) {
   await post("photo for a suggestion about me", "POST image", "image", { kind: "idea", id: secret.suggestion });
   await post("live price for a suggestion about me", "POST prices", "prices", { keys: [`idea:${secret.suggestion}`] });
   await post("move the suggestion along", "POST purchase/progress", "purchase/progress", { kind: "idea", id: secret.suggestion, occasion: xmas, buyerId: M.id });
+  await post("copy the suggestion about me", "POST purchase/copy", "purchase/copy", { kind: "idea", id: secret.suggestion, occasion: xmas, toIds: [P.id] });
+  await post("copy a gift card someone's giving me", "POST purchase/copy", "purchase/copy", { kind: "giftcard", id: "starbucks", subjectId: A.id, occasion: xmas, toIds: [P.id] });
   await post("give myself a gift card", "POST giftcard/give", "giftcard/give", { memberId: A.id, brand: "starbucks", on: true });
   await post("move a gift card along as Mike", "POST purchase/progress", "purchase/progress", { kind: "giftcard", id: "starbucks", subjectId: A.id, occasion: xmas, buyerId: M.id });
   await post("budget for myself", "POST budget", "budget", { subjectId: A.id, amount: 5 });
@@ -303,6 +310,7 @@ const ROUTES = {
   "POST idea/remove": "probe",
   "POST idea/claim": "probe",
   "POST purchase/progress": "probe",
+  "POST purchase/copy": "probe",
   "POST budget/skip": "probe",
   "POST budget": "probe",
   "POST budget/split": "probe",
