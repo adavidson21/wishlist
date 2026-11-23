@@ -1398,6 +1398,14 @@
   .hist-row .t small { color: var(--muted); font-weight: 600; }
   .hist-row b { white-space: nowrap; }
   .given-card .hist-row:first-of-type { border-top: 0; }
+  .hist-year span small, .hist-amt small { color: var(--muted); font-weight: 600; }
+  .hist-person { border-top: 1px solid var(--line); padding: 10px 0 4px; }
+  .hist-ph { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .hist-ph strong small { color: var(--muted); font-weight: 600; }
+  .hist-amt { white-space: nowrap; font-weight: 800; }
+  .hist-person .hist-row { border-top: 0; padding: 4px 0 4px 12px; }
+  .hist-person .hist-row .t strong { font-weight: 600; }
+  .hist-person .hist-row b { font-weight: 600; color: var(--muted); }
   .btabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--line); margin: 0 0 16px; overflow-x: auto; scrollbar-width: none; }
   .btabs button { flex: 1; min-height: 48px; border: 0; background: none; font-weight: 700; font-size: 16px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 7px;
     border-bottom: 3px solid transparent; margin-bottom: -1.5px; white-space: nowrap; padding: 0 8px; }
@@ -8078,45 +8086,94 @@ function setPurchase(x, p, o, on, price) {
 // Ideas: every open idea you have, by person, plus a quick way to add one for people with none.
 // ---------- gift history ----------
 // "Christmas 2025" or "Sam's birthday 2025" for a past occasion.
-const histOcc = (g) => (g.season % 10000 === 1225 ? `Christmas ${Math.floor(g.season / 10000)}` : `${g.subjectName}'s birthday ${Math.floor(g.season / 10000)}`);
 function histRow(g, showWho = true, when = "") {
-  const what = [showWho ? esc(g.subjectName) : "", when ? esc(when) : "", g.by ? `from ${esc(g.by)}` : "", g.chipIn ? "group gift share" : "", g.qty > 1 ? `×${g.qty}` : ""].filter(Boolean).join(" · ");
+  const what = [showWho ? esc(g.subjectName) : "", when ? esc(when) : "", g.by ? `from ${esc(g.by)}` : "", g.note ? esc(g.note) : "", g.chipIn ? "group gift share" : "", g.qty > 1 ? `×${g.qty}` : ""].filter(Boolean).join(" · ");
   return `<div class="hist-row"><span class="t"><strong>${g.url ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.title)}</a>` : esc(g.title)}</strong>${what ? `<small>${what}</small>` : ""}</span>${g.spent_cents ? `<b>${money(g.spent_cents)}</b>` : ""}</div>`;
 }
-// Budget > History: everything given for occasions that have passed, by year then occasion. Searchable.
+// Budget > History: everything given for occasions that have passed, including years imported from spreadsheets
+// (scripts/import-history.mjs). By year (each person with what you spent against your budget) or by person
+// (every year side by side). Filter by year, search by name or gift.
+const histYear = (s) => Math.floor(s / 10000);
+const histKey = (x) => x.subjectId || `n:${x.subjectName.toLowerCase()}`;
+// One entry per person per occasion (per giver, for your household's): their gifts, budget and total spent.
+function histEntries(gifts, totals) {
+  const map = new Map();
+  const get = (x) => {
+    const k = `${x.season}|${histKey(x)}|${x.by || ""}`;
+    if (!map.has(k)) map.set(k, { season: x.season, key: histKey(x), name: x.subjectName, by: x.by, gifts: [], budget: null, spent: null });
+    return map.get(k);
+  };
+  for (const g of gifts) get(g).gifts.push(g);
+  for (const t of totals || []) Object.assign(get(t), { budget: t.budget_cents, spent: t.spent_cents });
+  for (const e of map.values()) if (e.spent == null) e.spent = e.gifts.reduce((n, g) => n + (g.spent_cents || 0), 0);
+  return [...map.values()].sort((a, b) => b.season - a.season || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+const histSpent = (e) => `<span class="hist-amt">${e.spent ? money(e.spent) : ""}${e.budget ? `<small> of ${money(e.budget)}</small>` : ""}</span>`;
+function histPerson(e, label) {
+  return `<div class="hist-person"><div class="hist-ph"><strong>${esc(label)}${e.by ? ` <small>from ${esc(e.by)}</small>` : ""}</strong>${histSpent(e)}</div>
+    ${e.gifts.map((g) => histRow({ ...g, by: null }, false)).join("")}</div>`;
+}
 async function renderHistoryTab(v) {
   setHero(`${budgetTitle()}<div class="hero-stat"><p class="kicker">Gifts you've given</p><span class="big-num" id="histNum">…</span><p class="hero-sub" id="histSub"></p></div>`);
   v.innerHTML = `<p class="subtle" style="margin:0 0 10px">Loading…</p>`;
-  let gifts;
-  try { ({ gifts } = await api("history")); } catch (e) { v.innerHTML = `<p class="subtle">${esc(e.message)}</p>`; return; }
+  let gifts, totals;
+  try { ({ gifts, totals } = await api("history")); } catch (e) { v.innerHTML = `<p class="subtle">${esc(e.message)}</p>`; return; }
   if (budgetTab() !== "history" || !v.isConnected) return;
+  const all = histEntries(gifts, totals);
+  const years = [...new Set(all.map((e) => histYear(e.season)))];
   $("#histNum") && ($("#histNum").textContent = gifts.length);
-  const total = gifts.reduce((n, g) => n + (g.spent_cents || 0), 0);
-  if ($("#histSub")) $("#histSub").textContent = gifts.length ? `${money(total)} across ${new Set(gifts.map((g) => Math.floor(g.season / 10000))).size === 1 ? "one year" : `${new Set(gifts.map((g) => Math.floor(g.season / 10000))).size} years`}` : "";
-  if (!gifts.length) {
+  const total = all.reduce((n, e) => n + (e.spent || 0), 0);
+  if ($("#histSub")) $("#histSub").textContent = all.length ? `${money(total)} across ${years.length === 1 ? "one year" : `${years.length} years`}` : "";
+  if (!all.length) {
     v.innerHTML = `<div class="empty"><strong>Nothing here yet</strong><p>After each Christmas and birthday, what you gave shows up here, so you never repeat a gift.</p></div>`;
     return;
   }
-  v.innerHTML = `<input class="input" type="search" id="histQ" placeholder="Search by name or gift" aria-label="Search gift history" value="${esc(state.histQ || "")}" style="margin-bottom:4px"><div id="histList"></div>`;
+  if (!years.includes(state.histYear)) state.histYear = null;
+  const view = state.histView === "person" ? "person" : "year";
+  v.innerHTML = `<div class="seg two" role="radiogroup" aria-label="Show history">
+      ${[["year", "By year"], ["person", "By person"]].map(([k, l]) => `<button type="button" role="radio" data-hview="${k}" aria-checked="${k === view}">${l}</button>`).join("")}</div>
+    ${years.length > 1 ? `<div class="chips mchips" role="group" aria-label="Year"><button type="button" class="chip" data-hyear="" aria-pressed="${!state.histYear}">All years</button>${years.map((y) =>
+      `<button type="button" class="chip" data-hyear="${y}" aria-pressed="${state.histYear === y}">${y}</button>`).join("")}</div>` : ""}
+    <input class="input" type="search" id="histQ" placeholder="Search by name or gift" aria-label="Search gift history" value="${esc(state.histQ || "")}" style="margin-bottom:4px"><div id="histList"></div>`;
   const paint = () => {
     const q = (state.histQ || "").trim().toLowerCase();
-    const shown = q ? gifts.filter((g) => `${g.title} ${g.subjectName} ${g.by || ""}`.toLowerCase().includes(q)) : gifts;
-    let html = "", year = null, occ = null;
-    for (const g of shown) {
-      const y = Math.floor(g.season / 10000);
-      if (y !== year) {
-        year = y; occ = null;
-        const yt = shown.filter((x) => Math.floor(x.season / 10000) === y).reduce((n, x) => n + (x.spent_cents || 0), 0);
-        html += `<div class="hist-year"><h3>${y}</h3><span>${yt ? money(yt) : ""}</span></div>`;
+    // A name match shows all their gifts; otherwise only the gifts that match.
+    const shown = all.filter((e) => !state.histYear || histYear(e.season) === state.histYear).map((e) => {
+      if (!q || `${e.name} ${e.by || ""}`.toLowerCase().includes(q)) return e;
+      const g = e.gifts.filter((x) => `${x.title} ${x.note || ""}`.toLowerCase().includes(q));
+      return g.length ? { ...e, gifts: g } : null;
+    }).filter(Boolean);
+    let html = "";
+    if (view === "year") {
+      for (const y of [...new Set(shown.map((e) => histYear(e.season)))]) {
+        const inYear = shown.filter((e) => histYear(e.season) === y);
+        const yt = inYear.reduce((n, e) => n + (e.spent || 0), 0);
+        const yb = inYear.reduce((n, e) => n + (e.budget || 0), 0);
+        html += `<div class="hist-year"><h3>${y}</h3><span>${yt ? money(yt) : ""}${yb ? `<small> of ${money(yb)}</small>` : ""}</span></div>`;
+        const xmas = inYear.filter((e) => e.season % 10000 === 1225), bdays = inYear.filter((e) => e.season % 10000 !== 1225);
+        if (xmas.length) html += `<div class="hist-occ">Christmas</div>${xmas.map((e) => histPerson(e, e.name)).join("")}`;
+        if (bdays.length) html += `<div class="hist-occ">Birthdays</div>${bdays.map((e) => histPerson(e, e.name)).join("")}`;
       }
-      const o = histOcc(g);
-      if (o !== occ) { occ = o; html += `<div class="hist-occ">${esc(o)}</div>`; }
-      html += histRow(g, true);
+    } else {
+      const people = new Map();
+      for (const e of shown) { if (!people.has(e.key)) people.set(e.key, []); people.get(e.key).push(e); }
+      const list = [...people.values()].sort((a, b) => a[0].name.localeCompare(b[0].name, undefined, { sensitivity: "base" }));
+      for (const es of list) {
+        const t = es.reduce((n, e) => n + (e.spent || 0), 0);
+        html += `<div class="hist-year"><h3>${esc(es[0].name)}</h3><span>${t ? money(t) : ""}</span></div>`;
+        html += es.map((e) => histPerson(e, e.season % 10000 === 1225 ? `Christmas ${histYear(e.season)}` : `Birthday ${histYear(e.season)}`)).join("");
+      }
     }
     $("#histList", v).innerHTML = html || `<p class="subtle" style="margin-top:14px">No gifts match.</p>`;
   };
   paint();
   $("#histQ", v).oninput = (e) => { state.histQ = e.target.value; paint(); };
+  v.querySelectorAll("[data-hyear]").forEach((b) => (b.onclick = () => {
+    state.histYear = b.dataset.hyear ? +b.dataset.hyear : null;
+    v.querySelectorAll("[data-hyear]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    paint();
+  }));
+  v.querySelectorAll("[data-hview]").forEach((b) => (b.onclick = () => { state.histView = b.dataset.hview; renderHistoryTab(v); }));
 }
 // On someone's page: what you (and your household) gave them before. Painted after the page loads.
 async function paintGivenCard(slot, id, name) {

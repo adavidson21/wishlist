@@ -21,6 +21,12 @@ When an occasion passes, the hourly Cron Trigger copies each purchase into `gift
 
 Migration `0035_gift_history.sql`: `gift_history`, unique on (buyer, kind, ref, season). Kind is `item`, `idea` or `card`.
 
+## Before the app (Nov 2026)
+
+Years from your own spreadsheets import with `scripts/import-history.mjs` into `past_totals` (budget and spent per person per occasion) and `past_gifts` (migration `0053_past_gifts.sql`). The person can be someone who isn't in the app (kept as a name); `member_id` links them when they are, so they also show on that person's page. Same visibility as `gift_history`. Re-running an import replaces its `source`.
+
+History has By year (each person with spent of budget, grouped Christmas then Birthdays) and By person (every year side by side), plus year chips and search.
+
 ## API
 
-`GET history` `{ member? }`: your gifts, newest first. With `member`, only gifts to them.
+`GET history` `{ member? }`: your gifts, newest first, plus `totals` (imported budget and spent per person per occasion). With `member`, only gifts to them. Imported gifts have kind `past` and may have no `subjectId`.

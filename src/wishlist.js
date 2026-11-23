@@ -1565,6 +1565,10 @@ async function deleteMember(env, id) {
   q("DELETE FROM household_budget_people WHERE member_id = ?1");
   q("UPDATE household_budget_people SET updated_by = NULL WHERE updated_by = ?1");
   q("DELETE FROM gift_history WHERE buyer_id = ?1 OR subject_id = ?1");
+  q("DELETE FROM past_gifts WHERE buyer_id = ?1");
+  q("DELETE FROM past_totals WHERE buyer_id = ?1");
+  q("UPDATE past_gifts SET member_id = NULL WHERE member_id = ?1");
+  q("UPDATE past_totals SET member_id = NULL WHERE member_id = ?1");
   q("DELETE FROM pets WHERE member_id = ?1");
   q("UPDATE reports SET member_id = NULL WHERE member_id = ?1");
   q("UPDATE members SET pin_cleared_by = NULL WHERE pin_cleared_by = ?1");
@@ -4867,15 +4871,41 @@ const handlers = {
       "SELECT DISTINCT y.member_id AS id FROM group_members x JOIN group_members y ON y.group_id = x.group_id WHERE x.member_id = ?",
     ).bind(me.id).all();
     const mine = new Set(circle.map((r) => r.id));
+    const gifts = results
+      .filter((r) => r.buyer_id === me.id || (sharesBudget(myHh, r) && mine.has(r.subject_id)))
+      .map((r) => ({
+        kind: r.kind, id: r.ref_id, season: r.season, subjectId: r.subject_id, subjectName: nicks.get(r.subject_id) || r.subject_name,
+        title: r.kind === "card" ? `${GIFT_CARD_NAMES.get(r.title) || r.title} gift card` : r.title,
+        url: r.url, image_url: r.image_url, spent_cents: r.spent_cents, qty: r.qty, chipIn: !!r.chip_in,
+        by: r.buyer_id === me.id ? null : nicks.get(r.buyer_id) || r.buyer_name,
+      }));
+    // Gifts from before the app (migration 0053). Someone who isn't in the app counts as outside your household.
+    const inTeam = ids.map(() => "?").join(",");
+    const pastSql = (table, order) =>
+      `SELECT p.*, s.name AS subject_name, s.household_id, b.name AS buyer_name FROM ${table} p
+         LEFT JOIN members s ON s.id = p.member_id JOIN members b ON b.id = p.buyer_id
+        WHERE p.buyer_id IN (${inTeam}) ${member ? "AND p.member_id = ?" : ""} ORDER BY ${order}`;
+    const args = [...ids, ...(member ? [String(member)] : [])];
+    const [pastGifts, pastTotals] = await Promise.all([
+      env.DB.prepare(pastSql("past_gifts", "p.season DESC, p.pos")).bind(...args).all(),
+      env.DB.prepare(pastSql("past_totals", "p.season DESC")).bind(...args).all(),
+    ]);
+    const seen = (r) => r.buyer_id === me.id || !r.member_id || (sharesBudget(myHh, r) && mine.has(r.member_id));
+    const who = (r) => ({
+      subjectId: r.member_id || null,
+      subjectName: (r.member_id && (nicks.get(r.member_id) || r.subject_name)) || r.person,
+      by: r.buyer_id === me.id ? null : nicks.get(r.buyer_id) || r.buyer_name,
+    });
+    for (const r of pastGifts.results.filter(seen)) {
+      gifts.push({ kind: "past", id: r.id, season: r.season, ...who(r), title: r.title, spent_cents: r.price_cents, note: r.note || null, qty: 1, chipIn: false });
+    }
+    gifts.sort((a, b) => b.season - a.season || a.subjectName.localeCompare(b.subjectName, undefined, { sensitivity: "base" }));
     return {
-      gifts: results
-        .filter((r) => r.buyer_id === me.id || (sharesBudget(myHh, r) && mine.has(r.subject_id)))
-        .map((r) => ({
-          kind: r.kind, id: r.ref_id, season: r.season, subjectId: r.subject_id, subjectName: nicks.get(r.subject_id) || r.subject_name,
-          title: r.kind === "card" ? `${GIFT_CARD_NAMES.get(r.title) || r.title} gift card` : r.title,
-          url: r.url, image_url: r.image_url, spent_cents: r.spent_cents, qty: r.qty, chipIn: !!r.chip_in,
-          by: r.buyer_id === me.id ? null : nicks.get(r.buyer_id) || r.buyer_name,
-        })),
+      gifts,
+      // Budget and total spent per person per occasion, for imported years.
+      totals: pastTotals.results.filter(seen).map((r) => ({
+        season: r.season, ...who(r), budget_cents: r.budget_cents, spent_cents: r.spent_cents, note: r.note || null,
+      })),
     };
   },
 
