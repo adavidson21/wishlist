@@ -2037,7 +2037,10 @@ function jsonLdProduct(html) {
     const b = [].concat(node.brand || node.manufacturer || [])[0];
     const brand = typeof b === "string" ? decode(b) : b?.name ? decode(b.name) : null;
     const name = typeof node.name === "string" ? decode(node.name) : null;
-    const out = { title: name || null, price, currency, image, inStock, brand };
+    // The regular price a marked-down offer shows crossed out (schema.org StrikethroughPrice or ListPrice).
+    const was = flat.flatMap((o) => [].concat(o?.priceSpecification || []))
+      .filter((x) => /Strikethrough|ListPrice|MSRP|SRP/i.test(String(x?.priceType || ""))).map((x) => toPrice(x?.price)).find((x) => x != null) ?? null;
+    const out = { title: name || null, price, currency, image, inStock, brand, was };
     if (name) return unnamed && out.price == null ? { ...out, price: unnamed.price, currency: unnamed.currency, image: out.image || unnamed.image }
       : unnamed ? { ...out, image: out.image || unnamed.image } : out;
     unnamed ||= out;
@@ -2298,8 +2301,12 @@ async function shopifyProduct(url) {
     // No variant picked and the variants cost different amounts: we can't tell which price they meant.
     const prices = new Set(p.variants.map((x) => x.price));
     const cents = Number(v ? v.price : prices.size === 1 ? p.price : NaN);
+    // The store's regular price when this one is marked down (Shopify's "compare at" price), for the sale badge.
+    const olds = new Set(p.variants.map((x) => x.compare_at_price));
+    const was = Number(v ? v.compare_at_price : olds.size === 1 ? p.variants[0].compare_at_price : NaN);
     return {
       price: Number.isFinite(cents) && cents > 0 ? Math.round(cents) / 100 : null,
+      was: Number.isFinite(was) && was > 0 ? Math.round(was) / 100 : null,
       inStock: typeof (v ? v.available : p.available) === "boolean" ? (v ? v.available : p.available) : null,
     };
   } catch { return null; }
@@ -2348,7 +2355,8 @@ function amazonStock(html) {
 }
 const LIVE_TTL = 12 * 3600, LIVE_MISS_TTL = 6 * 3600;
 // v5: drops cached answers from before Amazon stock was read from the availability box only.
-const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v5/${encodeURIComponent(u)}`);
+// v6: answers also carry the store's regular price when the item is on sale.
+const liveKey = (u) => new Request(`https://live-price.wishlist.invalid/v6/${encodeURIComponent(u)}`);
 async function livePrice(env, rawUrl, { ai = true } = {}) {
   let clean;
   try { clean = cleanLink(await resolveShortLink(new URL(link(rawUrl)))); } catch { return null; }
@@ -2356,10 +2364,10 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
   try { const hit = await caches.default.match(liveKey(clean)); if (hit) return await hit.json(); } catch {}
   const url = new URL(clean);
   const site = url.hostname.replace(/^www\./, "");
-  let price = null, inStock = null, via = "page", currency = null, guess = false;
+  let price = null, inStock = null, via = "page", currency = null, guess = false, was = null;
   const shop = await shopifyProduct(url);
   if (shop && (shop.price != null || shop.inStock !== null)) {
-    price = shop.price; inStock = shop.inStock; via = "shopify";
+    price = shop.price; inStock = shop.inStock; was = shop.was; via = "shopify";
     if (price != null) currency = await shopifyCurrency(url, "");
   }
   const { html } = via === "shopify" ? { html: "" } : await readPage(url, 5000);
@@ -2370,6 +2378,10 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
       ?? toPrice(meta(html, "product:price:amount", "og:price:amount", "price"))
       ?? toPrice(html.match(/class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]); // Amazon
     inStock = ld.inStock ?? null;
+    // Regular price while on sale: JSON-LD, then sale meta tags, then Amazon's crossed-out "List Price".
+    was = ld.was
+      ?? toPrice(meta(html, "product:original_price:amount", "og:price:standard_amount"))
+      ?? toPrice(html.match(/data-a-strike=["']true["'][^>]*>\s*<span class=["']a-offscreen["'][^>]*>\s*\$?([\d,.]+)/i)?.[1]);
     const availMeta = meta(html, "product:availability", "og:availability", "availability");
     if (inStock === null && availMeta) inStock = /out|sold|unavailable|discontinued/i.test(availMeta) ? false : /in ?stock|available|preorder/i.test(availMeta) ? true : null;
     if (inStock === null && /(^|\.)amazon\./i.test(site)) inStock = amazonStock(html);
@@ -2383,8 +2395,10 @@ async function livePrice(env, rawUrl, { ai = true } = {}) {
       if (found.opened) { price = found.price; currency = found.currency; via = "ai-page"; } else via = "search";
     }
   }
+  // On sale only when the regular price is higher, and not absurdly so (a misread or an unrelated number).
+  const ratio = price != null && was != null && was > price && was < price * 4 ? was / price : null;
   ({ price, guess } = await inUsd(price, currency));
-  const out = { price, inStock, site, via, guess, checkedAt: now() };
+  const out = { price, inStock, site, via, guess, was: ratio && price != null ? Math.round(price * ratio * 100) / 100 : null, checkedAt: now() };
   const hit = price != null || inStock !== null;
   try {
     await caches.default.put(liveKey(clean), new Response(JSON.stringify(out), { headers: { "content-type": "application/json", "cache-control": `max-age=${hit ? LIVE_TTL : LIVE_MISS_TTL}` } }));
@@ -4698,7 +4712,7 @@ const handlers = {
     for (let i = 0; i < rows.length; i += 4) {
       await Promise.all(rows.slice(i, i + 4).map(async ([key, u, row]) => {
         const p = await livePrice(env, u).catch(() => null);
-        if (p && (p.price != null || p.inStock !== null)) prices[key] = { price: p.price, inStock: p.inStock, site: p.site, guess: !!p.guess, checkedAt: p.checkedAt };
+        if (p && (p.price != null || p.inStock !== null)) prices[key] = { price: p.price, inStock: p.inStock, site: p.site, guess: !!p.guess, was: p.was ?? null, checkedAt: p.checkedAt };
         // A price that came from the link follows the store. Hand-typed prices are never touched.
         const cur = p?.price != null ? Math.round(p.price * 100) : null;
         // A jump of more than half either way is more likely a misread than a real change: say "check the price"
