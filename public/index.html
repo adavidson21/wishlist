@@ -472,6 +472,9 @@
   .wish .row-title { font-size: 18px; }
   .live { display: block; font-size: 13px; font-weight: 700; margin-top: 2px; color: var(--muted); animation: fade .45s ease both; }
   .live.down { color: var(--ok); }
+  .live.sale { color: var(--ok); }
+  .live.sale s { color: var(--muted); font-weight: 500; }
+  .sale-tag { display: inline-block; padding: 1px 7px; margin-right: 2px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; vertical-align: 1px; }
   .live.out { color: var(--warn); }
   .live.odd { color: var(--warn); }
   .wish-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
@@ -2294,6 +2297,11 @@ function liveLine(r, listed, short = false) {
   const cents = Math.round(r.price * 100);
   // Converted from another currency (or otherwise not exact): an estimate, never "Now $X".
   if (r.guess) return ["est", short ? `About ${money(cents)} right now` : `About ${money(cents)} right now ${at}`.trim()];
+  // The store shows it marked down from a higher regular price.
+  if (r.was > r.price) {
+    const tag = `<span class="sale-tag">Sale</span>`, was = `<s>${money(Math.round(r.was * 100))}</s>`;
+    return ["sale", short ? `${tag} ${money(cents)} ${was}` : `${tag} ${money(cents)} ${was} ${at}`.trim()];
+  }
   if (listed != null && Math.abs(cents - listed) >= 100) return cents < listed ? ["down", `↓ Now ${money(cents)} ${at}`.trim()] : ["up", `Now ${money(cents)} ${at}`.trim()];
   return ["ok", short ? "✓ Price checked just now" : `✓ ${money(cents)} right now ${at}`];
 }
