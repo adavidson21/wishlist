@@ -5807,7 +5807,8 @@ const FEED_EMOJI = ["❤️", "😂", "😍", "🎁", "🔥"];
 const HEART = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
 const SHARE_IC = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/></svg>';
 const viewKey = "wishlist-circles-view";
-const circlesView = () => { try { return localStorage.getItem(viewKey) === "people" ? "people" : "feed"; } catch { return "feed"; } };
+// People is the default so everyone's lists are one tap away; Feed sticks once someone picks it.
+const circlesView = () => { try { return localStorage.getItem(viewKey) === "feed" ? "feed" : "people"; } catch { return "people"; } };
 // "now", "5m", "3h", "Yesterday", "Nov 2".
 function feedTime(iso) {
   const ms = Date.now() - Date.parse(iso);
@@ -6219,7 +6220,7 @@ async function renderFamily() {
       <span class="req-btns"><button class="btn small quiet" type="button" data-req="${esc(r.g.id)}:${esc(r.id)}" data-allow="">Decline</button>
       <button class="btn small primary" type="button" data-req="${esc(r.g.id)}:${esc(r.id)}" data-allow="1">Let in</button></span></div>`).join("")}</div>` : "";
 
-  // Feed / People switch (remembered on this device). Feed is the social side; People is the list of everyone.
+  // Feed / People switch (remembered on this device, People by default). Feed is the social side; People is the list of everyone.
   // While it's just you, there's no feed to show yet, so the invite screen shows instead.
   const feedMode = all.length > 0 && circlesView() === "feed";
   const switchHtml = all.length ? `<div class="c-switch">${seg("Show", [["feed", "Feed"], ["people", "People"]], feedMode ? "feed" : "people", "two")}</div>` : "";
