@@ -15,7 +15,7 @@ something to it with a comment, like a post.
 
 - Feed posts and comments are visible to everyone who can see the card, **including the person a post is about**.
   Secret talk stays in the hidden chat. The composer says so.
-- The feed lives on the **Circles tab**: a Feed / People switch at the top. Feed is the default.
+- The feed lives on the **Circles tab**: a Feed / People switch at the top. People is the default, so everyone's lists are one tap away.
 - Reactions: yes, one per person per card, from a small fixed set: ❤️ 😂 😍 🎁 🔥.
 
 ## Hard rules
